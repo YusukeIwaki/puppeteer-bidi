@@ -2,7 +2,9 @@
 
 require 'async'
 require 'async/websocket/client'
+require 'async/http/endpoint'
 require 'json'
+require 'uri'
 
 module Puppeteer
   module Bidi
@@ -14,9 +16,12 @@ module Puppeteer
       attr_reader :url
 
       def initialize(url)
-        @url = url
+        # BiDi WebSocket endpoint requires /session path
+        @url = url.end_with?('/session') ? url : "#{url}/session"
         @endpoint = nil
         @connection = nil
+        @task = nil
+        @connected = false
         @closed = false
         @on_message = nil
         @on_close = nil
@@ -24,22 +29,23 @@ module Puppeteer
 
       # Connect to WebSocket and start receiving messages
       def connect
-        Async do |task|
-          @endpoint = Async::HTTP::Endpoint.parse(@url)
+        @task = Async do |task|
+          endpoint = Async::HTTP::Endpoint.parse(@url)
 
-          Async::WebSocket::Client.connect(@endpoint) do |connection|
+          # Connect to WebSocket - this matches minibidi's implementation
+          Async::WebSocket::Client.connect(endpoint) do |connection|
             @connection = connection
+            @connected = true
 
-            # Start message receiving loop
-            task.async do
-              receive_loop(connection)
-            end
-
-            # Keep connection alive
-            task.sleep
+            # Start message receiving loop (this will block until connection closes)
+            receive_loop(connection)
           end
-        ensure
+        rescue => e
+          warn "Transport connect error: #{e.class} - #{e.message}"
+          warn e.backtrace.join("\n")
           close
+        ensure
+          @connected = false
         end
       end
 
@@ -75,6 +81,22 @@ module Puppeteer
 
       def closed?
         @closed
+      end
+
+      def connected?
+        @connected && !@closed
+      end
+
+      # Wait for connection to be established
+      def wait_for_connection(timeout: 10)
+        deadline = Time.now + timeout
+        until connected?
+          if Time.now > deadline
+            raise ClosedError, 'Timeout waiting for connection'
+          end
+          sleep(0.05)
+        end
+        true
       end
 
       private

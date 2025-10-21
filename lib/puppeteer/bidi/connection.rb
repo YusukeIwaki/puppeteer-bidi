@@ -57,11 +57,16 @@ module Puppeteer
           timeout_seconds = timeout / 1000.0
           result = promise.value!(timeout_seconds)
 
-          if result[:error]
-            raise ProtocolError, "BiDi error (#{method}): #{result[:error][:message]}"
+          # Debug output
+          if ENV['DEBUG_BIDI']
+            puts "[BiDi] Response for #{method}: #{result.inspect}"
           end
 
-          result[:result]
+          if result['error']
+            raise ProtocolError, "BiDi error (#{method}): #{result['error']['message']}"
+          end
+
+          result['result']
         rescue Concurrent::TimeoutError
           @pending_commands.delete(id)
           raise TimeoutError, "Timeout waiting for #{method} (#{timeout}ms)"

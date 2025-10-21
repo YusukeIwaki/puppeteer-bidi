@@ -8,10 +8,21 @@ module Puppeteer
     class Browser
       attr_reader :connection, :process
 
-      def initialize(connection:, launcher: nil)
+      def initialize(connection:, launcher: nil, connection_thread: nil)
         @connection = connection
         @launcher = launcher
+        @connection_thread = connection_thread
         @closed = false
+
+        # Create a new BiDi session
+        @connection.send_command('session.new', {
+          capabilities: {
+            alwaysMatch: {
+              acceptInsecureCerts: false,
+              webSocketUrl: true,
+            },
+          },
+        })
       end
 
       # Launch a new Firefox browser instance
@@ -33,33 +44,36 @@ module Puppeteer
 
         # Create transport and connection
         transport = Transport.new(ws_endpoint)
-        connection = Connection.new(transport)
 
-        # Start transport in background
-        Async do
+        # Start transport connection in background thread
+        # The Async task needs to run in a separate thread to keep the event loop alive
+        connection_thread = Thread.new do
           transport.connect
         end
 
-        # Wait a bit for connection to establish
-        sleep(0.5)
+        # Wait for connection to be established
+        transport.wait_for_connection(timeout: options.fetch(:timeout, 30))
 
-        new(connection: connection, launcher: launcher)
+        connection = Connection.new(transport)
+
+        new(connection: connection, launcher: launcher, connection_thread: connection_thread)
       end
 
       # Connect to an existing browser instance
       # @param ws_endpoint [String] WebSocket endpoint URL
       # @return [Browser] Browser instance
-      def self.connect(ws_endpoint)
+      def self.connect(ws_endpoint, **options)
         transport = Transport.new(ws_endpoint)
-        connection = Connection.new(transport)
 
-        Async do
+        connection_thread = Thread.new do
           transport.connect
         end
 
-        sleep(0.5)
+        transport.wait_for_connection(timeout: options.fetch(:timeout, 30))
 
-        new(connection: connection)
+        connection = Connection.new(transport)
+
+        new(connection: connection, connection_thread: connection_thread)
       end
 
       # Get BiDi session status
@@ -133,6 +147,9 @@ module Puppeteer
         end
 
         @launcher&.kill
+
+        # Wait for connection thread to finish
+        @connection_thread&.join(2)
       end
 
       def closed?

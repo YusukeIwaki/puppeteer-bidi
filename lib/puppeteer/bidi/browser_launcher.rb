@@ -93,7 +93,8 @@ module Puppeteer
           '/usr/bin/firefox',
           '/usr/bin/firefox-esr',
           '/snap/bin/firefox',
-          '/Applications/Firefox.app/Contents/MacOS/firefox'
+          '/Applications/Firefox.app/Contents/MacOS/firefox',
+          '/Applications/Firefox Developer Edition.app/Contents/MacOS/firefox',
         ].compact
 
         candidates.each do |path|
@@ -165,20 +166,36 @@ module Puppeteer
         # Start threads to read output
         output_lines = []
         error_lines = []
+        ws_endpoint = nil
+        mutex = Mutex.new
 
         stdout_thread = Thread.new do
-          stdout.each_line { |line| output_lines << line }
+          stdout.each_line do |line|
+            mutex.synchronize { output_lines << line }
+            # Check for WebDriver BiDi endpoint in stdout
+            if line =~ /WebDriver BiDi listening on (ws:\/\/[^\s]+)/
+              mutex.synchronize { ws_endpoint = $1 }
+            end
+          end
         rescue => e
           warn "Error reading stdout: #{e.message}"
         end
 
         stderr_thread = Thread.new do
-          stderr.each_line { |line| error_lines << line }
+          stderr.each_line do |line|
+            mutex.synchronize { error_lines << line }
+            # Debug: print all stderr lines to help diagnose
+            puts "[Firefox stderr] #{line}" if ENV['DEBUG_FIREFOX']
+            # Firefox outputs the BiDi WebSocket endpoint to stderr
+            if line =~ /WebDriver BiDi listening on (ws:\/\/[^\s]+)/
+              mutex.synchronize { ws_endpoint = $1 }
+            end
+          end
         rescue => e
           warn "Error reading stderr: #{e.message}"
         end
 
-        # Try to read WebSocket endpoint from DevToolsActivePort file
+        # Wait for WebSocket endpoint to be detected
         loop do
           if Time.now > deadline
             stdout_thread.kill
@@ -194,24 +211,13 @@ module Puppeteer
             return nil
           end
 
-          # Try to read the DevToolsActivePort file
-          devtools_file = File.join(@user_data_dir, 'profile', 'DevToolsActivePort')
-          if File.exist?(devtools_file)
-            begin
-              lines = File.readlines(devtools_file)
-              if lines.size >= 2
-                actual_port = lines[0].strip
-                ws_path = lines[1].strip
-
-                # The path is usually like /devtools/browser/<uuid>
-                # For BiDi, we need ws://localhost:port + path
-                endpoint = "ws://localhost:#{actual_port}#{ws_path}"
-
-                # Keep threads running to consume output
-                return endpoint
-              end
-            rescue => e
-              # File might be incomplete, try again
+          # Check if we found the endpoint
+          mutex.synchronize do
+            if ws_endpoint
+              # Keep threads running to consume output (detach them)
+              stdout_thread.join(0.1)
+              stderr_thread.join(0.1)
+              return ws_endpoint
             end
           end
 

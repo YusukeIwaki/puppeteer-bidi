@@ -1,6 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "bidi/version"
+
+module Puppeteer
+  module Bidi
+    class Error < StandardError; end
+  end
+end
+
 require_relative "bidi/transport"
 require_relative "bidi/connection"
 require_relative "bidi/browser_launcher"
@@ -8,7 +15,6 @@ require_relative "bidi/browser"
 
 module Puppeteer
   module Bidi
-    class Error < StandardError; end
 
     # Launch a new browser instance
     # @param options [Hash] Launch options

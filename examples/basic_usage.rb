@@ -28,14 +28,14 @@ begin
 
   # Subscribe to navigation events
   puts "\nSubscribing to navigation events..."
-  browser.subscribe(['browsingContext.navigationStarted', 'browsingContext.navigationComplete'])
+  browser.subscribe(['browsingContext.navigationStarted', 'browsingContext.load'])
 
   # Register event handler
   browser.on('browsingContext.navigationStarted') do |params|
     puts "Navigation started: #{params['url']}"
   end
 
-  browser.on('browsingContext.navigationComplete') do |params|
+  browser.on('browsingContext.load') do |params|
     puts "Navigation completed: #{params['url']}"
   end
 
