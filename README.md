@@ -48,65 +48,107 @@ gem 'puppeteer-bidi'
 
 ## Usage
 
+### Basic Usage
+
 ```ruby
 require 'puppeteer/bidi'
 
 # Launch Firefox with BiDi protocol
-browser = Puppeteer::Bidi.launch(browser: :firefox)
+browser = Puppeteer::Bidi.launch(headless: false)
 
-# Navigate to a page
-page = browser.new_page
-page.goto('https://example.com')
+# Create a new browsing context (tab)
+result = browser.new_context(type: 'tab')
+context_id = result['context']
 
-# Interact with the page
-page.screenshot(path: 'screenshot.png')
+# Navigate to a URL
+browser.navigate(
+  context: context_id,
+  url: 'https://example.com',
+  wait: 'complete'
+)
+
+# Close the browsing context
+browser.close_context(context_id)
 
 # Close the browser
 browser.close
 ```
 
-### Basic Examples
+### Launch Options
 
-#### Taking Screenshots
+```ruby
+browser = Puppeteer::Bidi.launch(
+  headless: true,              # Run in headless mode (default: true)
+  executable_path: '/path/to/firefox',  # Path to Firefox executable (optional)
+  user_data_dir: '/path/to/profile',    # User data directory (optional)
+  args: ['--width=1280', '--height=720'] # Additional Firefox arguments
+)
+```
+
+### Event Handling
 
 ```ruby
 require 'puppeteer/bidi'
 
-browser = Puppeteer::Bidi.launch(browser: :firefox)
-page = browser.new_page
-page.goto('https://github.com')
-page.screenshot(path: 'github.png')
-browser.close
+browser = Puppeteer::Bidi.launch(headless: false)
+
+# Subscribe to BiDi events
+browser.subscribe([
+  'browsingContext.navigationStarted',
+  'browsingContext.navigationComplete'
+])
+
+# Register event handlers
+browser.on('browsingContext.navigationStarted') do |params|
+  puts "Navigation started: #{params['url']}"
+end
+
+browser.on('browsingContext.navigationComplete') do |params|
+  puts "Navigation completed: #{params['url']}"
+end
+
+# Create context and navigate
+result = browser.new_context(type: 'tab')
+browser.navigate(context: result['context'], url: 'https://example.com')
 ```
 
-#### Executing JavaScript
+### Connecting to Existing Browser
 
 ```ruby
-require 'puppeteer/bidi'
+# Connect to an already running Firefox instance with BiDi
+browser = Puppeteer::Bidi.connect('ws://localhost:9222/session')
 
-browser = Puppeteer::Bidi.launch(browser: :firefox)
-page = browser.new_page
-page.goto('https://example.com')
-
-title = page.evaluate('() => document.title')
-puts "Page title: #{title}"
+# Use the browser
+status = browser.status
+puts "Connected to browser: #{status.inspect}"
 
 browser.close
 ```
+
+For more examples, see the [examples](examples/) directory.
 
 ## Project Status
 
 This project is in early development. The API may change as the implementation progresses.
 
+### Implemented Features
+
+- ✅ Browser launching with Firefox
+- ✅ BiDi protocol connection (WebSocket-based)
+- ✅ Browsing context management (create/close tabs)
+- ✅ Basic navigation
+- ✅ Event subscription and handling
+- ✅ Command execution with timeout
+
 ### Planned Features
 
-- Browser launching and connection
 - Page navigation and lifecycle management
 - JavaScript evaluation
-- DOM manipulation
-- Event handling
-- Network interception
+- DOM manipulation and element interaction
+- Network interception and monitoring
 - Screenshots and PDF generation
+- Cookie management
+- Input simulation (mouse, keyboard)
 
 ## Comparison with Puppeteer (Node.js)
 

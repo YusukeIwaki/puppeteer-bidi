@@ -30,8 +30,11 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  # Uncomment to register a new dependency of your gem
-  # spec.add_dependency "example-gem", "~> 1.0"
+  # Dependencies for async WebSocket communication
+  spec.add_dependency "async", "~> 2.0"
+  spec.add_dependency "async-websocket", "~> 0.26"
+  spec.add_dependency "async-http", "~> 0.66"
+  spec.add_dependency "concurrent-ruby", "~> 1.2"
 
   # For more information and examples about making a new gem, check out our
   # guide at: https://bundler.io/guides/creating_gem.html
