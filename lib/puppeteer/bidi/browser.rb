@@ -8,10 +8,10 @@ module Puppeteer
     class Browser
       attr_reader :connection, :process
 
-      def initialize(connection:, launcher: nil, connection_thread: nil)
+      def initialize(connection:, launcher: nil, connection_task: nil)
         @connection = connection
         @launcher = launcher
-        @connection_thread = connection_thread
+        @connection_task = connection_task
         @closed = false
 
         # Create a new BiDi session
@@ -45,10 +45,12 @@ module Puppeteer
         # Create transport and connection
         transport = Transport.new(ws_endpoint)
 
-        # Start transport connection in background thread
-        # The Async task needs to run in a separate thread to keep the event loop alive
-        connection_thread = Thread.new do
-          transport.connect
+        # Start transport connection in background thread with Async reactor
+        # The Thread ensures the Async reactor runs independently
+        connection_task = Thread.new do
+          Async do
+            transport.connect
+          end
         end
 
         # Wait for connection to be established
@@ -56,7 +58,7 @@ module Puppeteer
 
         connection = Connection.new(transport)
 
-        new(connection: connection, launcher: launcher, connection_thread: connection_thread)
+        new(connection: connection, launcher: launcher, connection_task: connection_task)
       end
 
       # Connect to an existing browser instance
@@ -65,15 +67,17 @@ module Puppeteer
       def self.connect(ws_endpoint, **options)
         transport = Transport.new(ws_endpoint)
 
-        connection_thread = Thread.new do
-          transport.connect
+        connection_task = Thread.new do
+          Async do
+            transport.connect
+          end
         end
 
         transport.wait_for_connection(timeout: options.fetch(:timeout, 30))
 
         connection = Connection.new(transport)
 
-        new(connection: connection, connection_thread: connection_thread)
+        new(connection: connection, connection_task: connection_task)
       end
 
       # Get BiDi session status
@@ -146,10 +150,10 @@ module Puppeteer
           warn "Error closing connection: #{e.message}"
         end
 
-        @launcher&.kill
+        # Wait for connection task to finish (with timeout)
+        @connection_task&.join(2)
 
-        # Wait for connection thread to finish
-        @connection_thread&.join(2)
+        @launcher&.kill
       end
 
       def closed?
