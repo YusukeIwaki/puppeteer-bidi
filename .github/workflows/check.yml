@@ -1,0 +1,59 @@
+name: check
+
+on:
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rspec:
+    name: RSpec (${{ matrix.ruby-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby-version: ["3.2", "3.3", "3.4"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+
+      - name: Setup Firefox
+        uses: browser-actions/setup-firefox@latest
+
+      - name: Verify Firefox installation
+        run: firefox --version
+
+      - name: Run unit tests
+        run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
+
+      - name: Run integration tests
+        run: bundle exec rspec spec/integration/
+        env:
+          HEADLESS: true
+
+  rubocop:
+    name: RuboCop
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Run RuboCop
+        run: bundle exec rubocop
+        continue-on-error: true
