@@ -1,4 +1,4 @@
-name: Test
+name: RSpec
 
 on:
   pull_request:
@@ -21,10 +21,8 @@ jobs:
         ruby-version: ${{ matrix.ruby-version }}
         bundler-cache: true
 
-    - name: Install Firefox
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y firefox
+    - name: Setup Firefox
+      uses: browser-actions/setup-firefox@latest
 
     - name: Verify Firefox installation
       run: firefox --version
