@@ -45,7 +45,6 @@ RSpec.describe 'basic usage' do
 
       # Wait for user input to see the browser
       puts "\nPress Enter to close the browser..."
-      gets
 
       # Close the context
       puts "\nClosing browsing context..."
