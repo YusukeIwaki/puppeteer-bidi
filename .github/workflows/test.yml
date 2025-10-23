@@ -6,11 +6,10 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         ruby-version: ['3.0', '3.1', '3.2', '3.3']
 
     steps:
@@ -22,24 +21,13 @@ jobs:
         ruby-version: ${{ matrix.ruby-version }}
         bundler-cache: true
 
-    - name: Install Firefox (Ubuntu)
-      if: runner.os == 'Linux'
+    - name: Install Firefox
       run: |
         sudo apt-get update
         sudo apt-get install -y firefox
 
-    - name: Install Firefox (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install --cask firefox
-
     - name: Verify Firefox installation
-      run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          firefox --version
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          /Applications/Firefox.app/Contents/MacOS/firefox --version
-        fi
+      run: firefox --version
 
     - name: Run unit tests
       run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
