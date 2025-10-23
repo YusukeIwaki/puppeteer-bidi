@@ -45,10 +45,10 @@ module Puppeteer
         # Create transport and connection
         transport = Transport.new(ws_endpoint)
 
-        # Start transport connection in background thread with Async reactor
-        # The Thread ensures the Async reactor runs independently
+        # Start transport connection in background thread with Sync reactor
+        # Sync is the preferred way to run async code at the top level
         connection_task = Thread.new do
-          Async do
+          Sync do
             transport.connect
           end
         end
@@ -68,7 +68,7 @@ module Puppeteer
         transport = Transport.new(ws_endpoint)
 
         connection_task = Thread.new do
-          Async do
+          Sync do
             transport.connect
           end
         end
@@ -150,7 +150,7 @@ module Puppeteer
           warn "Error closing connection: #{e.message}"
         end
 
-        # Wait for connection task to finish (with timeout)
+        # Wait for connection task to finish
         @connection_task&.join(2)
 
         @launcher&.kill
