@@ -43,7 +43,7 @@ gem 'puppeteer-bidi'
 
 ## Prerequisites
 
-- Ruby 3.0 or higher
+- Ruby 3.2 or higher (required by socketry/async dependency)
 - Firefox browser with BiDi support
 
 ## Usage

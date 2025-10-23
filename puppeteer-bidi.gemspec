@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
   spec.description = "Puppeteer-BiDi is a Ruby implementation of Puppeteer that uses the WebDriver BiDi protocol to automate Firefox browsers. Unlike puppeteer-ruby which uses Chrome DevTools Protocol (CDP), this gem focuses on BiDi protocol support for cross-browser automation, particularly targeting Firefox."
   spec.homepage = "https://github.com/YusukeIwaki/puppeteer-bidi"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.0.0"
+  spec.required_ruby_version = ">= 3.2.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/YusukeIwaki/puppeteer-bidi"
