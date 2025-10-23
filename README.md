@@ -125,7 +125,30 @@ puts "Connected to browser: #{status.inspect}"
 browser.close
 ```
 
-For more examples, see the [examples](examples/) directory.
+For more examples, see the [examples](examples/) directory and integration tests in [spec/integration/](spec/integration/).
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+bundle exec rspec
+
+# Run integration tests (launches actual Firefox browser)
+bundle exec rspec spec/integration/
+
+# Run specific integration test
+bundle exec rspec spec/integration/example_spec.rb
+```
+
+### Integration Tests
+
+Integration tests in `spec/integration/` demonstrate real-world usage by launching Firefox and performing browser automation tasks. These tests are useful for:
+
+- Verifying end-to-end functionality
+- Learning by example
+- Ensuring browser compatibility
 
 ## Project Status
 
