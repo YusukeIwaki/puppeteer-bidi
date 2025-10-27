@@ -251,6 +251,80 @@ Internal processing flow:
 - Unit tests + integration tests
 - Appropriate use of mocks/stubs
 
+### Test Organization
+- **Unit tests**: `spec/` - Fast, isolated component tests
+- **Integration tests**: `spec/integration/` - End-to-end browser automation tests
+- Run integration tests: `bundle exec rspec spec/integration/`
+- Integration tests launch actual Firefox browser instances
+
+### Integration Test Helpers
+
+The `spec/spec_helper.rb` provides a `with_browser` helper for integration tests:
+
+```ruby
+# spec/integration/my_test_spec.rb
+RSpec.describe 'my feature' do
+  example 'test something' do
+    with_browser do |browser|
+      # Browser is automatically launched and closed
+      result = browser.new_context(type: 'tab')
+      # ... test code
+    end
+  end
+end
+```
+
+**Environment Variables:**
+- `HEADLESS=false` - Run browser in non-headless mode (default: headless)
+
+## Async Programming with socketry/async
+
+This project uses the [socketry/async](https://github.com/socketry/async) library for asynchronous operations.
+
+### Best Practices
+
+1. **Use `Sync` at top level**: When running async code at the top level of a thread or application, use `Sync { }` instead of `Async { }`
+   ```ruby
+   Thread.new do
+     Sync do
+       # async operations here
+     end
+   end
+   ```
+
+2. **Reactor lifecycle**: The reactor is automatically managed by `Sync { }`. No need to create explicit `Async::Reactor` instances in application code.
+
+3. **Background operations**: For long-running background tasks (like WebSocket connections), wrap `Sync { }` in a Thread:
+   ```ruby
+   connection_task = Thread.new do
+     Sync do
+       transport.connect  # Async operation that blocks until connection closes
+     end
+   end
+   ```
+
+### Current Implementation
+
+The Browser class uses this pattern for WebSocket connection management:
+
+```ruby
+# lib/puppeteer/bidi/browser.rb
+connection_task = Thread.new do
+  Sync do
+    transport.connect
+  end
+end
+```
+
+This ensures:
+- Async operations run efficiently in an event loop
+- Main thread remains responsive
+- Proper cleanup on browser close
+
+### References
+- [Async Best Practices](https://socketry.github.io/async/guides/best-practices/)
+- [Async Documentation](https://socketry.github.io/async/)
+
 ## Summary
 
 puppeteer-bidi aims to provide a Ruby implementation that inherits Puppeteer's design philosophy while leveraging WebDriver BiDi protocol characteristics. Through layered architecture, event-driven design, and adoption of standardized protocols, we deliver a reliable Firefox automation tool.
