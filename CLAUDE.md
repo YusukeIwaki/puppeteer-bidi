@@ -181,30 +181,154 @@ Internal processing flow:
 | `network` | Network | addIntercept, continueRequest |
 | `session` | Session management | subscribe, unsubscribe |
 
+## Core Layer Architecture
+
+The `lib/puppeteer/bidi/core/` module provides a structured, object-oriented abstraction over the WebDriver BiDi protocol.
+
+### Design Philosophy
+
+The Core layer follows Puppeteer's BiDi core design principles:
+
+1. **Required vs Optional Arguments**: Required arguments are method parameters, optional ones are keyword arguments
+2. **Session Visibility**: Session is never exposed on public APIs except Browser
+3. **Spec Compliance**: Strictly follows WebDriver BiDi specification, not Puppeteer's needs
+4. **Minimal Implementation**: Comprehensive but minimal - implements all required nodes and edges
+
+### Core Classes
+
+#### Infrastructure Classes
+- **EventEmitter** (`event_emitter.rb`): Event subscription and emission system
+- **Disposable** (`disposable.rb`): Resource management with DisposableStack pattern
+- **Errors** (`errors.rb`): Custom exception hierarchy for type-safe error handling
+
+#### Protocol Management Classes
+- **Session** (`session.rb`): BiDi session management, wraps Connection
+- **Browser** (`browser.rb`): Browser instance management with user contexts
+- **UserContext** (`user_context.rb`): Isolated browsing contexts (incognito-like)
+- **BrowsingContext** (`browsing_context.rb`): Tab/window/iframe management with full BiDi operations
+- **Navigation** (`navigation.rb`): Navigation lifecycle tracking with nested navigation support
+- **Request** (`request.rb`): Network request management with interception
+- **UserPrompt** (`user_prompt.rb`): User prompt (alert/confirm/prompt) handling
+
+#### JavaScript Execution Classes
+- **Realm** (`realm.rb`): Base class for JavaScript execution contexts
+  - **WindowRealm**: Window and iframe script execution
+  - **DedicatedWorkerRealm**: Web Worker script execution
+  - **SharedWorkerRealm**: Shared Worker script execution
+
+### Exception Hierarchy
+
+```
+StandardError
+└── Puppeteer::Bidi::Error
+    └── Puppeteer::Bidi::Core::Error
+        └── Puppeteer::Bidi::Core::DisposedError
+            ├── RealmDestroyedError
+            ├── BrowsingContextClosedError
+            ├── UserContextClosedError
+            ├── UserPromptClosedError
+            ├── SessionEndedError
+            └── BrowserDisconnectedError
+```
+
+### Usage Example
+
+```ruby
+# Create session from existing connection
+session = Puppeteer::Bidi::Core::Session.new(connection, session_info)
+
+# Create browser and get default context
+browser = Puppeteer::Bidi::Core::Browser.from(session)
+session.browser = browser
+context = browser.default_user_context
+
+# Create browsing context (tab)
+browsing_context = context.create_browsing_context('tab')
+
+# Navigate and evaluate JavaScript
+browsing_context.navigate('https://example.com', wait: 'complete')
+result = browsing_context.default_realm.evaluate('document.title', true)
+puts result['value']  # => "Example Domain"
+
+# Handle errors
+begin
+  browsing_context.navigate('https://example.com')
+rescue Puppeteer::Bidi::Core::BrowsingContextClosedError => e
+  puts "Context was closed: #{e.reason}"
+end
+```
+
+### Event Handling Pattern
+
+Core classes use EventEmitter for async event handling:
+
+```ruby
+# Listen for navigation events
+browsing_context.on(:navigation) do |data|
+  navigation = data[:navigation]
+  puts "Navigation started"
+end
+
+# Listen for load events
+browsing_context.on(:load) do
+  puts "Page loaded"
+end
+
+# Subscribe to BiDi events
+browsing_context.subscribe([
+  'browsingContext.navigationStarted',
+  'browsingContext.load'
+])
+```
+
+### Resource Management
+
+Core classes implement Disposable pattern for proper cleanup:
+
+```ruby
+# Resources are automatically disposed when parent is disposed
+browser.close  # Disposes all user contexts, browsing contexts, etc.
+
+# Check disposal status
+browsing_context.closed?  # => true
+browsing_context.disposed?  # => true
+```
+
+For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
+
 ## Development Roadmap
 
-### Phase 1: Foundation
-- [ ] WebSocket communication layer
-- [ ] Basic BiDi protocol implementation
-- [ ] Browser/BrowserContext/Page base classes
+### Phase 1: Foundation ✅ COMPLETED
+- [x] WebSocket communication layer (`lib/puppeteer/bidi/transport.rb`)
+- [x] Basic BiDi protocol implementation (`lib/puppeteer/bidi/connection.rb`)
+- [x] Browser/BrowserContext/Page base classes (`lib/puppeteer/bidi/browser.rb`)
+- [x] **Core layer implementation** (`lib/puppeteer/bidi/core/`)
+  - EventEmitter and Disposable patterns
+  - Session management
+  - Browser, UserContext, BrowsingContext classes
+  - Navigation, Request, UserPrompt classes
+  - Realm classes (WindowRealm, DedicatedWorkerRealm, SharedWorkerRealm)
+  - Custom exception hierarchy
 
-### Phase 2: Core Features
-- [ ] Navigation (`browsingContext.navigate`)
-- [ ] JavaScript execution (`script.evaluate`)
-- [ ] Element operations (click, input)
-- [ ] FrameManager implementation
+### Phase 2: Core Features ✅ COMPLETED
+- [x] Navigation (`browsingContext.navigate`)
+- [x] JavaScript execution (`script.evaluate`)
+- [x] Event handling system (EventEmitter)
+- [ ] Element operations (click, input) - **TODO**
+- [ ] FrameManager implementation - **TODO**
 
-### Phase 3: Advanced Features
-- [ ] NetworkManager implementation
-- [ ] Network interception
-- [ ] Screenshot/PDF generation
-- [ ] Enhanced event handling
+### Phase 3: Advanced Features 🚧 IN PROGRESS
+- [x] Network request management (Request class)
+- [ ] NetworkManager implementation - **TODO**
+- [ ] Network interception (partial support in Request)
+- [x] Screenshot/PDF generation (BrowsingContext methods)
+- [x] Enhanced event handling (Core layer)
 
-### Phase 4: Stabilization
-- [ ] Error handling
-- [ ] Timeout management
-- [ ] Test suite development
-- [ ] Documentation enhancement
+### Phase 4: Stabilization 🚧 IN PROGRESS
+- [x] Error handling (Custom exception classes)
+- [ ] Timeout management - **TODO**
+- [x] Test suite development (integration tests)
+- [x] Documentation enhancement (Core README.md)
 
 ## Technical Considerations
 

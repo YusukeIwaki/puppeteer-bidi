@@ -125,6 +125,59 @@ puts "Connected to browser: #{status.inspect}"
 browser.close
 ```
 
+### Using Core Layer (Advanced)
+
+The Core layer provides a structured API over BiDi protocol:
+
+```ruby
+require 'puppeteer/bidi'
+
+# Launch browser and access connection
+browser = Puppeteer::Bidi.launch(headless: false)
+
+# Create Core layer objects
+session_info = { 'sessionId' => 'default-session', 'capabilities' => {} }
+session = Puppeteer::Bidi::Core::Session.new(browser.connection, session_info)
+core_browser = Puppeteer::Bidi::Core::Browser.from(session)
+session.browser = core_browser
+
+# Get default user context
+context = core_browser.default_user_context
+
+# Create browsing context with Core API
+browsing_context = context.create_browsing_context('tab')
+
+# Subscribe to events
+browsing_context.on(:load) do
+  puts "Page loaded!"
+end
+
+browsing_context.subscribe(['browsingContext.load'])
+
+# Navigate
+browsing_context.navigate('https://example.com', wait: 'complete')
+
+# Evaluate JavaScript
+result = browsing_context.default_realm.evaluate('document.title', true)
+puts "Title: #{result['value']}"
+
+# Take screenshot
+image_data = browsing_context.capture_screenshot(format: 'png')
+
+# Error handling with custom exceptions
+begin
+  browsing_context.navigate('https://example.com')
+rescue Puppeteer::Bidi::Core::BrowsingContextClosedError => e
+  puts "Context was closed: #{e.reason}"
+end
+
+# Clean up
+browsing_context.close
+core_browser.close
+```
+
+For more details on the Core layer, see `lib/puppeteer/bidi/core/README.md`.
+
 For more examples, see the [examples](examples/) directory and integration tests in [spec/integration/](spec/integration/).
 
 ## Testing
@@ -156,22 +209,43 @@ This project is in early development. The API may change as the implementation p
 
 ### Implemented Features
 
+#### Foundation Layer
 - ✅ Browser launching with Firefox
 - ✅ BiDi protocol connection (WebSocket-based)
-- ✅ Browsing context management (create/close tabs)
-- ✅ Basic navigation
-- ✅ Event subscription and handling
+- ✅ WebSocket transport with async/await support
 - ✅ Command execution with timeout
+- ✅ Event subscription and handling
+
+#### Core Layer (`lib/puppeteer/bidi/core/`)
+A low-level object-oriented abstraction over the WebDriver BiDi protocol:
+
+- ✅ **Infrastructure**: EventEmitter, Disposable, Custom Exceptions
+- ✅ **Session Management**: BiDi session lifecycle
+- ✅ **Browser & Contexts**: Browser, UserContext, BrowsingContext
+- ✅ **Navigation**: Navigation lifecycle tracking
+- ✅ **JavaScript Execution**: Realm classes (Window, Worker)
+- ✅ **Network**: Request/Response management with interception
+- ✅ **User Interaction**: UserPrompt handling (alert/confirm/prompt)
+
+#### BiDi Operations
+- ✅ Browsing context management (create/close tabs/windows)
+- ✅ Page navigation with wait conditions
+- ✅ JavaScript evaluation (`script.evaluate`)
+- ✅ Screenshot capture
+- ✅ PDF generation
+- ✅ Cookie management (get/set/delete)
+- ✅ Network request interception
+- ✅ Geolocation and timezone emulation
 
 ### Planned Features
 
-- Page navigation and lifecycle management
-- JavaScript evaluation
 - DOM manipulation and element interaction
-- Network interception and monitoring
-- Screenshots and PDF generation
-- Cookie management
+- Full element selector support
 - Input simulation (mouse, keyboard)
+- File upload handling
+- Enhanced network monitoring (NetworkManager)
+- Frame management (FrameManager)
+- Service Worker support
 
 ## Comparison with Puppeteer (Node.js)
 
