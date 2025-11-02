@@ -53,7 +53,7 @@ module Puppeteer
         # @option options [BrowsingContext] :reference_context Reference context
         # @return [BrowsingContext] New browsing context
         def create_browsing_context(type, **options)
-          raise "User context closed: #{@reason}" if closed?
+          raise UserContextClosedError, @reason if closed?
 
           params = {
             type: type,
@@ -104,7 +104,7 @@ module Puppeteer
         # @option options [String] :source_origin Source origin
         # @return [Array<Hash>] Cookies
         def get_cookies(**options)
-          raise "User context closed: #{@reason}" if closed?
+          raise UserContextClosedError, @reason if closed?
 
           source_origin = options.delete(:source_origin)
           params = options.dup
@@ -122,7 +122,7 @@ module Puppeteer
         # @param cookie [Hash] Cookie data
         # @option options [String] :source_origin Source origin
         def set_cookie(cookie, **options)
-          raise "User context closed: #{@reason}" if closed?
+          raise UserContextClosedError, @reason if closed?
 
           source_origin = options[:source_origin]
           params = {
@@ -142,7 +142,7 @@ module Puppeteer
         # @param descriptor [Hash] Permission descriptor
         # @param state [String] Permission state
         def set_permissions(origin, descriptor, state)
-          raise "User context closed: #{@reason}" if closed?
+          raise UserContextClosedError, @reason if closed?
 
           session.send_command('permissions.setPermission', {
             origin: origin,

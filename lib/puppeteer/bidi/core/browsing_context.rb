@@ -81,7 +81,7 @@ module Puppeteer
 
         # Activate this browsing context
         def activate
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('browsingContext.activate', { context: @id })
         end
 
@@ -89,7 +89,7 @@ module Puppeteer
         # @param url [String] URL to navigate to
         # @param wait [String, nil] Wait condition ('none', 'interactive', 'complete')
         def navigate(url, wait: nil)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           params = { context: @id, url: url }
           params[:wait] = wait if wait
           session.send_command('browsingContext.navigate', params)
@@ -98,7 +98,7 @@ module Puppeteer
         # Reload the page
         # @param options [Hash] Reload options
         def reload(**options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('browsingContext.reload', options.merge(context: @id))
         end
 
@@ -106,7 +106,7 @@ module Puppeteer
         # @param options [Hash] Screenshot options
         # @return [String] Base64-encoded image data
         def capture_screenshot(**options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           result = session.send_command('browsingContext.captureScreenshot', options.merge(context: @id))
           result['data']
         end
@@ -115,7 +115,7 @@ module Puppeteer
         # @param options [Hash] Print options
         # @return [String] Base64-encoded PDF data
         def print(**options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           result = session.send_command('browsingContext.print', options.merge(context: @id))
           result['data']
         end
@@ -123,7 +123,7 @@ module Puppeteer
         # Close this browsing context
         # @param prompt_unload [Boolean] Whether to prompt before unload
         def close(prompt_unload: false)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
 
           # Close all children first
           children.each do |child|
@@ -139,7 +139,7 @@ module Puppeteer
         # Traverse history
         # @param delta [Integer] Number of steps to go back (negative) or forward (positive)
         def traverse_history(delta)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('browsingContext.traverseHistory', {
             context: @id,
             delta: delta
@@ -149,21 +149,21 @@ module Puppeteer
         # Handle a user prompt
         # @param options [Hash] Prompt handling options
         def handle_user_prompt(**options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('browsingContext.handleUserPrompt', options.merge(context: @id))
         end
 
         # Set viewport
         # @param options [Hash] Viewport options
         def set_viewport(**options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('browsingContext.setViewport', options.merge(context: @id))
         end
 
         # Perform input actions
         # @param actions [Array<Hash>] Input actions
         def perform_actions(actions)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('input.performActions', {
             context: @id,
             actions: actions
@@ -172,14 +172,14 @@ module Puppeteer
 
         # Release input actions
         def release_actions
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('input.releaseActions', { context: @id })
         end
 
         # Set cache behavior
         # @param cache_behavior [String] 'default' or 'bypass'
         def set_cache_behavior(cache_behavior)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('network.setCacheBehavior', {
             contexts: [@id],
             cacheBehavior: cache_behavior
@@ -190,7 +190,7 @@ module Puppeteer
         # @param sandbox [String] Sandbox name
         # @return [WindowRealm] New realm
         def create_window_realm(sandbox)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           realm = WindowRealm.from(self, sandbox)
           realm.on(:worker) do |worker_realm|
             emit(:worker, { realm: worker_realm })
@@ -203,7 +203,7 @@ module Puppeteer
         # @param options [Hash] Script options
         # @return [String] Script ID
         def add_preload_script(function_declaration, **options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           user_context.browser.add_preload_script(
             function_declaration,
             **options.merge(contexts: [self])
@@ -213,7 +213,7 @@ module Puppeteer
         # Remove a preload script
         # @param script [String] Script ID
         def remove_preload_script(script)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           user_context.browser.remove_preload_script(script)
         end
 
@@ -221,7 +221,7 @@ module Puppeteer
         # @param options [Hash] Intercept options
         # @return [String] Intercept ID
         def add_intercept(**options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           result = session.send_command('network.addIntercept', options.merge(contexts: [@id]))
           result['intercept']
         end
@@ -230,7 +230,7 @@ module Puppeteer
         # @param options [Hash] Cookie filter options
         # @return [Array<Hash>] Cookies
         def get_cookies(**options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           params = options.dup
           params[:partition] = {
             type: 'context',
@@ -243,7 +243,7 @@ module Puppeteer
         # Set a cookie
         # @param cookie [Hash] Cookie data
         def set_cookie(cookie)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('storage.setCookie', {
             cookie: cookie,
             partition: {
@@ -256,7 +256,7 @@ module Puppeteer
         # Delete cookies
         # @param cookie_filters [Array<Hash>] Cookie filters
         def delete_cookie(*cookie_filters)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           cookie_filters.each do |filter|
             session.send_command('storage.deleteCookies', {
               filter: filter,
@@ -271,7 +271,7 @@ module Puppeteer
         # Set geolocation override
         # @param options [Hash] Geolocation options
         def set_geolocation_override(**options)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           raise 'Missing coordinates' unless options[:coordinates]
 
           session.send_command('emulation.setGeolocationOverride', {
@@ -283,7 +283,7 @@ module Puppeteer
         # Set timezone override
         # @param timezone_id [String, nil] Timezone ID
         def set_timezone_override(timezone_id = nil)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
 
           # Remove GMT prefix for interop between CDP and BiDi
           timezone_id = timezone_id&.sub(/^GMT/, '')
@@ -298,7 +298,7 @@ module Puppeteer
         # @param element [Hash] Element reference
         # @param files [Array<String>] File paths
         def set_files(element, files)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('input.setFiles', {
             context: @id,
             element: element,
@@ -311,7 +311,7 @@ module Puppeteer
         # @param start_nodes [Array<Hash>] Starting nodes
         # @return [Array<Hash>] Located nodes
         def locate_nodes(locator, start_nodes = [])
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           params = {
             context: @id,
             locator: locator
@@ -325,7 +325,7 @@ module Puppeteer
         # Set JavaScript enabled state
         # @param enabled [Boolean] Whether JavaScript is enabled
         def set_javascript_enabled(enabled)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.send_command('emulation.setScriptingEnabled', {
             enabled: enabled ? nil : false,
             contexts: [@id]
@@ -342,14 +342,14 @@ module Puppeteer
         # Subscribe to events for this context
         # @param events [Array<String>] Event names
         def subscribe(events)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.subscribe(events, [@id])
         end
 
         # Add interception for this context
         # @param events [Array<String>] Event names
         def add_interception(events)
-          raise "Browsing context closed: #{@reason}" if closed?
+          raise BrowsingContextClosedError, @reason if closed?
           session.subscribe(events, [@id])
         end
 

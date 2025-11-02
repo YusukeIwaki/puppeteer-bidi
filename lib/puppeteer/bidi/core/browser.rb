@@ -76,7 +76,7 @@ module Puppeteer
         # @option options [String] :sandbox Sandbox name
         # @return [String] Script ID
         def add_preload_script(function_declaration, **options)
-          raise "Browser disconnected: #{@reason}" if disconnected?
+          raise BrowserDisconnectedError, @reason if disconnected?
 
           params = { functionDeclaration: function_declaration }
           if options[:contexts]
@@ -91,7 +91,7 @@ module Puppeteer
         # Remove a preload script
         # @param script [String] Script ID
         def remove_preload_script(script)
-          raise "Browser disconnected: #{@reason}" if disconnected?
+          raise BrowserDisconnectedError, @reason if disconnected?
           @session.send_command('script.removePreloadScript', { script: script })
         end
 
@@ -100,7 +100,7 @@ module Puppeteer
         # @option options [Hash] :proxy Proxy configuration
         # @return [UserContext] New user context
         def create_user_context(**options)
-          raise "Browser disconnected: #{@reason}" if disconnected?
+          raise BrowserDisconnectedError, @reason if disconnected?
 
           params = {}
           if options[:proxy_server]
@@ -121,7 +121,7 @@ module Puppeteer
         # Remove a network intercept
         # @param intercept [String] Intercept ID
         def remove_intercept(intercept)
-          raise "Browser disconnected: #{@reason}" if disconnected?
+          raise BrowserDisconnectedError, @reason if disconnected?
           @session.send_command('network.removeIntercept', { intercept: intercept })
         end
 

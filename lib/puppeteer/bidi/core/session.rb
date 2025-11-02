@@ -50,7 +50,7 @@ module Puppeteer
         # @param params [Hash] Command parameters
         # @return [Hash] Command result
         def send_command(method, params = {})
-          raise "Session already ended: #{@reason}" if ended?
+          raise SessionEndedError, @reason if ended?
           result = @connection.send_command(method, params)
           result
         end
@@ -59,7 +59,7 @@ module Puppeteer
         # @param events [Array<String>] Event names to subscribe to
         # @param contexts [Array<String>, nil] Context IDs (optional)
         def subscribe(events, contexts = nil)
-          raise "Session already ended: #{@reason}" if ended?
+          raise SessionEndedError, @reason if ended?
           params = { events: events }
           params[:contexts] = contexts if contexts
           send_command('session.subscribe', params)

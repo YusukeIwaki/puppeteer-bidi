@@ -10,6 +10,7 @@
 # - Follows WebDriver BiDi spec strictly, not Puppeteer's needs
 # - Implements BiDi comprehensively but minimally
 
+require_relative 'core/errors'
 require_relative 'core/event_emitter'
 require_relative 'core/disposable'
 require_relative 'core/session'

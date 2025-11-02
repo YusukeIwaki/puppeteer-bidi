@@ -52,7 +52,7 @@ module Puppeteer
         # @param user_text [String, nil] Text to enter (for prompt dialogs)
         # @return [Hash] Result of handling the prompt
         def handle(accept: nil, user_text: nil)
-          raise "User prompt closed: #{@reason}" if closed?
+          raise UserPromptClosedError, @reason if closed?
 
           params = { context: @info['context'] }
           params[:accept] = accept unless accept.nil?

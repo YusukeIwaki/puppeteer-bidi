@@ -30,7 +30,7 @@ module Puppeteer
         # Disown handles (remove references)
         # @param handles [Array<String>] Handle IDs to disown
         def disown(handles)
-          raise "Realm destroyed: #{@reason}" if disposed?
+          raise RealmDestroyedError, @reason if disposed?
           session.send_command('script.disown', {
             target: target,
             handles: handles
@@ -43,7 +43,7 @@ module Puppeteer
         # @param options [Hash] Additional options
         # @return [Hash] Evaluation result
         def call_function(function_declaration, await_promise, **options)
-          raise "Realm destroyed: #{@reason}" if disposed?
+          raise RealmDestroyedError, @reason if disposed?
           result = session.send_command('script.callFunction', {
             functionDeclaration: function_declaration,
             awaitPromise: await_promise,
@@ -59,7 +59,7 @@ module Puppeteer
         # @param options [Hash] Additional options
         # @return [Hash] Evaluation result
         def evaluate(expression, await_promise, **options)
-          raise "Realm destroyed: #{@reason}" if disposed?
+          raise RealmDestroyedError, @reason if disposed?
           result = session.send_command('script.evaluate', {
             expression: expression,
             awaitPromise: await_promise,
