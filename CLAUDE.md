@@ -449,6 +449,349 @@ This ensures:
 - [Async Best Practices](https://socketry.github.io/async/guides/best-practices/)
 - [Async Documentation](https://socketry.github.io/async/)
 
+## Implementation Best Practices
+
+### Porting Puppeteer Tests to Ruby
+
+#### 1. Reference Implementation First
+
+**Always consult the official Puppeteer implementation before implementing features:**
+
+- **TypeScript source files**:
+  - `packages/puppeteer-core/src/bidi/Page.ts` - High-level Page API
+  - `packages/puppeteer-core/src/bidi/BrowsingContext.ts` - Core BiDi context
+  - `packages/puppeteer-core/src/api/Page.ts` - Common Page interface
+
+- **Test files**:
+  - `test/src/screenshot.spec.ts` - Screenshot test suite
+  - `test/golden-firefox/` - Golden images for visual regression testing
+
+**Example workflow:**
+```ruby
+# 1. Read Puppeteer's TypeScript implementation
+# 2. Understand the BiDi protocol calls being made
+# 3. Implement Ruby equivalent with same logic flow
+# 4. Port corresponding test cases
+```
+
+#### 2. Test Infrastructure Setup
+
+**Use Sinatra + WEBrick for test servers** (standard, simple):
+
+```ruby
+# spec/support/test_server.rb
+class App < Sinatra::Base
+  set :public_folder, File.join(__dir__, '../assets')
+  set :static, true
+  set :logging, false
+end
+
+# Suppress WEBrick logs
+App.run!(
+  port: @port,
+  server_settings: {
+    Logger: WEBrick::Log.new('/dev/null'),
+    AccessLog: []
+  }
+)
+```
+
+**Helper pattern for integration tests:**
+
+```ruby
+# spec/spec_helper.rb
+def with_test_state(**options)
+  server = TestServer::Server.new
+  server.start
+
+  begin
+    with_browser(**options) do |browser|
+      page = browser.new_page
+      yield(page: page, server: server, browser: browser)
+    end
+  ensure
+    server.stop
+  end
+end
+```
+
+#### 3. Golden Image Testing
+
+**Download and compare pixel-by-pixel with tolerance:**
+
+```bash
+# Download golden images
+curl -sL https://raw.githubusercontent.com/puppeteer/puppeteer/main/test/golden-firefox/screenshot-sanity.png \
+  -o spec/golden-firefox/screenshot-sanity.png
+```
+
+**Implement tolerant comparison** (rendering engines differ slightly):
+
+```ruby
+def compare_with_golden(screenshot_base64, golden_filename,
+                        max_diff_pixels: 0,
+                        pixel_threshold: 1)
+  # pixel_threshold: 1 allows ±1 RGB difference per channel
+  # Handles Firefox version/platform rendering variations
+end
+```
+
+#### 4. BiDi Protocol Data Deserialization
+
+**BiDi returns values in special format - always deserialize:**
+
+```ruby
+# BiDi response format:
+# [["width", {"type" => "number", "value" => 500}],
+#  ["height", {"type" => "number", "value" => 1000}]]
+
+def deserialize_result(result)
+  value = result['value']
+  return value unless value.is_a?(Array)
+
+  # Convert to Ruby Hash
+  if value.all? { |item| item.is_a?(Array) && item.length == 2 }
+    value.each_with_object({}) do |(key, val), hash|
+      hash[key] = deserialize_value(val)
+    end
+  else
+    value
+  end
+end
+
+def deserialize_value(val)
+  case val['type']
+  when 'number' then val['value']
+  when 'string' then val['value']
+  when 'boolean' then val['value']
+  when 'undefined', 'null' then nil
+  else val['value']
+  end
+end
+```
+
+#### 5. Implementing Puppeteer-Compatible APIs
+
+**Follow Puppeteer's exact logic flow:**
+
+Example: `fullPage` screenshot implementation
+
+```ruby
+# From Puppeteer's Page.ts:
+# if (options.fullPage) {
+#   if (!options.captureBeyondViewport) {
+#     // Resize viewport to full page
+#   }
+# } else {
+#   options.captureBeyondViewport = false;
+# }
+
+if full_page
+  unless capture_beyond_viewport
+    scroll_dimensions = evaluate(...)
+    set_viewport(scroll_dimensions)
+    begin
+      data = capture_screenshot(origin: 'viewport')
+    ensure
+      set_viewport(original_viewport)  # Always restore
+    end
+  else
+    options[:origin] = 'document'
+  end
+elsif !clip
+  capture_beyond_viewport = false  # Match Puppeteer behavior
+end
+```
+
+**Key principles:**
+- Use `begin/ensure` blocks for cleanup (viewport restoration, etc.)
+- Match Puppeteer's parameter defaults exactly
+- Follow the same conditional logic order
+
+#### 6. Layer Architecture
+
+**Maintain clear separation:**
+
+```
+High-level API (lib/puppeteer/bidi/)
+├── Browser        - User-facing browser interface
+├── BrowserContext - Session management
+└── Page           - Page automation API
+
+Core Layer (lib/puppeteer/bidi/core/)
+├── Session        - BiDi session management
+├── Browser        - Low-level browser operations
+├── UserContext    - BiDi user context
+└── BrowsingContext - BiDi browsing context (tab/frame)
+```
+
+**Implementation pattern:**
+
+```ruby
+# High-level Page wraps Core::BrowsingContext
+class Page
+  def initialize(browser_context, browsing_context)
+    @browsing_context = browsing_context  # Core layer
+  end
+
+  def screenshot(...)
+    # High-level logic
+    data = @browsing_context.capture_screenshot(...)  # Delegate to core
+    # Post-processing
+  end
+end
+```
+
+### Testing Strategy
+
+#### Integration Tests Organization
+
+```
+spec/
+├── unit/                    # Fast unit tests (future)
+├── integration/             # Browser automation tests
+│   ├── examples/           # Example-based tests
+│   │   └── screenshot_spec.rb
+│   └── screenshot_spec.rb  # Feature test suites
+├── assets/                 # Test HTML/CSS/JS files
+│   ├── grid.html
+│   ├── empty.html
+│   └── digits/*.png
+├── golden-firefox/         # Reference images
+│   └── screenshot-*.png
+└── support/               # Test utilities
+    ├── test_server.rb
+    └── golden_comparator.rb
+```
+
+#### Environment Variables
+
+```bash
+HEADLESS=false  # Run browser in non-headless mode for debugging
+```
+
+### Debugging Techniques
+
+#### 1. Save Screenshots for Inspection
+
+```ruby
+# In golden_comparator.rb
+def save_screenshot(screenshot_base64, filename)
+  output_dir = File.join(__dir__, '../output')
+  FileUtils.mkdir_p(output_dir)
+  File.binwrite(File.join(output_dir, filename),
+                Base64.decode64(screenshot_base64))
+end
+```
+
+#### 2. Compare Images Pixel-by-Pixel
+
+```ruby
+cat > /tmp/compare.rb << 'EOF'
+require 'chunky_png'
+
+golden = ChunkyPNG::Image.from_file('spec/golden-firefox/screenshot.png')
+actual = ChunkyPNG::Image.from_file('spec/output/debug.png')
+
+diff_count = 0
+(0...golden.height).each do |y|
+  (0...golden.width).each do |x|
+    if golden[x, y] != actual[x, y]
+      diff_count += 1
+      puts "Diff at (#{x}, #{y})" if diff_count <= 10
+    end
+  end
+end
+puts "Total: #{diff_count} pixels differ"
+EOF
+ruby /tmp/compare.rb
+```
+
+#### 3. Debug BiDi Responses
+
+```ruby
+# Temporarily add debugging
+result = @browsing_context.default_realm.evaluate(script, true)
+puts "BiDi result: #{result.inspect}"
+deserialize_result(result)
+```
+
+### Common Pitfalls and Solutions
+
+#### 1. BiDi Protocol Differences
+
+**Problem:** BiDi `origin` parameter behavior differs from expectations
+
+**Solution:** Consult BiDi spec and test both `'document'` and `'viewport'` origins
+
+```ruby
+# document: Absolute coordinates in full page
+# viewport: Relative to current viewport
+options[:origin] = capture_beyond_viewport ? 'document' : 'viewport'
+```
+
+#### 2. Image Comparison Failures
+
+**Problem:** Golden images don't match exactly (1-2 pixel differences)
+
+**Solution:** Implement tolerance in comparison
+
+```ruby
+# Allow small rendering differences (±1 RGB per channel)
+compare_with_golden(screenshot, 'golden.png', pixel_threshold: 1)
+```
+
+#### 3. Viewport State Management
+
+**Problem:** Viewport not restored after fullPage screenshot
+
+**Solution:** Use `ensure` block
+
+```ruby
+begin
+  set_viewport(full_page_dimensions)
+  screenshot = capture_screenshot(...)
+ensure
+  set_viewport(original_viewport) if original_viewport
+end
+```
+
+#### 4. Thread Safety
+
+**Problem:** Parallel screenshots cause race conditions
+
+**Solution:** BiDi protocol handles this naturally - test with threads
+
+```ruby
+threads = (0...3).map do |i|
+  Thread.new { page.screenshot(clip: {...}) }
+end
+screenshots = threads.map(&:value)
+```
+
+### Documentation References
+
+**Essential reading for implementation:**
+
+1. **WebDriver BiDi Spec**: https://w3c.github.io/webdriver-bidi/
+2. **Puppeteer Source**: https://github.com/puppeteer/puppeteer
+3. **Puppeteer BiDi Tests**: https://github.com/puppeteer/puppeteer/tree/main/test/src
+4. **Firefox BiDi Impl**: Check Firefox implementation notes for quirks
+
+**Reference implementation workflow:**
+1. Find corresponding Puppeteer test in `test/src/`
+2. Read TypeScript implementation in `packages/puppeteer-core/src/`
+3. Check BiDi spec for protocol details
+4. Implement Ruby version maintaining same logic
+5. Download golden images and verify pixel-perfect match (with tolerance)
+
 ## Summary
 
 puppeteer-bidi aims to provide a Ruby implementation that inherits Puppeteer's design philosophy while leveraging WebDriver BiDi protocol characteristics. Through layered architecture, event-driven design, and adoption of standardized protocols, we deliver a reliable Firefox automation tool.
+
+**Development workflow:**
+1. Study Puppeteer's implementation first
+2. Understand BiDi protocol calls
+3. Implement with proper deserialization
+4. Port tests with golden image verification
+5. Handle platform/version rendering differences gracefully

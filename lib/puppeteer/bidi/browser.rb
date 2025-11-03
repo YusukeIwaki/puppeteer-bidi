@@ -6,16 +6,18 @@ module Puppeteer
   module Bidi
     # Browser represents a browser instance with BiDi connection
     class Browser
-      attr_reader :connection, :process
+      attr_reader :connection, :process, :default_browser_context
 
       def initialize(connection:, launcher: nil, connection_task: nil)
         @connection = connection
         @launcher = launcher
         @connection_task = connection_task
         @closed = false
+        @core_browser = nil
+        @default_browser_context = nil
 
         # Create a new BiDi session
-        @connection.send_command('session.new', {
+        session_info = @connection.send_command('session.new', {
           capabilities: {
             alwaysMatch: {
               acceptInsecureCerts: false,
@@ -23,6 +25,15 @@ module Puppeteer
             },
           },
         })
+
+        # Initialize the Core layer
+        @session = Core::Session.new(@connection, session_info)
+        @core_browser = Core::Browser.from(@session)
+        @session.browser = @core_browser
+
+        # Create default browser context
+        default_user_context = @core_browser.default_user_context
+        @default_browser_context = BrowserContext.new(self, default_user_context)
       end
 
       # Launch a new Firefox browser instance
@@ -83,6 +94,18 @@ module Puppeteer
       # Get BiDi session status
       def status
         @connection.send_command('session.status')
+      end
+
+      # Create a new page (Puppeteer-like API)
+      # @return [Page] New page instance
+      def new_page
+        @default_browser_context.new_page
+      end
+
+      # Get all pages
+      # @return [Array<Page>] All pages
+      def pages
+        @default_browser_context.pages
       end
 
       # Create a new browsing context (similar to opening a new tab)

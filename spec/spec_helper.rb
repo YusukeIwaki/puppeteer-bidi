@@ -2,6 +2,10 @@
 
 require "puppeteer/bidi"
 
+# Load support files
+require_relative 'support/test_server'
+require_relative 'support/golden_comparator'
+
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
   config.example_status_persistence_file_path = ".rspec_status"
@@ -19,6 +23,8 @@ RSpec.configure do |config|
   end
 
   helper_module = Module.new do
+    include GoldenComparator
+
     def headless_mode?
       !%w[0 false].include?(ENV['HEADLESS'])
     end
@@ -29,6 +35,22 @@ RSpec.configure do |config|
       yield(browser)
     ensure
       browser&.close
+    end
+
+    # Helper for tests that need a test server
+    def with_test_state(**options)
+      server = TestServer::Server.new
+      server.start
+
+      begin
+        with_browser(**options) do |browser|
+          context = browser.default_browser_context
+          page = browser.new_page
+          yield(page: page, server: server, browser: browser, context: context)
+        end
+      ensure
+        server.stop
+      end
     end
   end
   config.include helper_module, type: :integration
