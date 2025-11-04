@@ -11,8 +11,10 @@ end
 require_relative "bidi/transport"
 require_relative "bidi/connection"
 require_relative "bidi/browser_launcher"
-require_relative "bidi/browser"
 require_relative "bidi/core"
+require_relative "bidi/browser_context"
+require_relative "bidi/page"
+require_relative "bidi/browser"
 
 module Puppeteer
   module Bidi

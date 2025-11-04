@@ -13,3 +13,6 @@
 # Gemfile.lock should not be committed for gems
 # It should only be committed for applications
 Gemfile.lock
+
+# Test output artifacts
+/spec/output/
