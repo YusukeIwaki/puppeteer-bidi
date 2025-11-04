@@ -642,6 +642,91 @@ class Page
 end
 ```
 
+#### 7. Multiple Pages and Parallel Execution
+
+**Creating multiple pages in same context:**
+
+```ruby
+# Browser exposes default_browser_context
+class Browser
+  attr_reader :default_browser_context
+
+  def new_page
+    @default_browser_context.new_page
+  end
+end
+
+# Test can access context to create multiple pages
+with_test_state do |page:, context:, **|
+  pages = (0...2).map do
+    new_page = context.new_page
+    new_page.goto("#{server.prefix}/grid.html")
+    new_page
+  end
+
+  # Run in parallel using Ruby threads
+  threads = pages.map do |p|
+    Thread.new { p.screenshot(...) }
+  end
+  screenshots = threads.map(&:value)
+
+  pages.each(&:close)
+end
+```
+
+**Key points:**
+- BrowserContext manages multiple Page instances
+- Pages in same context share cookies/localStorage but have separate browsing contexts
+- Thread-safe screenshot execution (BiDi protocol handles concurrency)
+
+#### 8. Setting Page Content
+
+**Use data URLs with base64 encoding:**
+
+```ruby
+def set_content(html, wait_until: 'load')
+  # Encode HTML in base64 to avoid URL encoding issues
+  encoded = Base64.strict_encode64(html)
+  data_url = "data:text/html;base64,#{encoded}"
+  goto(data_url, wait_until: wait_until)
+end
+```
+
+**Why base64:**
+- Avoids URL encoding issues with special characters
+- Handles multi-byte characters correctly
+- Standard approach in browser automation tools
+
+#### 9. Viewport Restoration
+
+**Always restore viewport after temporary changes:**
+
+```ruby
+# Save current viewport (may be nil)
+original_viewport = viewport
+
+# If no viewport set, save window size
+unless original_viewport
+  original_size = evaluate('({ width: window.innerWidth, height: window.innerHeight })')
+  original_viewport = { width: original_size['width'].to_i, height: original_size['height'].to_i }
+end
+
+# Change viewport temporarily
+set_viewport(width: new_width, height: new_height)
+
+begin
+  # Do work
+ensure
+  # Always restore
+  set_viewport(**original_viewport) if original_viewport
+end
+```
+
+**Important:**
+- Use `begin/ensure` to guarantee restoration even on errors
+- Handle nil viewport case (no explicit viewport was set)
+- Save window.innerWidth/innerHeight as fallback
+
 ### Testing Strategy
 
 #### Integration Tests Organization
@@ -655,6 +740,7 @@ spec/
 │   └── screenshot_spec.rb  # Feature test suites
 ├── assets/                 # Test HTML/CSS/JS files
 │   ├── grid.html
+│   ├── scrollbar.html
 │   ├── empty.html
 │   └── digits/*.png
 ├── golden-firefox/         # Reference images
@@ -662,6 +748,29 @@ spec/
 └── support/               # Test utilities
     ├── test_server.rb
     └── golden_comparator.rb
+```
+
+#### Implemented Screenshot Tests
+
+All 12 tests ported from [Puppeteer's screenshot.spec.ts](https://github.com/puppeteer/puppeteer/blob/main/test/src/screenshot.spec.ts):
+
+1. **should work** - Basic screenshot functionality
+2. **should clip rect** - Clipping specific region
+3. **should get screenshot bigger than the viewport** - Offscreen clip with captureBeyondViewport
+4. **should clip bigger than the viewport without "captureBeyondViewport"** - Viewport coordinate transformation
+5. **should run in parallel** - Thread-safe parallel screenshots on single page
+6. **should take fullPage screenshots** - Full page with document origin
+7. **should take fullPage screenshots without captureBeyondViewport** - Full page with viewport resize
+8. **should run in parallel in multiple pages** - Concurrent screenshots across multiple pages
+9. **should work with odd clip size on Retina displays** - Odd pixel dimensions (11x11)
+10. **should return base64** - Base64 encoding verification
+11. **should take fullPage screenshots when defaultViewport is null** - No explicit viewport
+12. **should restore to original viewport size** - Viewport restoration after fullPage
+
+Run tests:
+```bash
+bundle exec rspec spec/integration/screenshot_spec.rb
+# Expected: 12 examples, 0 failures (completes in ~68 seconds)
 ```
 
 #### Environment Variables

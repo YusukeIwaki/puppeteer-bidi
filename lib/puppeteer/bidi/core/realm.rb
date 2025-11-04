@@ -41,32 +41,30 @@ module Puppeteer
         # @param function_declaration [String] Function source code
         # @param await_promise [Boolean] Whether to await promise results
         # @param options [Hash] Additional options
-        # @return [Hash] Evaluation result
+        # @return [Hash] Evaluation result (with 'type', 'realm', and optionally 'result'/'exceptionDetails')
         def call_function(function_declaration, await_promise, **options)
           raise RealmDestroyedError, @reason if disposed?
-          result = session.send_command('script.callFunction', {
+          session.send_command('script.callFunction', {
             functionDeclaration: function_declaration,
             awaitPromise: await_promise,
             target: target,
             **options
           })
-          result['result']
         end
 
         # Evaluate an expression in the realm
         # @param expression [String] JavaScript expression
         # @param await_promise [Boolean] Whether to await promise results
         # @param options [Hash] Additional options
-        # @return [Hash] Evaluation result
+        # @return [Hash] Evaluation result (with 'type', 'realm', and optionally 'result'/'exceptionDetails')
         def evaluate(expression, await_promise, **options)
           raise RealmDestroyedError, @reason if disposed?
-          result = session.send_command('script.evaluate', {
+          session.send_command('script.evaluate', {
             expression: expression,
             awaitPromise: await_promise,
             target: target,
             **options
           })
-          result['result']
         end
 
         # Resolve the CDP execution context ID for this realm

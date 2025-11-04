@@ -48,7 +48,50 @@ gem 'puppeteer-bidi'
 
 ## Usage
 
-### Basic Usage
+### High-Level Page API (Recommended)
+
+```ruby
+require 'puppeteer/bidi'
+
+# Launch Firefox with BiDi protocol
+browser = Puppeteer::Bidi.launch(headless: false)
+
+# Create a new page
+page = browser.new_page
+
+# Set viewport size
+page.set_viewport(width: 1280, height: 720)
+
+# Navigate to a URL
+page.goto('https://example.com')
+
+# Take a screenshot
+page.screenshot(path: 'screenshot.png')
+
+# Take a full page screenshot
+page.screenshot(path: 'fullpage.png', full_page: true)
+
+# Screenshot with clipping
+page.screenshot(
+  path: 'clip.png',
+  clip: { x: 0, y: 0, width: 100, height: 100 }
+)
+
+# Evaluate JavaScript
+title = page.evaluate('document.title')
+puts "Page title: #{title}"
+
+# Set page content
+page.set_content('<h1>Hello, World!</h1>')
+
+# Close the page
+page.close
+
+# Close the browser
+browser.close
+```
+
+### Low-Level BiDi API
 
 ```ruby
 require 'puppeteer/bidi'
@@ -191,8 +234,11 @@ bundle exec rspec
 # Run integration tests (launches actual Firefox browser)
 bundle exec rspec spec/integration/
 
-# Run specific integration test
-bundle exec rspec spec/integration/example_spec.rb
+# Run screenshot tests (12 examples, ~68 seconds)
+bundle exec rspec spec/integration/screenshot_spec.rb
+
+# Run in non-headless mode for debugging
+HEADLESS=false bundle exec rspec spec/integration/screenshot_spec.rb
 ```
 
 ### Integration Tests
@@ -203,11 +249,46 @@ Integration tests in `spec/integration/` demonstrate real-world usage by launchi
 - Learning by example
 - Ensuring browser compatibility
 
+#### Screenshot Tests
+
+The `screenshot_spec.rb` includes 12 comprehensive tests ported from Puppeteer:
+
+- Basic screenshots and clipping regions
+- Full page screenshots with viewport management
+- Parallel execution across single/multiple pages
+- Retina display compatibility
+- Viewport restoration
+
+All tests use golden image comparison with tolerance for cross-platform compatibility.
+
 ## Project Status
 
 This project is in early development. The API may change as the implementation progresses.
 
 ### Implemented Features
+
+#### High-Level Page API (`lib/puppeteer/bidi/`)
+Puppeteer-compatible API for browser automation:
+
+- ✅ **Browser**: Browser instance management
+- ✅ **BrowserContext**: Isolated browsing sessions
+- ✅ **Page**: High-level page automation
+  - ✅ Navigation (`goto`, `set_content`)
+  - ✅ JavaScript evaluation with result deserialization
+  - ✅ Screenshots (basic, clipping, full page, parallel)
+  - ✅ Viewport management with automatic restoration
+  - ✅ Page state queries (`title`, `url`, `viewport`)
+
+#### Screenshot Features
+Comprehensive screenshot functionality with 12 passing tests:
+
+- ✅ Basic screenshots
+- ✅ Clipping regions (document/viewport coordinates)
+- ✅ Full page screenshots (with/without viewport expansion)
+- ✅ Thread-safe parallel execution (single/multiple pages)
+- ✅ Retina display compatibility (odd-sized clips)
+- ✅ Automatic viewport restoration
+- ✅ Base64 encoding
 
 #### Foundation Layer
 - ✅ Browser launching with Firefox
