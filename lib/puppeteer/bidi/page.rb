@@ -185,10 +185,17 @@ module Puppeteer
         raise 'Page is closed' if closed?
 
         # Detect if the script is a function (arrow function or regular function)
-        # by checking if it starts with function keyword or arrow function pattern
+        # but not an IIFE (immediately invoked function expression)
         script_trimmed = script.strip
-        is_function = script_trimmed.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
-                      script_trimmed.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
+
+        # Check if it's an IIFE - ends with () after the function body
+        is_iife = script_trimmed.match?(/\)\s*\(\s*\)\s*\z/)
+
+        # Check if it's a function declaration/expression
+        is_function = !is_iife && (
+          script_trimmed.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
+          script_trimmed.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
+        )
 
         if is_function
           # Serialize arguments to BiDi format
