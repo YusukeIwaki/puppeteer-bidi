@@ -77,9 +77,17 @@ page.screenshot(
   clip: { x: 0, y: 0, width: 100, height: 100 }
 )
 
-# Evaluate JavaScript
+# Evaluate JavaScript expressions
 title = page.evaluate('document.title')
 puts "Page title: #{title}"
+
+# Evaluate JavaScript functions with arguments
+sum = page.evaluate('(a, b) => a + b', 3, 4)
+puts "Sum: #{sum}"  # => 7
+
+# Access frame and evaluate
+frame = page.main_frame
+result = frame.evaluate('() => window.innerWidth')
 
 # Set page content
 page.set_content('<h1>Hello, World!</h1>')
@@ -234,11 +242,17 @@ bundle exec rspec
 # Run integration tests (launches actual Firefox browser)
 bundle exec rspec spec/integration/
 
-# Run screenshot tests (12 examples, ~68 seconds)
+# Run evaluation tests (23 examples, ~7 seconds)
+bundle exec rspec spec/integration/evaluation_spec.rb
+
+# Run screenshot tests (12 examples, ~8 seconds)
 bundle exec rspec spec/integration/screenshot_spec.rb
 
+# Run all integration tests (35 examples, ~10 seconds)
+bundle exec rspec spec/integration/evaluation_spec.rb spec/integration/screenshot_spec.rb
+
 # Run in non-headless mode for debugging
-HEADLESS=false bundle exec rspec spec/integration/screenshot_spec.rb
+HEADLESS=false bundle exec rspec spec/integration/
 ```
 
 ### Integration Tests
@@ -248,6 +262,19 @@ Integration tests in `spec/integration/` demonstrate real-world usage by launchi
 - Verifying end-to-end functionality
 - Learning by example
 - Ensuring browser compatibility
+
+**Performance Note**: Integration tests are optimized to reuse a single browser instance across all tests (~19x faster than launching per test). Each test gets a fresh page (tab) for proper isolation.
+
+#### Evaluation Tests
+
+The `evaluation_spec.rb` includes 23 comprehensive tests ported from Puppeteer:
+
+- JavaScript expression and function evaluation
+- Argument serialization (numbers, arrays, objects, special values)
+- Result deserialization (NaN, Infinity, -0, Maps)
+- Exception handling and thrown values
+- IIFE (Immediately Invoked Function Expression) support
+- Frame.evaluate functionality
 
 #### Screenshot Tests
 
@@ -274,10 +301,13 @@ Puppeteer-compatible API for browser automation:
 - ✅ **BrowserContext**: Isolated browsing sessions
 - ✅ **Page**: High-level page automation
   - ✅ Navigation (`goto`, `set_content`)
-  - ✅ JavaScript evaluation with result deserialization
+  - ✅ JavaScript evaluation (`evaluate`) with functions, arguments, and IIFE support
   - ✅ Screenshots (basic, clipping, full page, parallel)
   - ✅ Viewport management with automatic restoration
   - ✅ Page state queries (`title`, `url`, `viewport`)
+  - ✅ Frame access (`main_frame`)
+- ✅ **Frame**: Frame-level operations
+  - ✅ JavaScript evaluation with full feature parity to Page
 
 #### Screenshot Features
 Comprehensive screenshot functionality with 12 passing tests:
@@ -311,7 +341,12 @@ A low-level object-oriented abstraction over the WebDriver BiDi protocol:
 #### BiDi Operations
 - ✅ Browsing context management (create/close tabs/windows)
 - ✅ Page navigation with wait conditions
-- ✅ JavaScript evaluation (`script.evaluate`)
+- ✅ JavaScript evaluation (`script.evaluate`, `script.callFunction`)
+  - ✅ Expression evaluation
+  - ✅ Function calls with argument serialization
+  - ✅ Result deserialization (numbers, strings, arrays, objects, Maps, special values)
+  - ✅ Exception handling and propagation
+  - ✅ IIFE support
 - ✅ Screenshot capture
 - ✅ PDF generation
 - ✅ Cookie management (get/set/delete)

@@ -312,7 +312,8 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 
 ### Phase 2: Core Features ✅ COMPLETED
 - [x] Navigation (`browsingContext.navigate`)
-- [x] JavaScript execution (`script.evaluate`)
+- [x] JavaScript execution (`script.evaluate`, `script.callFunction`)
+- [x] **Page.evaluate and Frame.evaluate** - Full JavaScript evaluation with argument serialization
 - [x] Event handling system (EventEmitter)
 - [ ] Element operations (click, input) - **TODO**
 - [ ] FrameManager implementation - **TODO**
@@ -727,6 +728,112 @@ end
 - Handle nil viewport case (no explicit viewport was set)
 - Save window.innerWidth/innerHeight as fallback
 
+## JavaScript Evaluation Implementation
+
+### Page.evaluate and Frame.evaluate
+
+The `evaluate` method supports both JavaScript expressions and functions with proper argument serialization.
+
+#### Detection Logic
+
+The implementation distinguishes between three types of JavaScript code:
+
+1. **Expressions**: Simple JavaScript code
+2. **Functions**: Arrow functions or function declarations (use `script.callFunction`)
+3. **IIFE**: Immediately Invoked Function Expressions (use `script.evaluate`)
+
+```ruby
+# Expression - uses script.evaluate
+page.evaluate('7 * 3')  # => 21
+
+# Function - uses script.callFunction
+page.evaluate('(a, b) => a + b', 3, 4)  # => 7
+
+# IIFE - uses script.evaluate (not script.callFunction)
+page.evaluate('(() => document.title)()')  # => "Page Title"
+```
+
+#### IIFE Detection Pattern
+
+**Critical**: IIFE must be detected and treated as expressions:
+
+```ruby
+# Check if it's an IIFE - ends with () after the function body
+is_iife = script_trimmed.match?(/\)\s*\(\s*\)\s*\z/)
+
+# Only treat as function if not IIFE
+is_function = !is_iife && (
+  script_trimmed.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
+  script_trimmed.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
+)
+```
+
+**Why this matters**: IIFE like `(() => {...})()` looks like a function but must be evaluated as an expression. Using `script.callFunction` on IIFE causes syntax errors.
+
+#### Argument Serialization
+
+Arguments are serialized to BiDi `LocalValue` format:
+
+```ruby
+# Special numbers
+{ type: 'number', value: 'NaN' }
+{ type: 'number', value: 'Infinity' }
+{ type: 'number', value: '-0' }
+
+# Collections
+{ type: 'array', value: [...] }
+{ type: 'object', value: [[key, value], ...] }
+{ type: 'map', value: [[key, value], ...] }
+```
+
+#### Result Deserialization
+
+BiDi returns results in special format that must be deserialized:
+
+```ruby
+# BiDi response format
+{
+  "type" => "success",
+  "realm" => "...",
+  "result" => {
+    "type" => "number",
+    "value" => 42
+  }
+}
+
+# Extract and deserialize
+actual_result = result['result'] || result
+deserialize_result(actual_result)  # => 42
+```
+
+#### Exception Handling
+
+Exceptions from JavaScript are returned in the result, not thrown by BiDi:
+
+```ruby
+if result['type'] == 'exception'
+  exception_details = result['exceptionDetails']
+  text = exception_details['text']  # "ReferenceError: notExistingObject is not defined"
+  raise text
+end
+```
+
+### Core::Realm Return Values
+
+**Important**: Core::Realm methods return the **complete BiDi result**, not just the value:
+
+```ruby
+# Core::Realm.call_function returns:
+{
+  "type" => "success" | "exception",
+  "realm" => "...",
+  "result" => {...} | nil,
+  "exceptionDetails" => {...} | nil
+}
+
+# NOT result['result'] (this was a bug that was fixed)
+```
+
 ### Testing Strategy
 
 #### Integration Tests Organization
@@ -770,8 +877,74 @@ All 12 tests ported from [Puppeteer's screenshot.spec.ts](https://github.com/pup
 Run tests:
 ```bash
 bundle exec rspec spec/integration/screenshot_spec.rb
-# Expected: 12 examples, 0 failures (completes in ~68 seconds)
+# Expected: 12 examples, 0 failures (completes in ~8 seconds with optimized spec_helper)
 ```
+
+#### Test Performance Optimization
+
+**Critical**: Integration tests are ~19x faster with browser reuse strategy.
+
+##### Before Optimization (Per-test Browser Launch)
+```ruby
+def with_test_state(**options)
+  server = TestServer::Server.new
+  server.start
+
+  with_browser(**options) do |browser|  # New browser per test!
+    context = browser.default_browser_context
+    page = browser.new_page
+    yield(page: page, server: server, browser: browser, context: context)
+  end
+ensure
+  server.stop
+end
+```
+
+**Performance**: ~195 seconds for 35 tests (browser launch overhead × 35)
+
+##### After Optimization (Shared Browser)
+```ruby
+# In spec_helper.rb
+config.before(:suite) do
+  if RSpec.configuration.files_to_run.any? { |f| f.include?('spec/integration') }
+    $shared_browser = Puppeteer::Bidi.launch(headless: headless_mode?)
+    $shared_test_server = TestServer::Server.new
+    $shared_test_server.start
+  end
+end
+
+def with_test_state(**options)
+  if $shared_browser && options.empty?
+    # Create new page (tab) per test
+    page = $shared_browser.new_page
+    context = $shared_browser.default_browser_context
+
+    begin
+      yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
+    ensure
+      page.close unless page.closed?  # Clean up tab
+    end
+  else
+    # Fall back to per-test browser for custom options
+  end
+end
+```
+
+**Performance**: ~10 seconds for 35 tests (1 browser launch + 35 tab creations)
+
+##### Performance Results
+
+| Test Suite | Before | After | Improvement |
+|------------|--------|-------|-------------|
+| **evaluation_spec (23 tests)** | 127s | **7.17s** | **17.7x faster** |
+| **screenshot_spec (12 tests)** | 68s | **8.47s** | **8.0x faster** |
+| **Combined (35 tests)** | 195s | **10.33s** | **18.9x faster** 🚀 |
+
+**Key Benefits**:
+- Browser launch only once per suite
+- Each test gets fresh page (tab) for isolation
+- Cleanup handled automatically
+- Backward compatible (custom options fall back to per-test browser)
 
 #### Environment Variables
 
