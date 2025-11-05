@@ -48,7 +48,58 @@ gem 'puppeteer-bidi'
 
 ## Usage
 
-### Basic Usage
+### High-Level Page API (Recommended)
+
+```ruby
+require 'puppeteer/bidi'
+
+# Launch Firefox with BiDi protocol
+browser = Puppeteer::Bidi.launch(headless: false)
+
+# Create a new page
+page = browser.new_page
+
+# Set viewport size
+page.set_viewport(width: 1280, height: 720)
+
+# Navigate to a URL
+page.goto('https://example.com')
+
+# Take a screenshot
+page.screenshot(path: 'screenshot.png')
+
+# Take a full page screenshot
+page.screenshot(path: 'fullpage.png', full_page: true)
+
+# Screenshot with clipping
+page.screenshot(
+  path: 'clip.png',
+  clip: { x: 0, y: 0, width: 100, height: 100 }
+)
+
+# Evaluate JavaScript expressions
+title = page.evaluate('document.title')
+puts "Page title: #{title}"
+
+# Evaluate JavaScript functions with arguments
+sum = page.evaluate('(a, b) => a + b', 3, 4)
+puts "Sum: #{sum}"  # => 7
+
+# Access frame and evaluate
+frame = page.main_frame
+result = frame.evaluate('() => window.innerWidth')
+
+# Set page content
+page.set_content('<h1>Hello, World!</h1>')
+
+# Close the page
+page.close
+
+# Close the browser
+browser.close
+```
+
+### Low-Level BiDi API
 
 ```ruby
 require 'puppeteer/bidi'
@@ -191,8 +242,17 @@ bundle exec rspec
 # Run integration tests (launches actual Firefox browser)
 bundle exec rspec spec/integration/
 
-# Run specific integration test
-bundle exec rspec spec/integration/example_spec.rb
+# Run evaluation tests (23 examples, ~7 seconds)
+bundle exec rspec spec/integration/evaluation_spec.rb
+
+# Run screenshot tests (12 examples, ~8 seconds)
+bundle exec rspec spec/integration/screenshot_spec.rb
+
+# Run all integration tests (35 examples, ~10 seconds)
+bundle exec rspec spec/integration/evaluation_spec.rb spec/integration/screenshot_spec.rb
+
+# Run in non-headless mode for debugging
+HEADLESS=false bundle exec rspec spec/integration/
 ```
 
 ### Integration Tests
@@ -203,11 +263,62 @@ Integration tests in `spec/integration/` demonstrate real-world usage by launchi
 - Learning by example
 - Ensuring browser compatibility
 
+**Performance Note**: Integration tests are optimized to reuse a single browser instance across all tests (~19x faster than launching per test). Each test gets a fresh page (tab) for proper isolation.
+
+#### Evaluation Tests
+
+The `evaluation_spec.rb` includes 23 comprehensive tests ported from Puppeteer:
+
+- JavaScript expression and function evaluation
+- Argument serialization (numbers, arrays, objects, special values)
+- Result deserialization (NaN, Infinity, -0, Maps)
+- Exception handling and thrown values
+- IIFE (Immediately Invoked Function Expression) support
+- Frame.evaluate functionality
+
+#### Screenshot Tests
+
+The `screenshot_spec.rb` includes 12 comprehensive tests ported from Puppeteer:
+
+- Basic screenshots and clipping regions
+- Full page screenshots with viewport management
+- Parallel execution across single/multiple pages
+- Retina display compatibility
+- Viewport restoration
+
+All tests use golden image comparison with tolerance for cross-platform compatibility.
+
 ## Project Status
 
 This project is in early development. The API may change as the implementation progresses.
 
 ### Implemented Features
+
+#### High-Level Page API (`lib/puppeteer/bidi/`)
+Puppeteer-compatible API for browser automation:
+
+- ✅ **Browser**: Browser instance management
+- ✅ **BrowserContext**: Isolated browsing sessions
+- ✅ **Page**: High-level page automation
+  - ✅ Navigation (`goto`, `set_content`)
+  - ✅ JavaScript evaluation (`evaluate`) with functions, arguments, and IIFE support
+  - ✅ Screenshots (basic, clipping, full page, parallel)
+  - ✅ Viewport management with automatic restoration
+  - ✅ Page state queries (`title`, `url`, `viewport`)
+  - ✅ Frame access (`main_frame`)
+- ✅ **Frame**: Frame-level operations
+  - ✅ JavaScript evaluation with full feature parity to Page
+
+#### Screenshot Features
+Comprehensive screenshot functionality with 12 passing tests:
+
+- ✅ Basic screenshots
+- ✅ Clipping regions (document/viewport coordinates)
+- ✅ Full page screenshots (with/without viewport expansion)
+- ✅ Thread-safe parallel execution (single/multiple pages)
+- ✅ Retina display compatibility (odd-sized clips)
+- ✅ Automatic viewport restoration
+- ✅ Base64 encoding
 
 #### Foundation Layer
 - ✅ Browser launching with Firefox
@@ -230,7 +341,12 @@ A low-level object-oriented abstraction over the WebDriver BiDi protocol:
 #### BiDi Operations
 - ✅ Browsing context management (create/close tabs/windows)
 - ✅ Page navigation with wait conditions
-- ✅ JavaScript evaluation (`script.evaluate`)
+- ✅ JavaScript evaluation (`script.evaluate`, `script.callFunction`)
+  - ✅ Expression evaluation
+  - ✅ Function calls with argument serialization
+  - ✅ Result deserialization (numbers, strings, arrays, objects, Maps, special values)
+  - ✅ Exception handling and propagation
+  - ✅ IIFE support
 - ✅ Screenshot capture
 - ✅ PDF generation
 - ✅ Cookie management (get/set/delete)

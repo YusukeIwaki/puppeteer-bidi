@@ -22,6 +22,29 @@ RSpec.configure do |config|
     metadata[:type] = :integration
   end
 
+  # Shared browser instance for integration tests
+  # This is created once per test suite and reused across all tests
+  config.before(:suite) do
+    if RSpec.configuration.files_to_run.any? { |f| f.include?('spec/integration') }
+      headless = !%w[0 false].include?(ENV['HEADLESS'])
+      $shared_browser = Puppeteer::Bidi.launch(headless: headless)
+      $shared_test_server = TestServer::Server.new
+      $shared_test_server.start
+      puts "\n[Test Suite] Browser and server started (will be reused across tests)"
+    end
+  end
+
+  config.after(:suite) do
+    if $shared_browser
+      $shared_browser.close
+      puts "\n[Test Suite] Browser closed"
+    end
+    if $shared_test_server
+      $shared_test_server.stop
+      puts "[Test Suite] Server stopped"
+    end
+  end
+
   helper_module = Module.new do
     include GoldenComparator
 
@@ -29,6 +52,8 @@ RSpec.configure do |config|
       !%w[0 false].include?(ENV['HEADLESS'])
     end
 
+    # Legacy helper - launches a new browser for each call
+    # Use with_test_state for better performance
     def with_browser(**options)
       options[:headless] = headless_mode?
       browser = Puppeteer::Bidi.launch(**options)
@@ -37,19 +62,35 @@ RSpec.configure do |config|
       browser&.close
     end
 
-    # Helper for tests that need a test server
+    # Optimized helper - reuses shared browser, creates new page per test
+    # This is much faster as it avoids browser launch overhead
     def with_test_state(**options)
-      server = TestServer::Server.new
-      server.start
+      # Use shared browser if available, otherwise fall back to per-test browser
+      if $shared_browser && options.empty?
+        # Create a new page (tab) for this test
+        page = $shared_browser.new_page
+        context = $shared_browser.default_browser_context
 
-      begin
-        with_browser(**options) do |browser|
-          context = browser.default_browser_context
-          page = browser.new_page
-          yield(page: page, server: server, browser: browser, context: context)
+        begin
+          yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
+        ensure
+          # Close the page to clean up resources
+          page.close unless page.closed?
         end
-      ensure
-        server.stop
+      else
+        # Fall back to per-test browser for tests with custom options
+        server = TestServer::Server.new
+        server.start
+
+        begin
+          with_browser(**options) do |browser|
+            context = browser.default_browser_context
+            page = browser.new_page
+            yield(page: page, server: server, browser: browser, context: context)
+          end
+        ensure
+          server.stop
+        end
       end
     end
   end

@@ -312,7 +312,8 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 
 ### Phase 2: Core Features ✅ COMPLETED
 - [x] Navigation (`browsingContext.navigate`)
-- [x] JavaScript execution (`script.evaluate`)
+- [x] JavaScript execution (`script.evaluate`, `script.callFunction`)
+- [x] **Page.evaluate and Frame.evaluate** - Full JavaScript evaluation with argument serialization
 - [x] Event handling system (EventEmitter)
 - [ ] Element operations (click, input) - **TODO**
 - [ ] FrameManager implementation - **TODO**
@@ -642,6 +643,197 @@ class Page
 end
 ```
 
+#### 7. Multiple Pages and Parallel Execution
+
+**Creating multiple pages in same context:**
+
+```ruby
+# Browser exposes default_browser_context
+class Browser
+  attr_reader :default_browser_context
+
+  def new_page
+    @default_browser_context.new_page
+  end
+end
+
+# Test can access context to create multiple pages
+with_test_state do |page:, context:, **|
+  pages = (0...2).map do
+    new_page = context.new_page
+    new_page.goto("#{server.prefix}/grid.html")
+    new_page
+  end
+
+  # Run in parallel using Ruby threads
+  threads = pages.map do |p|
+    Thread.new { p.screenshot(...) }
+  end
+  screenshots = threads.map(&:value)
+
+  pages.each(&:close)
+end
+```
+
+**Key points:**
+- BrowserContext manages multiple Page instances
+- Pages in same context share cookies/localStorage but have separate browsing contexts
+- Thread-safe screenshot execution (BiDi protocol handles concurrency)
+
+#### 8. Setting Page Content
+
+**Use data URLs with base64 encoding:**
+
+```ruby
+def set_content(html, wait_until: 'load')
+  # Encode HTML in base64 to avoid URL encoding issues
+  encoded = Base64.strict_encode64(html)
+  data_url = "data:text/html;base64,#{encoded}"
+  goto(data_url, wait_until: wait_until)
+end
+```
+
+**Why base64:**
+- Avoids URL encoding issues with special characters
+- Handles multi-byte characters correctly
+- Standard approach in browser automation tools
+
+#### 9. Viewport Restoration
+
+**Always restore viewport after temporary changes:**
+
+```ruby
+# Save current viewport (may be nil)
+original_viewport = viewport
+
+# If no viewport set, save window size
+unless original_viewport
+  original_size = evaluate('({ width: window.innerWidth, height: window.innerHeight })')
+  original_viewport = { width: original_size['width'].to_i, height: original_size['height'].to_i }
+end
+
+# Change viewport temporarily
+set_viewport(width: new_width, height: new_height)
+
+begin
+  # Do work
+ensure
+  # Always restore
+  set_viewport(**original_viewport) if original_viewport
+end
+```
+
+**Important:**
+- Use `begin/ensure` to guarantee restoration even on errors
+- Handle nil viewport case (no explicit viewport was set)
+- Save window.innerWidth/innerHeight as fallback
+
+## JavaScript Evaluation Implementation
+
+### Page.evaluate and Frame.evaluate
+
+The `evaluate` method supports both JavaScript expressions and functions with proper argument serialization.
+
+#### Detection Logic
+
+The implementation distinguishes between three types of JavaScript code:
+
+1. **Expressions**: Simple JavaScript code
+2. **Functions**: Arrow functions or function declarations (use `script.callFunction`)
+3. **IIFE**: Immediately Invoked Function Expressions (use `script.evaluate`)
+
+```ruby
+# Expression - uses script.evaluate
+page.evaluate('7 * 3')  # => 21
+
+# Function - uses script.callFunction
+page.evaluate('(a, b) => a + b', 3, 4)  # => 7
+
+# IIFE - uses script.evaluate (not script.callFunction)
+page.evaluate('(() => document.title)()')  # => "Page Title"
+```
+
+#### IIFE Detection Pattern
+
+**Critical**: IIFE must be detected and treated as expressions:
+
+```ruby
+# Check if it's an IIFE - ends with () after the function body
+is_iife = script_trimmed.match?(/\)\s*\(\s*\)\s*\z/)
+
+# Only treat as function if not IIFE
+is_function = !is_iife && (
+  script_trimmed.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
+  script_trimmed.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
+)
+```
+
+**Why this matters**: IIFE like `(() => {...})()` looks like a function but must be evaluated as an expression. Using `script.callFunction` on IIFE causes syntax errors.
+
+#### Argument Serialization
+
+Arguments are serialized to BiDi `LocalValue` format:
+
+```ruby
+# Special numbers
+{ type: 'number', value: 'NaN' }
+{ type: 'number', value: 'Infinity' }
+{ type: 'number', value: '-0' }
+
+# Collections
+{ type: 'array', value: [...] }
+{ type: 'object', value: [[key, value], ...] }
+{ type: 'map', value: [[key, value], ...] }
+```
+
+#### Result Deserialization
+
+BiDi returns results in special format that must be deserialized:
+
+```ruby
+# BiDi response format
+{
+  "type" => "success",
+  "realm" => "...",
+  "result" => {
+    "type" => "number",
+    "value" => 42
+  }
+}
+
+# Extract and deserialize
+actual_result = result['result'] || result
+deserialize_result(actual_result)  # => 42
+```
+
+#### Exception Handling
+
+Exceptions from JavaScript are returned in the result, not thrown by BiDi:
+
+```ruby
+if result['type'] == 'exception'
+  exception_details = result['exceptionDetails']
+  text = exception_details['text']  # "ReferenceError: notExistingObject is not defined"
+  raise text
+end
+```
+
+### Core::Realm Return Values
+
+**Important**: Core::Realm methods return the **complete BiDi result**, not just the value:
+
+```ruby
+# Core::Realm.call_function returns:
+{
+  "type" => "success" | "exception",
+  "realm" => "...",
+  "result" => {...} | nil,
+  "exceptionDetails" => {...} | nil
+}
+
+# NOT result['result'] (this was a bug that was fixed)
+```
+
 ### Testing Strategy
 
 #### Integration Tests Organization
@@ -655,6 +847,7 @@ spec/
 │   └── screenshot_spec.rb  # Feature test suites
 ├── assets/                 # Test HTML/CSS/JS files
 │   ├── grid.html
+│   ├── scrollbar.html
 │   ├── empty.html
 │   └── digits/*.png
 ├── golden-firefox/         # Reference images
@@ -663,6 +856,95 @@ spec/
     ├── test_server.rb
     └── golden_comparator.rb
 ```
+
+#### Implemented Screenshot Tests
+
+All 12 tests ported from [Puppeteer's screenshot.spec.ts](https://github.com/puppeteer/puppeteer/blob/main/test/src/screenshot.spec.ts):
+
+1. **should work** - Basic screenshot functionality
+2. **should clip rect** - Clipping specific region
+3. **should get screenshot bigger than the viewport** - Offscreen clip with captureBeyondViewport
+4. **should clip bigger than the viewport without "captureBeyondViewport"** - Viewport coordinate transformation
+5. **should run in parallel** - Thread-safe parallel screenshots on single page
+6. **should take fullPage screenshots** - Full page with document origin
+7. **should take fullPage screenshots without captureBeyondViewport** - Full page with viewport resize
+8. **should run in parallel in multiple pages** - Concurrent screenshots across multiple pages
+9. **should work with odd clip size on Retina displays** - Odd pixel dimensions (11x11)
+10. **should return base64** - Base64 encoding verification
+11. **should take fullPage screenshots when defaultViewport is null** - No explicit viewport
+12. **should restore to original viewport size** - Viewport restoration after fullPage
+
+Run tests:
+```bash
+bundle exec rspec spec/integration/screenshot_spec.rb
+# Expected: 12 examples, 0 failures (completes in ~8 seconds with optimized spec_helper)
+```
+
+#### Test Performance Optimization
+
+**Critical**: Integration tests are ~19x faster with browser reuse strategy.
+
+##### Before Optimization (Per-test Browser Launch)
+```ruby
+def with_test_state(**options)
+  server = TestServer::Server.new
+  server.start
+
+  with_browser(**options) do |browser|  # New browser per test!
+    context = browser.default_browser_context
+    page = browser.new_page
+    yield(page: page, server: server, browser: browser, context: context)
+  end
+ensure
+  server.stop
+end
+```
+
+**Performance**: ~195 seconds for 35 tests (browser launch overhead × 35)
+
+##### After Optimization (Shared Browser)
+```ruby
+# In spec_helper.rb
+config.before(:suite) do
+  if RSpec.configuration.files_to_run.any? { |f| f.include?('spec/integration') }
+    $shared_browser = Puppeteer::Bidi.launch(headless: headless_mode?)
+    $shared_test_server = TestServer::Server.new
+    $shared_test_server.start
+  end
+end
+
+def with_test_state(**options)
+  if $shared_browser && options.empty?
+    # Create new page (tab) per test
+    page = $shared_browser.new_page
+    context = $shared_browser.default_browser_context
+
+    begin
+      yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
+    ensure
+      page.close unless page.closed?  # Clean up tab
+    end
+  else
+    # Fall back to per-test browser for custom options
+  end
+end
+```
+
+**Performance**: ~10 seconds for 35 tests (1 browser launch + 35 tab creations)
+
+##### Performance Results
+
+| Test Suite | Before | After | Improvement |
+|------------|--------|-------|-------------|
+| **evaluation_spec (23 tests)** | 127s | **7.17s** | **17.7x faster** |
+| **screenshot_spec (12 tests)** | 68s | **8.47s** | **8.0x faster** |
+| **Combined (35 tests)** | 195s | **10.33s** | **18.9x faster** 🚀 |
+
+**Key Benefits**:
+- Browser launch only once per suite
+- Each test gets fresh page (tab) for isolation
+- Cleanup handled automatically
+- Backward compatible (custom options fall back to per-test browser)
 
 #### Environment Variables
 
