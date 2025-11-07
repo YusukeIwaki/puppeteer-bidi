@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+require_relative 'js_handle'
+require_relative 'element_handle'
+require_relative 'serializer'
+require_relative 'deserializer'
+
 module Puppeteer
   module Bidi
     # Frame represents a frame (main frame or iframe) in the page
@@ -32,8 +37,8 @@ module Puppeteer
         )
 
         if is_function
-          # Serialize arguments to BiDi format
-          serialized_args = args.map { |arg| serialize_argument(arg) }
+          # Serialize arguments using Serializer
+          serialized_args = args.map { |arg| Serializer.serialize(arg) }
 
           # Use callFunction for function declarations
           options = {}
@@ -49,9 +54,76 @@ module Puppeteer
           handle_evaluation_exception(result)
         end
 
-        # Extract the actual result value
+        # Deserialize using Deserializer
         actual_result = result['result'] || result
-        deserialize_result(actual_result)
+        Deserializer.deserialize(actual_result)
+      end
+
+      # Evaluate JavaScript and return a handle to the result
+      # @param script [String] JavaScript to evaluate (expression or function)
+      # @param *args [Array] Arguments to pass to the function (if script is a function)
+      # @return [JSHandle] Handle to the result
+      def evaluate_handle(script, *args)
+        raise 'Frame is detached' if @browsing_context.closed?
+
+        script_trimmed = script.strip
+
+        # Check if it's an IIFE
+        is_iife = script_trimmed.match?(/\)\s*\(\s*\)\s*\z/)
+
+        # Check if it's a function
+        is_function = !is_iife && (
+          script_trimmed.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
+          script_trimmed.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
+        )
+
+        if is_function
+          # Serialize arguments using Serializer
+          serialized_args = args.map { |arg| Serializer.serialize(arg) }
+
+          options = {}
+          options[:arguments] = serialized_args unless serialized_args.empty?
+          result = @browsing_context.default_realm.call_function(script_trimmed, false, **options)
+        else
+          result = @browsing_context.default_realm.evaluate(script_trimmed, false)
+        end
+
+        # Check for exceptions
+        if result['type'] == 'exception'
+          handle_evaluation_exception(result)
+        end
+
+        # Create handle using factory method
+        JSHandle.from(result['result'], @browsing_context.default_realm)
+      end
+
+      # Get the document element handle
+      # @return [ElementHandle] Document element handle
+      def document
+        raise 'Frame is detached' if @browsing_context.closed?
+
+        # Get document object
+        result = @browsing_context.default_realm.evaluate('document', false)
+
+        if result['type'] == 'exception'
+          raise 'Failed to get document'
+        end
+
+        ElementHandle.new(@browsing_context.default_realm, result['result'])
+      end
+
+      # Query for an element matching the selector
+      # @param selector [String] CSS selector
+      # @return [ElementHandle, nil] Element handle if found, nil otherwise
+      def query_selector(selector)
+        document.query_selector(selector)
+      end
+
+      # Query for all elements matching the selector
+      # @param selector [String] CSS selector
+      # @return [Array<ElementHandle>] Array of element handles
+      def query_selector_all(selector)
+        document.query_selector_all(selector)
       end
 
       # Get the frame URL
@@ -89,123 +161,11 @@ module Puppeteer
 
         # For thrown values, use the exception value if available
         if exception && exception['type'] != 'error'
-          thrown_value = deserialize_value(exception)
+          thrown_value = Deserializer.deserialize(exception)
           error_message = "Evaluation failed: #{thrown_value}"
         end
 
         raise error_message
-      end
-
-      # Serialize a Ruby value to BiDi LocalValue format
-      def serialize_argument(arg)
-        case arg
-        when String
-          { type: 'string', value: arg }
-        when Integer
-          { type: 'number', value: arg }
-        when Float
-          serialize_number(arg)
-        when TrueClass, FalseClass
-          { type: 'boolean', value: arg }
-        when NilClass
-          { type: 'null' }
-        when Array
-          {
-            type: 'array',
-            value: arg.map { |item| serialize_argument(item) }
-          }
-        when Hash
-          {
-            type: 'object',
-            value: arg.map { |k, v| [k.to_s, serialize_argument(v)] }
-          }
-        when Regexp
-          {
-            type: 'regexp',
-            value: {
-              pattern: arg.source,
-              flags: [
-                ('i' if arg.options & Regexp::IGNORECASE != 0),
-                ('m' if arg.options & Regexp::MULTILINE != 0),
-                ('x' if arg.options & Regexp::EXTENDED != 0)
-              ].compact.join
-            }
-          }
-        else
-          raise "Unsupported argument type: #{arg.class}"
-        end
-      end
-
-      def serialize_number(num)
-        if num.nan?
-          { type: 'number', value: 'NaN' }
-        elsif num == Float::INFINITY
-          { type: 'number', value: 'Infinity' }
-        elsif num == -Float::INFINITY
-          { type: 'number', value: '-Infinity' }
-        elsif num.zero? && (1.0 / num).negative?
-          { type: 'number', value: '-0' }
-        else
-          { type: 'number', value: num }
-        end
-      end
-
-      # Deserialize BiDi protocol result value
-      def deserialize_result(result)
-        deserialize_value(result)
-      end
-
-      # Deserialize a BiDi value
-      def deserialize_value(val)
-        return val unless val.is_a?(Hash)
-
-        case val['type']
-        when 'number'
-          deserialize_number(val['value'])
-        when 'string'
-          val['value']
-        when 'boolean'
-          val['value']
-        when 'undefined', 'null'
-          nil
-        when 'array'
-          val['value'].map { |item| deserialize_value(item) }
-        when 'object'
-          val['value'].each_with_object({}) do |(key, item_val), hash|
-            hash[key] = deserialize_value(item_val)
-          end
-        when 'map'
-          val['value'].each_with_object({}) do |pair, hash|
-            key = deserialize_value(pair[0])
-            value = deserialize_value(pair[1])
-            hash[key] = value
-          end
-        when 'regexp'
-          pattern = val['value']['pattern']
-          flags_str = val['value']['flags'] || ''
-          flags = 0
-          flags |= Regexp::IGNORECASE if flags_str.include?('i')
-          flags |= Regexp::MULTILINE if flags_str.include?('m')
-          flags |= Regexp::EXTENDED if flags_str.include?('x')
-          Regexp.new(pattern, flags)
-        else
-          val['value']
-        end
-      end
-
-      def deserialize_number(value)
-        case value
-        when 'NaN'
-          Float::NAN
-        when 'Infinity'
-          Float::INFINITY
-        when '-Infinity'
-          -Float::INFINITY
-        when '-0'
-          -0.0
-        else
-          value
-        end
       end
     end
   end

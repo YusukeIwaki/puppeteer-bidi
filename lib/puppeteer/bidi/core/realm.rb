@@ -39,11 +39,20 @@ module Puppeteer
 
         # Call a function in the realm
         # @param function_declaration [String] Function source code
-        # @param await_promise [Boolean] Whether to await promise results
-        # @param options [Hash] Additional options
+        # @param await_promise [Boolean] Whether to await promise results (Note: different from returnByValue!)
+        # @param options [Hash] Additional options (arguments, serializationOptions, resultOwnership, etc.)
         # @return [Hash] Evaluation result (with 'type', 'realm', and optionally 'result'/'exceptionDetails')
         def call_function(function_declaration, await_promise, **options)
           raise RealmDestroyedError, @reason if disposed?
+
+          # Note: In Puppeteer, returnByValue controls serialization, not awaitPromise
+          # awaitPromise controls whether to wait for promises
+          # For BiDi, we use 'root' ownership by default to keep handles alive
+          # Only use 'none' if explicitly requested
+          unless options.key?(:resultOwnership)
+            options[:resultOwnership] = 'root'
+          end
+
           session.send_command('script.callFunction', {
             functionDeclaration: function_declaration,
             awaitPromise: await_promise,
@@ -55,10 +64,16 @@ module Puppeteer
         # Evaluate an expression in the realm
         # @param expression [String] JavaScript expression
         # @param await_promise [Boolean] Whether to await promise results
-        # @param options [Hash] Additional options
+        # @param options [Hash] Additional options (serializationOptions, resultOwnership, etc.)
         # @return [Hash] Evaluation result (with 'type', 'realm', and optionally 'result'/'exceptionDetails')
         def evaluate(expression, await_promise, **options)
           raise RealmDestroyedError, @reason if disposed?
+
+          # Use 'root' ownership by default to keep handles alive
+          unless options.key?(:resultOwnership)
+            options[:resultOwnership] = 'root'
+          end
+
           session.send_command('script.evaluate', {
             expression: expression,
             awaitPromise: await_promise,
