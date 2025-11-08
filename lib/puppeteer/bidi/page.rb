@@ -209,6 +209,24 @@ module Puppeteer
         main_frame.query_selector_all(selector)
       end
 
+      # Evaluate a function on the first element matching the selector
+      # @param selector [String] CSS selector
+      # @param page_function [String] JavaScript function to evaluate
+      # @param *args [Array] Arguments to pass to the function
+      # @return [Object] Result of evaluation
+      def eval_on_selector(selector, page_function, *args)
+        main_frame.eval_on_selector(selector, page_function, *args)
+      end
+
+      # Evaluate a function on all elements matching the selector
+      # @param selector [String] CSS selector
+      # @param page_function [String] JavaScript function to evaluate
+      # @param *args [Array] Arguments to pass to the function
+      # @return [Object] Result of evaluation
+      def eval_on_selector_all(selector, page_function, *args)
+        main_frame.eval_on_selector_all(selector, page_function, *args)
+      end
+
       # Get the page title
       # @return [String] Page title
       def title
