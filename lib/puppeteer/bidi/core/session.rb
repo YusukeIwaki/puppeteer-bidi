@@ -107,7 +107,17 @@ module Puppeteer
         private
 
         def initialize_session
-          # Browser will be created later by the caller
+          # Subscribe to BiDi modules
+          # Based on Puppeteer's subscribeModules: browsingContext, network, log, script, input
+          subscribe_modules = %w[
+            browsingContext
+            network
+            log
+            script
+            input
+          ]
+
+          subscribe(subscribe_modules)
         end
 
         def dispose_session(reason)

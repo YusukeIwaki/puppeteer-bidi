@@ -11,9 +11,11 @@ module Puppeteer
     # This is a high-level wrapper around Core::BrowsingContext
     class Frame
       attr_reader :browsing_context
+      attr_accessor :page
 
-      def initialize(browsing_context)
+      def initialize(browsing_context, page = nil)
         @browsing_context = browsing_context
+        @page = page
       end
 
       # Evaluate JavaScript in the frame context
@@ -142,6 +144,25 @@ module Puppeteer
       # @return [Object] Result of evaluation
       def eval_on_selector_all(selector, page_function, *args)
         document.eval_on_selector_all(selector, page_function, *args)
+      end
+
+      # Click an element matching the selector
+      # @param selector [String] CSS selector
+      # @param button [String] Mouse button
+      # @param count [Integer] Number of clicks
+      # @param delay [Numeric] Delay between mousedown and mouseup
+      # @param offset [Hash] Click offset {x:, y:}
+      def click(selector, button: 'left', count: 1, delay: nil, offset: nil)
+        assert_not_detached
+
+        handle = query_selector(selector)
+        raise SelectorNotFoundError, selector unless handle
+
+        begin
+          handle.click(button: button, count: count, delay: delay, offset: offset, frame: self)
+        ensure
+          handle.dispose
+        end
       end
 
       # Get the frame URL

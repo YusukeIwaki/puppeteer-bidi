@@ -133,6 +133,117 @@ module Puppeteer
         end
       end
 
+      # Click the element
+      # @param button [String] Mouse button
+      # @param count [Integer] Number of clicks
+      # @param delay [Numeric] Delay between mousedown and mouseup
+      # @param offset [Hash] Click offset {x:, y:} relative to element center
+      # @param frame [Frame] Frame containing this element (passed from Frame#click)
+      def click(button: 'left', count: 1, delay: nil, offset: nil, frame: nil)
+        assert_not_disposed
+
+        scroll_into_view_if_needed
+        point = clickable_point(offset: offset)
+
+        # Use the frame parameter to get the page
+        # Frame is needed because ElementHandle doesn't have direct access to Page
+        raise 'Frame parameter required for click' unless frame
+
+        frame.page.mouse.click(point[:x], point[:y], button: button, count: count, delay: delay)
+      end
+
+      # Scroll element into view if needed
+      def scroll_into_view_if_needed
+        assert_not_disposed
+
+        # Check if element is already visible
+        return if intersecting_viewport?(threshold: 1)
+
+        scroll_into_view
+      end
+
+      # Scroll element into view
+      def scroll_into_view
+        assert_not_disposed
+
+        evaluate('element => element.scrollIntoView({block: "center", inline: "center", behavior: "instant"})')
+      end
+
+      # Check if element is intersecting the viewport
+      # @param threshold [Numeric] Intersection threshold (0.0 to 1.0)
+      # @return [Boolean] True if intersecting
+      def intersecting_viewport?(threshold: 0)
+        assert_not_disposed
+
+        result = evaluate(<<~JS, threshold)
+          (element, threshold) => {
+            return new Promise(resolve => {
+              const observer = new IntersectionObserver(entries => {
+                resolve(entries[0].intersectionRatio > threshold);
+                observer.disconnect();
+              });
+              observer.observe(element);
+            });
+          }
+        JS
+
+        result
+      end
+
+      # Get clickable point for the element
+      # @param offset [Hash, nil] Offset {x:, y:} from element center
+      # @return [Hash] Point {x:, y:}
+      def clickable_point(offset: nil)
+        assert_not_disposed
+
+        box = clickable_box
+        raise 'Node is either not clickable or not an Element' unless box
+
+        if offset
+          {
+            x: box[:x] + offset[:x],
+            y: box[:y] + offset[:y]
+          }
+        else
+          {
+            x: box[:x] + box[:width] / 2,
+            y: box[:y] + box[:height] / 2
+          }
+        end
+      end
+
+      # Get the clickable box for the element
+      # @return [Hash, nil] Box {x:, y:, width:, height:}
+      def clickable_box
+        assert_not_disposed
+
+        # Get bounding box using BiDi-compatible approach
+        result = evaluate(<<~JS)
+          element => {
+            if (!element.getBoundingClientRect) {
+              return null;
+            }
+            const rect = element.getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height
+            };
+          }
+        JS
+
+        return nil unless result
+        return nil if result['width'] < 1 || result['height'] < 1
+
+        {
+          x: result['x'],
+          y: result['y'],
+          width: result['width'],
+          height: result['height']
+        }
+      end
+
       # String representation includes element type
       # @return [String] Formatted string
       def to_s

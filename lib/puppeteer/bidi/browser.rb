@@ -28,6 +28,17 @@ module Puppeteer
 
         # Initialize the Core layer
         @session = Core::Session.new(@connection, session_info)
+
+        # Subscribe to BiDi modules before creating browser
+        subscribe_modules = %w[
+          browsingContext
+          network
+          log
+          script
+          input
+        ]
+        @session.subscribe(subscribe_modules)
+
         @core_browser = Core::Browser.from(@session)
         @session.browser = @core_browser
 
