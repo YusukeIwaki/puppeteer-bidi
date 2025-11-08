@@ -89,9 +89,7 @@ module Puppeteer
         assert_not_disposed
 
         element_handle = query_selector(selector)
-        unless element_handle
-          raise "Error: failed to find element matching selector \"#{selector}\""
-        end
+        raise SelectorNotFoundError, selector unless element_handle
 
         begin
           element_handle.evaluate(page_function, *args)

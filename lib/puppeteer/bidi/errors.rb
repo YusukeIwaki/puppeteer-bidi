@@ -22,5 +22,15 @@ module Puppeteer
         super('Frame is detached')
       end
     end
+
+    # Raised when a selector does not match any elements
+    class SelectorNotFoundError < Error
+      attr_reader :selector
+
+      def initialize(selector)
+        @selector = selector
+        super("Error: failed to find element matching selector \"#{selector}\"")
+      end
+    end
   end
 end
