@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe 'QuerySelector', type: :integration do
   describe 'Page.query_selector' do
-    example 'should query existing element' do
+    it 'should query existing element' do
       with_test_state do |page:, server:, **|
         page.set_content('<section>test</section>')
         element = page.query_selector('section')
@@ -13,7 +13,7 @@ RSpec.describe 'QuerySelector', type: :integration do
       end
     end
 
-    example 'should return null for non-existing element' do
+    it 'should return null for non-existing element' do
       with_test_state do |page:, server:, **|
         page.set_content('<section>test</section>')
         element = page.query_selector('non-existing-element')
@@ -23,7 +23,7 @@ RSpec.describe 'QuerySelector', type: :integration do
   end
 
   describe 'ElementHandle.query_selector' do
-    example 'should query existing element' do
+    it 'should query existing element' do
       with_test_state do |page:, server:, **|
         page.set_content('<div class="second"><div class="inner">A</div></div><div class="third"><div class="inner">B</div></div>')
         html = page.query_selector('html')
@@ -40,7 +40,7 @@ RSpec.describe 'QuerySelector', type: :integration do
       end
     end
 
-    example 'should return null for non-existing element' do
+    it 'should return null for non-existing element' do
       with_test_state do |page:, server:, **|
         page.set_content('<div>test</div>')
         html = page.query_selector('html')
@@ -51,7 +51,7 @@ RSpec.describe 'QuerySelector', type: :integration do
   end
 
   describe 'Page.query_selector_all' do
-    example 'should query existing elements' do
+    it 'should query existing elements' do
       with_test_state do |page:, server:, **|
         page.set_content('<div>A</div><br/><div>B</div>')
         elements = page.query_selector_all('div')
@@ -63,7 +63,7 @@ RSpec.describe 'QuerySelector', type: :integration do
       end
     end
 
-    example 'should return empty array for non-existing elements' do
+    it 'should return empty array for non-existing elements' do
       with_test_state do |page:, server:, **|
         page.set_content('<span>A</span>')
         elements = page.query_selector_all('div')
@@ -73,7 +73,7 @@ RSpec.describe 'QuerySelector', type: :integration do
   end
 
   describe 'ElementHandle.query_selector_all' do
-    example 'should query existing elements' do
+    it 'should query existing elements' do
       with_test_state do |page:, server:, **|
         page.set_content('<div><p>A</p><p>B</p></div>')
         div = page.query_selector('div')
@@ -85,7 +85,7 @@ RSpec.describe 'QuerySelector', type: :integration do
       end
     end
 
-    example 'should return empty array for non-existing elements' do
+    it 'should return empty array for non-existing elements' do
       with_test_state do |page:, server:, **|
         page.set_content('<div><span>A</span></div>')
         div = page.query_selector('div')

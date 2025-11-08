@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe 'JSHandle', type: :integration do
   describe 'Page.evaluateHandle' do
-    example 'should work' do
+    it 'should work' do
       with_test_state do |page:, server:, **|
         window_handle = page.evaluate_handle('window')
         expect(window_handle).not_to be_nil
@@ -12,7 +12,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should return the RemoteObject' do
+    it 'should return the RemoteObject' do
       with_test_state do |page:, server:, **|
         window_handle = page.evaluate_handle('window')
         remote_object = window_handle.remote_object
@@ -21,7 +21,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should accept object handle as an argument' do
+    it 'should accept object handle as an argument' do
       with_test_state do |page:, server:, **|
         navigator_handle = page.evaluate_handle('() => navigator')
         text = page.evaluate('(e) => e.userAgent', navigator_handle)
@@ -29,7 +29,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should accept object handle to primitive types' do
+    it 'should accept object handle to primitive types' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle('5')
         is_five = page.evaluate('(e) => Object.is(e, 5)', a_handle)
@@ -37,7 +37,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should accept object handle to unserializable value' do
+    it 'should accept object handle to unserializable value' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle('Infinity')
         is_infinity = page.evaluate('(e) => Object.is(e, Infinity)', a_handle)
@@ -47,7 +47,7 @@ RSpec.describe 'JSHandle', type: :integration do
   end
 
   describe 'JSHandle#get_property' do
-    example 'should work' do
+    it 'should work' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle("({ one: 1, two: 2, three: 3 })")
         two_handle = a_handle.get_property('two')
@@ -57,7 +57,7 @@ RSpec.describe 'JSHandle', type: :integration do
   end
 
   describe 'JSHandle#json_value' do
-    example 'should work' do
+    it 'should work' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle("({ foo: 'bar' })")
         json = a_handle.json_value
@@ -65,7 +65,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should work with jsonValues that are not objects' do
+    it 'should work with jsonValues that are not objects' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle('[1, 2, 3]')
         json = a_handle.json_value
@@ -73,7 +73,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should work with jsonValues that are primitives' do
+    it 'should work with jsonValues that are primitives' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle("'foo'")
         json = a_handle.json_value
@@ -85,7 +85,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should work with dates' do
+    it 'should work with dates' do
       with_test_state do |page:, server:, **|
         date_handle = page.evaluate_handle('new Date("2020-05-27T01:31:38.506Z")')
         date = date_handle.json_value
@@ -94,7 +94,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should not throw for circular objects' do
+    it 'should not throw for circular objects' do
       with_test_state do |page:, server:, **|
         handle = page.evaluate_handle(<<~JS)
           (() => {
@@ -110,7 +110,7 @@ RSpec.describe 'JSHandle', type: :integration do
   end
 
   describe 'JSHandle#get_properties' do
-    example 'should work' do
+    it 'should work' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle("({ foo: 'bar' })")
         properties = a_handle.get_properties
@@ -122,7 +122,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should return even non-own properties' do
+    it 'should return even non-own properties' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle(<<~JS)
           (() => {
@@ -149,7 +149,7 @@ RSpec.describe 'JSHandle', type: :integration do
   end
 
   describe 'JSHandle#as_element' do
-    example 'should work' do
+    it 'should work' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle('document.body')
         element = a_handle.as_element
@@ -158,7 +158,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should return null for non-elements' do
+    it 'should return null for non-elements' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle('2')
         element = a_handle.as_element
@@ -166,7 +166,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should return ElementHandle for TextNodes' do
+    it 'should return ElementHandle for TextNodes' do
       with_test_state do |page:, server:, **|
         page.set_content('<div>ee!</div>')
         a_handle = page.evaluate_handle('document.querySelector("div").firstChild')
@@ -182,7 +182,7 @@ RSpec.describe 'JSHandle', type: :integration do
   end
 
   describe 'JSHandle#to_s' do
-    example 'should work for primitives' do
+    it 'should work for primitives' do
       with_test_state do |page:, server:, **|
         number_handle = page.evaluate_handle('2')
         expect(number_handle.to_s).to eq('JSHandle:2')
@@ -192,14 +192,14 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should work for complicated objects' do
+    it 'should work for complicated objects' do
       with_test_state do |page:, server:, **|
         a_handle = page.evaluate_handle('window')
         expect(a_handle.to_s).to eq('JSHandle@window')
       end
     end
 
-    example 'should work with different subtypes' do
+    it 'should work with different subtypes' do
       with_test_state do |page:, server:, **|
         test_cases = {
           'function' => '(function(){})',
@@ -224,7 +224,7 @@ RSpec.describe 'JSHandle', type: :integration do
   end
 
   describe 'JSHandle disposal' do
-    example 'should work' do
+    it 'should work' do
       with_test_state do |page:, server:, **|
         window_handle = page.evaluate_handle('window')
         expect(window_handle.disposed?).to be false
@@ -234,7 +234,7 @@ RSpec.describe 'JSHandle', type: :integration do
       end
     end
 
-    example 'should throw after disposal' do
+    it 'should throw after disposal' do
       with_test_state do |page:, server:, **|
         handle = page.evaluate_handle("({foo: 'bar'})")
         handle.dispose
