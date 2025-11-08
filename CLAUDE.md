@@ -1498,3 +1498,430 @@ Potential improvements for handle implementation:
 5. **Use Puppeteer's tricks** - like `evaluate('(value) => value')` for json_value
 6. **Test disposal thoroughly** - handle lifecycle bugs are subtle and common
 7. **Centralize serialization** - eliminates duplication and ensures consistency
+
+## Selector Evaluation Methods Implementation
+
+### Overview
+
+The `eval_on_selector` and `eval_on_selector_all` methods provide convenient shortcuts for querying elements and evaluating JavaScript functions on them, equivalent to Puppeteer's `$eval` and `$$eval`.
+
+### API Design
+
+#### Method Naming Convention
+
+Ruby cannot use `$` in method names, so we use descriptive alternatives:
+
+| Puppeteer | Ruby | Description |
+|-----------|------|-------------|
+| `$eval` | `eval_on_selector` | Evaluate on first matching element |
+| `$$eval` | `eval_on_selector_all` | Evaluate on all matching elements |
+
+#### Implementation Hierarchy
+
+Following Puppeteer's delegation pattern:
+
+```
+Page#eval_on_selector(_all)
+  ↓ delegates to
+Frame#eval_on_selector(_all)
+  ↓ delegates to
+ElementHandle#eval_on_selector(_all) (on document)
+  ↓ implementation
+  1. query_selector(_all) - Find element(s)
+  2. Validate results
+  3. evaluate() - Execute function
+  4. dispose - Clean up handles
+```
+
+### Implementation Details
+
+#### Page and Frame Methods
+
+```ruby
+# lib/puppeteer/bidi/page.rb
+def eval_on_selector(selector, page_function, *args)
+  main_frame.eval_on_selector(selector, page_function, *args)
+end
+
+# lib/puppeteer/bidi/frame.rb
+def eval_on_selector(selector, page_function, *args)
+  document.eval_on_selector(selector, page_function, *args)
+end
+```
+
+**Design rationale**: Page and Frame act as thin wrappers, delegating to the document element handle.
+
+#### ElementHandle#eval_on_selector
+
+```ruby
+def eval_on_selector(selector, page_function, *args)
+  assert_not_disposed
+
+  element_handle = query_selector(selector)
+  raise SelectorNotFoundError, selector unless element_handle
+
+  begin
+    element_handle.evaluate(page_function, *args)
+  ensure
+    element_handle.dispose
+  end
+end
+```
+
+**Key points**:
+- Throws `SelectorNotFoundError` if no element found (matches Puppeteer behavior)
+- Uses `begin/ensure` to guarantee handle disposal
+- Searches within element's subtree (not page-wide)
+
+#### ElementHandle#eval_on_selector_all
+
+```ruby
+def eval_on_selector_all(selector, page_function, *args)
+  assert_not_disposed
+
+  element_handles = query_selector_all(selector)
+
+  begin
+    # Create array handle in browser context
+    array_handle = @realm.call_function(
+      '(...elements) => elements',
+      false,
+      arguments: element_handles.map(&:remote_value)
+    )
+
+    array_js_handle = JSHandle.from(array_handle['result'], @realm)
+
+    begin
+      array_js_handle.evaluate(page_function, *args)
+    ensure
+      array_js_handle.dispose
+    end
+  ensure
+    element_handles.each(&:dispose)
+  end
+end
+```
+
+**Key points**:
+- Returns result for empty array without error (differs from `eval_on_selector`)
+- Creates array handle using spread operator trick: `(...elements) => elements`
+- Nested `ensure` blocks for proper resource cleanup
+- Disposes both individual element handles and array handle
+
+### Error Handling Differences
+
+| Method | Behavior when no elements found |
+|--------|--------------------------------|
+| `eval_on_selector` | Throws `SelectorNotFoundError` |
+| `eval_on_selector_all` | Returns evaluation result (e.g., `0` for `divs => divs.length`) |
+
+This matches Puppeteer's behavior:
+- `$eval`: Must find exactly one element
+- `$$eval`: Works with zero or more elements
+
+### Usage Examples
+
+```ruby
+# Basic usage
+page.set_content('<section id="test">Hello</section>')
+id = page.eval_on_selector('section', 'e => e.id')
+# => "test"
+
+# With arguments
+text = page.eval_on_selector('section', '(e, suffix) => e.textContent + suffix', '!')
+# => "Hello!"
+
+# ElementHandle arguments
+div = page.query_selector('div')
+result = page.eval_on_selector('section', '(e, div) => e.textContent + div.textContent', div)
+
+# eval_on_selector_all with multiple elements
+page.set_content('<div>A</div><div>B</div><div>C</div>')
+count = page.eval_on_selector_all('div', 'divs => divs.length')
+# => 3
+
+# Subtree search with ElementHandle
+tweet = page.query_selector('.tweet')
+likes = tweet.eval_on_selector('.like', 'node => node.innerText')
+# Only searches within .tweet element
+```
+
+### Test Coverage
+
+**Total**: 13 integration tests
+
+**Page.eval_on_selector** (4 tests):
+- Basic functionality (property access)
+- Argument passing
+- ElementHandle arguments
+- Error on missing selector
+
+**ElementHandle.eval_on_selector** (3 tests):
+- Basic functionality
+- Subtree isolation
+- Error on missing selector
+
+**Page.eval_on_selector_all** (4 tests):
+- Basic functionality (array length)
+- Extra arguments
+- ElementHandle arguments
+- Large element count (1001 elements)
+
+**ElementHandle.eval_on_selector_all** (2 tests):
+- Subtree retrieval
+- Empty result handling
+
+### Performance Considerations
+
+#### Handle Lifecycle
+
+- **eval_on_selector**: Creates 1 temporary handle per call
+- **eval_on_selector_all**: Creates N+1 handles (N elements + 1 array)
+- All handles automatically disposed after evaluation
+
+#### Large Element Sets
+
+Tested with 1001 elements without issues. The implementation efficiently:
+1. Queries all elements at once
+2. Creates single array handle
+3. Evaluates function in single round-trip
+4. Disposes all handles in parallel
+
+### Reference Implementation
+
+Based on Puppeteer's implementation:
+- [Page.$eval](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/Page.ts)
+- [Frame.$eval](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/Frame.ts)
+- [ElementHandle.$eval](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/ElementHandle.ts)
+- [Test specs](https://github.com/puppeteer/puppeteer/blob/main/test/src/queryselector.spec.ts)
+
+## Error Handling and Custom Exceptions
+
+### Philosophy
+
+Use custom exception classes instead of inline string raises for:
+- **Type safety**: Enable `rescue` by specific exception type
+- **DRY principle**: Centralize error messages
+- **Debugging**: Attach contextual data to exception objects
+- **Consistency**: Uniform error handling across codebase
+
+### Custom Exception Hierarchy
+
+```ruby
+StandardError
+└── Puppeteer::Bidi::Error
+    ├── JSHandleDisposedError
+    ├── PageClosedError
+    ├── FrameDetachedError
+    └── SelectorNotFoundError
+```
+
+All custom exceptions inherit from `Puppeteer::Bidi::Error` for consistent rescue patterns.
+
+### Exception Classes
+
+#### JSHandleDisposedError
+
+**When raised**: Attempting to use a disposed JSHandle or ElementHandle
+
+**Location**: `lib/puppeteer/bidi/errors.rb`
+
+```ruby
+class JSHandleDisposedError < Error
+  def initialize
+    super('JSHandle is disposed')
+  end
+end
+```
+
+**Usage**:
+```ruby
+# JSHandle and ElementHandle
+private
+
+def assert_not_disposed
+  raise JSHandleDisposedError if @disposed
+end
+```
+
+**Affected methods**:
+- `JSHandle#evaluate`, `#evaluate_handle`, `#get_property`, `#get_properties`, `#json_value`
+- `ElementHandle#query_selector`, `#query_selector_all`, `#eval_on_selector`, `#eval_on_selector_all`
+
+#### PageClosedError
+
+**When raised**: Attempting to use a closed Page
+
+**Location**: `lib/puppeteer/bidi/errors.rb`
+
+```ruby
+class PageClosedError < Error
+  def initialize
+    super('Page is closed')
+  end
+end
+```
+
+**Usage**:
+```ruby
+# Page
+private
+
+def assert_not_closed
+  raise PageClosedError if closed?
+end
+```
+
+**Affected methods**:
+- `Page#goto`, `#set_content`, `#screenshot`
+
+#### FrameDetachedError
+
+**When raised**: Attempting to use a detached Frame
+
+**Location**: `lib/puppeteer/bidi/errors.rb`
+
+```ruby
+class FrameDetachedError < Error
+  def initialize
+    super('Frame is detached')
+  end
+end
+```
+
+**Usage**:
+```ruby
+# Frame
+private
+
+def assert_not_detached
+  raise FrameDetachedError if @browsing_context.closed?
+end
+```
+
+**Affected methods**:
+- `Frame#evaluate`, `#evaluate_handle`, `#document`
+
+#### SelectorNotFoundError
+
+**When raised**: CSS selector doesn't match any elements in `eval_on_selector`
+
+**Location**: `lib/puppeteer/bidi/errors.rb`
+
+```ruby
+class SelectorNotFoundError < Error
+  attr_reader :selector
+
+  def initialize(selector)
+    @selector = selector
+    super("Error: failed to find element matching selector \"#{selector}\"")
+  end
+end
+```
+
+**Usage**:
+```ruby
+# ElementHandle#eval_on_selector
+element_handle = query_selector(selector)
+raise SelectorNotFoundError, selector unless element_handle
+```
+
+**Contextual data**: The `selector` value is accessible via the exception object for debugging.
+
+### Implementation Pattern
+
+#### 1. Define Custom Exception
+
+```ruby
+# lib/puppeteer/bidi/errors.rb
+class MyCustomError < Error
+  def initialize(context = nil)
+    @context = context
+    super("Error message with #{context}")
+  end
+end
+```
+
+#### 2. Add Private Assertion Method
+
+```ruby
+class MyClass
+  private
+
+  def assert_valid_state
+    raise MyCustomError, @context if invalid?
+  end
+end
+```
+
+#### 3. Replace Inline Raises
+
+```ruby
+# Before
+def my_method
+  raise 'Invalid state' if invalid?
+  # ...
+end
+
+# After
+def my_method
+  assert_valid_state
+  # ...
+end
+```
+
+### Benefits
+
+**Type-safe error handling**:
+```ruby
+begin
+  page.eval_on_selector('.missing', 'e => e.id')
+rescue SelectorNotFoundError => e
+  puts "Selector '#{e.selector}' not found"
+rescue JSHandleDisposedError
+  puts "Handle was disposed"
+end
+```
+
+**Consistent error messages**: Single source of truth for error text
+
+**Reduced duplication**: 16 inline raises eliminated across codebase
+
+**Better debugging**: Exception objects carry contextual information
+
+### Testing Custom Exceptions
+
+Tests use regex matching for backward compatibility:
+
+```ruby
+# Test remains compatible with custom exception
+expect {
+  page.eval_on_selector('non-existing', 'e => e.id')
+}.to raise_error(/failed to find element matching selector/)
+```
+
+This allows tests to pass with both string raises and custom exceptions.
+
+### Refactoring Statistics
+
+| Class | Inline Raises Replaced | Private Assert Method |
+|-------|------------------------|----------------------|
+| JSHandle | 5 | `assert_not_disposed` |
+| ElementHandle | 4 + 1 (selector) | (inherited) |
+| Page | 3 | `assert_not_closed` |
+| Frame | 3 | `assert_not_detached` |
+| **Total** | **16** | **3 methods** |
+
+### Future Considerations
+
+When adding new error conditions:
+
+1. **Create custom exception** in `lib/puppeteer/bidi/errors.rb`
+2. **Add to exception hierarchy** by inheriting from `Error`
+3. **Include contextual data** as `attr_reader` if needed
+4. **Create private assert method** in the relevant class
+5. **Replace inline raises** with assert method calls
+6. **Update tests** to use regex matching for flexibility
+
+This pattern ensures consistency and maintainability across the entire codebase.
+
