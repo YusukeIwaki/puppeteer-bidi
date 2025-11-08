@@ -8,6 +8,7 @@ module Puppeteer
   end
 end
 
+require_relative "bidi/errors"
 require_relative "bidi/transport"
 require_relative "bidi/connection"
 require_relative "bidi/browser_launcher"

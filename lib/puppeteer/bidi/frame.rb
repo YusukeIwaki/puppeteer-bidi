@@ -21,7 +21,7 @@ module Puppeteer
       # @param *args [Array] Arguments to pass to the function (if script is a function)
       # @return [Object] Result of evaluation
       def evaluate(script, *args)
-        raise 'Frame is detached' if @browsing_context.closed?
+        assert_not_detached
 
         # Detect if the script is a function (arrow function or regular function)
         # but not an IIFE (immediately invoked function expression)
@@ -64,7 +64,7 @@ module Puppeteer
       # @param *args [Array] Arguments to pass to the function (if script is a function)
       # @return [JSHandle] Handle to the result
       def evaluate_handle(script, *args)
-        raise 'Frame is detached' if @browsing_context.closed?
+        assert_not_detached
 
         script_trimmed = script.strip
 
@@ -100,7 +100,7 @@ module Puppeteer
       # Get the document element handle
       # @return [ElementHandle] Document element handle
       def document
-        raise 'Frame is detached' if @browsing_context.closed?
+        assert_not_detached
 
         # Get document object
         result = @browsing_context.default_realm.evaluate('document', false)
@@ -126,6 +126,24 @@ module Puppeteer
         document.query_selector_all(selector)
       end
 
+      # Evaluate a function on the first element matching the selector
+      # @param selector [String] CSS selector
+      # @param page_function [String] JavaScript function to evaluate
+      # @param *args [Array] Arguments to pass to the function
+      # @return [Object] Result of evaluation
+      def eval_on_selector(selector, page_function, *args)
+        document.eval_on_selector(selector, page_function, *args)
+      end
+
+      # Evaluate a function on all elements matching the selector
+      # @param selector [String] CSS selector
+      # @param page_function [String] JavaScript function to evaluate
+      # @param *args [Array] Arguments to pass to the function
+      # @return [Object] Result of evaluation
+      def eval_on_selector_all(selector, page_function, *args)
+        document.eval_on_selector_all(selector, page_function, *args)
+      end
+
       # Get the frame URL
       # @return [String] Current URL
       def url
@@ -146,6 +164,12 @@ module Puppeteer
       end
 
       private
+
+      # Check if this frame is detached and raise error if so
+      # @raise [FrameDetachedError] If frame is detached
+      def assert_not_detached
+        raise FrameDetachedError if @browsing_context.closed?
+      end
 
       # Handle evaluation exceptions
       # @param result [Hash] BiDi result with exception

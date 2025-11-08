@@ -22,7 +22,7 @@ module Puppeteer
       # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded', 'networkidle')
       # @return [HTTPResponse, nil] Main response
       def goto(url, wait_until: 'load')
-        raise 'Page is closed' if closed?
+        assert_not_closed
 
         wait = case wait_until
                when 'load'
@@ -42,7 +42,7 @@ module Puppeteer
       # @param html [String] HTML content to set
       # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')
       def set_content(html, wait_until: 'load')
-        raise 'Page is closed' if closed?
+        assert_not_closed
 
         # Use data URL to set content
         # Encode HTML in base64 to avoid URL encoding issues
@@ -59,7 +59,7 @@ module Puppeteer
       # @param capture_beyond_viewport [Boolean] Capture screenshot beyond the viewport (default: true)
       # @return [String] Base64-encoded image data
       def screenshot(path: nil, type: 'png', full_page: false, clip: nil, capture_beyond_viewport: true)
-        raise 'Page is closed' if closed?
+        assert_not_closed
 
         options = {
           format: {
@@ -209,6 +209,24 @@ module Puppeteer
         main_frame.query_selector_all(selector)
       end
 
+      # Evaluate a function on the first element matching the selector
+      # @param selector [String] CSS selector
+      # @param page_function [String] JavaScript function to evaluate
+      # @param *args [Array] Arguments to pass to the function
+      # @return [Object] Result of evaluation
+      def eval_on_selector(selector, page_function, *args)
+        main_frame.eval_on_selector(selector, page_function, *args)
+      end
+
+      # Evaluate a function on all elements matching the selector
+      # @param selector [String] CSS selector
+      # @param page_function [String] JavaScript function to evaluate
+      # @param *args [Array] Arguments to pass to the function
+      # @return [Object] Result of evaluation
+      def eval_on_selector_all(selector, page_function, *args)
+        main_frame.eval_on_selector_all(selector, page_function, *args)
+      end
+
       # Get the page title
       # @return [String] Page title
       def title
@@ -269,6 +287,14 @@ module Puppeteer
       end
 
       alias viewport= set_viewport
+
+      private
+
+      # Check if this page is closed and raise error if so
+      # @raise [PageClosedError] If page is closed
+      def assert_not_closed
+        raise PageClosedError if closed?
+      end
     end
   end
 end

@@ -20,7 +20,7 @@ module Puppeteer
       # @param selector [String] CSS selector
       # @return [ElementHandle, nil] Element handle if found, nil otherwise
       def query_selector(selector)
-        raise 'ElementHandle is disposed' if disposed?
+        assert_not_disposed
 
         # Use querySelector on this element
         result = @realm.call_function(
@@ -51,7 +51,7 @@ module Puppeteer
       # @param selector [String] CSS selector
       # @return [Array<ElementHandle>] Array of element handles
       def query_selector_all(selector)
-        raise 'ElementHandle is disposed' if disposed?
+        assert_not_disposed
 
         # Use querySelectorAll on this element
         result = @realm.call_function(
@@ -77,6 +77,59 @@ module Puppeteer
         # Convert each element to ElementHandle
         result_value['value'].map do |element_value|
           ElementHandle.new(@realm, element_value)
+        end
+      end
+
+      # Evaluate a function on the first element matching the selector
+      # @param selector [String] CSS selector
+      # @param page_function [String] JavaScript function to evaluate
+      # @param *args [Array] Arguments to pass to the function
+      # @return [Object] Result of evaluation
+      def eval_on_selector(selector, page_function, *args)
+        assert_not_disposed
+
+        element_handle = query_selector(selector)
+        raise SelectorNotFoundError, selector unless element_handle
+
+        begin
+          element_handle.evaluate(page_function, *args)
+        ensure
+          element_handle.dispose
+        end
+      end
+
+      # Evaluate a function on all elements matching the selector
+      # @param selector [String] CSS selector
+      # @param page_function [String] JavaScript function to evaluate
+      # @param *args [Array] Arguments to pass to the function
+      # @return [Object] Result of evaluation
+      def eval_on_selector_all(selector, page_function, *args)
+        assert_not_disposed
+
+        # Get all matching elements
+        element_handles = query_selector_all(selector)
+
+        begin
+          # Create an array handle containing all element handles
+          # Use evaluateHandle to create an array in the browser context
+          array_handle = @realm.call_function(
+            '(...elements) => elements',
+            false,
+            arguments: element_handles.map(&:remote_value)
+          )
+
+          # Create a JSHandle for the array
+          array_js_handle = JSHandle.from(array_handle['result'], @realm)
+
+          begin
+            # Evaluate the page_function with the array as first argument
+            array_js_handle.evaluate(page_function, *args)
+          ensure
+            array_js_handle.dispose
+          end
+        ensure
+          # Dispose all element handles
+          element_handles.each(&:dispose)
         end
       end
 
