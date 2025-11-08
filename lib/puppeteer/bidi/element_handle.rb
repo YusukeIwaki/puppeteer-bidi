@@ -20,7 +20,7 @@ module Puppeteer
       # @param selector [String] CSS selector
       # @return [ElementHandle, nil] Element handle if found, nil otherwise
       def query_selector(selector)
-        raise 'ElementHandle is disposed' if disposed?
+        assert_not_disposed
 
         # Use querySelector on this element
         result = @realm.call_function(
@@ -51,7 +51,7 @@ module Puppeteer
       # @param selector [String] CSS selector
       # @return [Array<ElementHandle>] Array of element handles
       def query_selector_all(selector)
-        raise 'ElementHandle is disposed' if disposed?
+        assert_not_disposed
 
         # Use querySelectorAll on this element
         result = @realm.call_function(
@@ -86,7 +86,7 @@ module Puppeteer
       # @param *args [Array] Arguments to pass to the function
       # @return [Object] Result of evaluation
       def eval_on_selector(selector, page_function, *args)
-        raise 'ElementHandle is disposed' if disposed?
+        assert_not_disposed
 
         element_handle = query_selector(selector)
         unless element_handle
@@ -106,7 +106,7 @@ module Puppeteer
       # @param *args [Array] Arguments to pass to the function
       # @return [Object] Result of evaluation
       def eval_on_selector_all(selector, page_function, *args)
-        raise 'ElementHandle is disposed' if disposed?
+        assert_not_disposed
 
         # Get all matching elements
         element_handles = query_selector_all(selector)

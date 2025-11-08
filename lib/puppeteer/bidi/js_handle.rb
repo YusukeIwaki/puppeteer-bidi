@@ -68,7 +68,7 @@ module Puppeteer
       # @param *args [Array] Additional arguments
       # @return [Object] Deserialized result
       def evaluate(script, *args)
-        raise 'JSHandle is disposed' if @disposed
+        assert_not_disposed
 
         # Prepend this handle as first argument
         all_args = [@remote_value] + args.map { |arg| Serializer.serialize(arg) }
@@ -89,7 +89,7 @@ module Puppeteer
       # @param *args [Array] Additional arguments
       # @return [JSHandle] Handle to the result
       def evaluate_handle(script, *args)
-        raise 'JSHandle is disposed' if @disposed
+        assert_not_disposed
 
         # Prepend this handle as first argument
         all_args = [@remote_value] + args.map { |arg| Serializer.serialize(arg) }
@@ -109,7 +109,7 @@ module Puppeteer
       # @param property_name [String] Property name to get
       # @return [JSHandle] Handle to the property value
       def get_property(property_name)
-        raise 'JSHandle is disposed' if @disposed
+        assert_not_disposed
 
         result = @realm.call_function(
           '(object, property) => object[property]',
@@ -132,7 +132,7 @@ module Puppeteer
       # Get all properties of the object
       # @return [Hash<String, JSHandle>] Map of property names to handles
       def get_properties
-        raise 'JSHandle is disposed' if @disposed
+        assert_not_disposed
 
         # Get own and inherited properties
         result = @realm.call_function(
@@ -211,7 +211,7 @@ module Puppeteer
       # Convert this handle to a JSON-serializable value
       # @return [Object] Ruby object (Hash, Array, String, Number, etc.)
       def json_value
-        raise 'JSHandle is disposed' if @disposed
+        assert_not_disposed
 
         # Use evaluate with identity function, just like Puppeteer does
         # This leverages BiDi's built-in serialization with returnByValue: true
@@ -268,6 +268,12 @@ module Puppeteer
       end
 
       private
+
+      # Check if this handle has been disposed and raise error if so
+      # @raise [JSHandleDisposedError] If handle is disposed
+      def assert_not_disposed
+        raise JSHandleDisposedError if @disposed
+      end
 
       # Handle evaluation exceptions
       def handle_evaluation_exception(result)
