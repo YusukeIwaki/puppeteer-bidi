@@ -49,6 +49,11 @@ module Puppeteer
           sent_at: Time.now
         }
 
+        # Debug output
+        if ENV['DEBUG_BIDI_COMMAND']
+          puts "[BiDi] Request #{method}: #{command.inspect}"
+        end
+
         # Send command through transport
         @transport.send_message(command)
 
@@ -58,7 +63,7 @@ module Puppeteer
           result = promise.value!(timeout_seconds)
 
           # Debug output
-          if ENV['DEBUG_BIDI']
+          if ENV['DEBUG_BIDI_COMMAND']
             puts "[BiDi] Response for #{method}: #{result.inspect}"
           end
 

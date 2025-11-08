@@ -107,14 +107,14 @@ RSpec.describe 'Evaluation', type: :integration do
 
     it 'should accept element handle as an argument' do
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/empty.html")
-        page.set_content('<button>Click</button>')
-        # For now, skip this test as it requires ElementHandle implementation
-        skip 'ElementHandle not yet implemented'
+        page.set_content('<section>42</section>')
+        element = page.query_selector('section')
+        text = page.evaluate('(e) => e.textContent', element)
+        expect(text).to eq('42')
       end
     end
 
-    it 'should return proper type for strings' do
+    example 'should return proper type for strings' do
       with_test_state do |page:, **|
         result = page.evaluate('() => "hello"')
         expect(result).to be_a(String)
@@ -122,7 +122,7 @@ RSpec.describe 'Evaluation', type: :integration do
       end
     end
 
-    it 'should return proper type for numbers' do
+    example 'should return proper type for numbers' do
       with_test_state do |page:, **|
         result = page.evaluate('() => 42')
         expect(result).to be_a(Integer)

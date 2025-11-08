@@ -53,6 +53,7 @@ module Puppeteer
       def send_message(message)
         raise ClosedError, 'Transport is closed' if @closed
 
+        debug_print_send(message)
         json = JSON.generate(message)
         Async do
           @connection&.write(json)
@@ -107,6 +108,7 @@ module Puppeteer
 
           begin
             data = JSON.parse(message)
+            debug_print_receive(data)
             @on_message&.call(data)
           rescue JSON::ParserError => e
             warn "Failed to parse BiDi message: #{e.message}"
@@ -116,6 +118,18 @@ module Puppeteer
         warn "Transport receive error: #{e.message}"
       ensure
         close unless @closed
+      end
+
+      def debug_print_send(message)
+        if ENV['DEBUG_PROTOCOL']
+          puts "SEND >> #{JSON.generate(message)}"
+        end
+      end
+
+      def debug_print_receive(message)
+        if ENV['DEBUG_PROTOCOL']
+          puts "RECV << #{JSON.generate(message)}"
+        end
       end
     end
   end
