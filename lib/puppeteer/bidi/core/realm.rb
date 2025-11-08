@@ -49,16 +49,15 @@ module Puppeteer
           # awaitPromise controls whether to wait for promises
           # For BiDi, we use 'root' ownership by default to keep handles alive
           # Only use 'none' if explicitly requested
-          unless options.key?(:resultOwnership)
-            options[:resultOwnership] = 'root'
-          end
-
-          session.send_command('script.callFunction', {
+          params = {
             functionDeclaration: function_declaration,
             awaitPromise: await_promise,
             target: target,
+            resultOwnership: 'root',
             **options
-          })
+          }
+
+          session.send_command('script.callFunction', params)
         end
 
         # Evaluate an expression in the realm
@@ -70,16 +69,15 @@ module Puppeteer
           raise RealmDestroyedError, @reason if disposed?
 
           # Use 'root' ownership by default to keep handles alive
-          unless options.key?(:resultOwnership)
-            options[:resultOwnership] = 'root'
-          end
-
-          session.send_command('script.evaluate', {
+          params = {
             expression: expression,
             awaitPromise: await_promise,
             target: target,
+            resultOwnership: 'root',
             **options
-          })
+          }
+
+          session.send_command('script.evaluate', params)
         end
 
         # Resolve the CDP execution context ID for this realm
