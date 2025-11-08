@@ -114,7 +114,7 @@ RSpec.describe 'Evaluation', type: :integration do
       end
     end
 
-    example 'should return proper type for strings' do
+    it 'should return proper type for strings' do
       with_test_state do |page:, **|
         result = page.evaluate('() => "hello"')
         expect(result).to be_a(String)
@@ -122,7 +122,7 @@ RSpec.describe 'Evaluation', type: :integration do
       end
     end
 
-    example 'should return proper type for numbers' do
+    it 'should return proper type for numbers' do
       with_test_state do |page:, **|
         result = page.evaluate('() => 42')
         expect(result).to be_a(Integer)
