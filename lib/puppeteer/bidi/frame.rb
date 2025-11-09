@@ -15,6 +15,11 @@ module Puppeteer
       def initialize(parent, browsing_context)
         @parent = parent
         @browsing_context = browsing_context
+
+        # Set this frame as the environment for the realm
+        # Following Puppeteer's design where realm.environment returns the frame
+        realm = @browsing_context.default_realm
+        realm.environment = self if realm.respond_to?(:environment=)
       end
 
       # Get the page that owns this frame
@@ -177,6 +182,23 @@ module Puppeteer
         end
       end
 
+      # Type text into an element matching the selector
+      # @param selector [String] CSS selector
+      # @param text [String] Text to type
+      # @param delay [Numeric] Delay between key presses in milliseconds
+      def type(selector, text, delay: 0)
+        assert_not_detached
+
+        handle = query_selector(selector)
+        raise SelectorNotFoundError, selector unless handle
+
+        begin
+          handle.type(text, delay: delay)
+        ensure
+          handle.dispose
+        end
+      end
+
       # Get the frame URL
       # @return [String] Current URL
       def url
@@ -194,6 +216,24 @@ module Puppeteer
       # @return [Boolean] Whether the frame is detached
       def detached?
         @browsing_context.closed?
+      end
+
+      # Get the isolated realm (default realm) for this frame
+      # @return [Core::WindowRealm] The default realm
+      def isolated_realm
+        @browsing_context.default_realm
+      end
+
+      # Get child frames
+      # @return [Array<Frame>] Child frames
+      def child_frames
+        # Get child browsing contexts directly from the browsing context
+        child_contexts = @browsing_context.children
+
+        # Create Frame objects for each child
+        child_contexts.map do |child_context|
+          Frame.new(self, child_context)
+        end
       end
 
       private

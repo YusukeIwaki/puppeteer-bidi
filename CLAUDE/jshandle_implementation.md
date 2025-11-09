@@ -387,6 +387,82 @@ handle.evaluate('doc => doc.body.innerHTML')
 handle.dispose  # Clean up
 ```
 
+### ElementHandle Frame Access Pattern
+
+**Following Puppeteer's architecture**, ElementHandle accesses the Page through its Frame:
+
+```typescript
+// Puppeteer TypeScript
+class BidiElementHandle extends ElementHandle {
+  override get frame(): BidiFrame {
+    return this.realm.environment;  // realm.environment is the Frame
+  }
+}
+```
+
+**Ruby implementation**:
+```ruby
+# lib/puppeteer/bidi/element_handle.rb
+class ElementHandle < JSHandle
+  def frame
+    @realm.environment  # WindowRealm#environment returns Frame
+  end
+
+  def type(text, delay: 0)
+    keyboard = Keyboard.new(frame.page, @realm.browsing_context)
+    # ...
+  end
+end
+```
+
+**Architecture**:
+```
+ElementHandle
+  └─ @realm (WindowRealm)
+      └─ environment (Frame)
+          └─ page() → Page
+```
+
+**Implementation steps**:
+
+1. **WindowRealm** stores Frame reference:
+   ```ruby
+   # lib/puppeteer/bidi/core/realm.rb
+   class WindowRealm < Realm
+     attr_accessor :environment  # Holds Frame reference
+   end
+   ```
+
+2. **Frame** sets itself as realm's environment:
+   ```ruby
+   # lib/puppeteer/bidi/frame.rb
+   def initialize(parent, browsing_context)
+     @parent = parent
+     @browsing_context = browsing_context
+
+     # Set this frame as the environment
+     realm = @browsing_context.default_realm
+     realm.environment = self if realm.respond_to?(:environment=)
+   end
+   ```
+
+3. **ElementHandle** accesses Page via frame:
+   ```ruby
+   # lib/puppeteer/bidi/element_handle.rb
+   def frame
+     @realm.environment
+   end
+
+   # Use frame.page instead of workaround
+   keyboard = Keyboard.new(frame.page, @realm.browsing_context)
+   ```
+
+**Benefits**:
+- Matches Puppeteer's design exactly
+- No temporary object creation
+- Clear ownership hierarchy
+- Type-safe frame access
+
 ### Reference Implementation Mapping
 
 | Puppeteer TypeScript | Ruby Implementation | Notes |
@@ -398,6 +474,7 @@ handle.dispose  # Clean up
 | `BidiJSHandle#getProperties()` | `JSHandle#get_properties` | Walks prototype chain |
 | `BidiElementHandle#$()` | `ElementHandle#query_selector` | CSS selector |
 | `BidiElementHandle#$$()` | `ElementHandle#query_selector_all` | Multiple elements |
+| `BidiElementHandle#frame` | `ElementHandle#frame` | realm.environment |
 | `BidiSerializer.serialize()` | `Serializer.serialize()` | Centralized |
 | `BidiDeserializer.deserialize()` | `Deserializer.deserialize()` | Centralized |
 

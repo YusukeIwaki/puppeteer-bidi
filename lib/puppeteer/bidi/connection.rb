@@ -68,7 +68,10 @@ module Puppeteer
           end
 
           if result['error']
-            raise ProtocolError, "BiDi error (#{method}): #{result['error']['message']}"
+            # BiDi error format: { "error": "error_type", "message": "detailed message", ... }
+            error_type = result['error']
+            error_message = result['message'] || error_type
+            raise ProtocolError, "BiDi error (#{method}): #{error_message}"
           end
 
           result['result']

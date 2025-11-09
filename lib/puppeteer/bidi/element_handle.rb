@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'js_handle'
+require_relative 'keyboard'
 
 module Puppeteer
   module Bidi
@@ -150,6 +151,51 @@ module Puppeteer
         raise 'Frame parameter required for click' unless frame
 
         frame.page.mouse.click(point[:x], point[:y], button: button, count: count, delay: delay)
+      end
+
+      # Type text into the element
+      # @param text [String] Text to type
+      # @param delay [Numeric] Delay between key presses in milliseconds
+      def type(text, delay: 0)
+        assert_not_disposed
+
+        # Focus the element first
+        focus
+
+        # Get keyboard instance - use frame.page to access the page
+        # Following Puppeteer's pattern: this.frame.page().keyboard
+        keyboard = Keyboard.new(frame.page, @realm.browsing_context)
+        keyboard.type(text, delay: delay)
+      end
+
+      # Press a key on the element
+      # @param key [String] Key name (e.g., 'Enter', 'a', 'ArrowLeft')
+      # @param delay [Numeric] Delay between keydown and keyup in milliseconds
+      # @param text [String, nil] Text parameter (for CDP compatibility, ignored in BiDi)
+      def press(key, delay: nil, text: nil)
+        assert_not_disposed
+
+        # Focus the element first
+        focus
+
+        # Get keyboard instance - use frame.page to access the page
+        # Following Puppeteer's pattern: this.frame.page().keyboard
+        keyboard = Keyboard.new(frame.page, @realm.browsing_context)
+        keyboard.press(key, delay: delay, text: text)
+      end
+
+      # Get the frame this element belongs to
+      # Following Puppeteer's pattern: realm.environment
+      # @return [Frame] The frame containing this element
+      def frame
+        @realm.environment
+      end
+
+      # Focus the element
+      def focus
+        assert_not_disposed
+
+        evaluate('element => element.focus()')
       end
 
       # Scroll element into view if needed
