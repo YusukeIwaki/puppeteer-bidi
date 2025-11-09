@@ -127,6 +127,19 @@ module Puppeteer
           @workers = {}
         end
 
+        # Set the environment (Frame) for this realm
+        # This is set by Frame when it's created
+        # @param frame [Frame] The frame environment
+        def environment=(frame)
+          @environment = frame
+        end
+
+        # Get the environment (Frame) for this realm
+        # @return [Frame] The frame environment
+        def environment
+          @environment
+        end
+
         # Override target to use context-based target
         # @return [Hash] BiDi target descriptor
         def target

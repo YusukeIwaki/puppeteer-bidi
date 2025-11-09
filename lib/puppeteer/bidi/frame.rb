@@ -15,6 +15,11 @@ module Puppeteer
       def initialize(parent, browsing_context)
         @parent = parent
         @browsing_context = browsing_context
+
+        # Set this frame as the environment for the realm
+        # Following Puppeteer's design where realm.environment returns the frame
+        realm = @browsing_context.default_realm
+        realm.environment = self if realm.respond_to?(:environment=)
       end
 
       # Get the page that owns this frame
