@@ -315,7 +315,11 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 - [x] JavaScript execution (`script.evaluate`, `script.callFunction`)
 - [x] **Page.evaluate and Frame.evaluate** - Full JavaScript evaluation with argument serialization
 - [x] Event handling system (EventEmitter)
-- [ ] Element operations (click, input) - **TODO**
+- [x] **Element operations** - Click, scroll, element visibility detection
+  - Mouse input (`input.performActions`)
+  - ElementHandle#click with automatic scrolling
+  - Wrapped element support (getClientRects)
+  - Viewport clipping algorithm
 - [ ] FrameManager implementation - **TODO**
 
 ### Phase 3: Advanced Features 🚧 IN PROGRESS
@@ -2262,6 +2266,31 @@ Based on Puppeteer's implementation:
 4. **Follow Puppeteer's architecture** (delegation patterns, event handling)
 5. **Test simplicity** - stay faithful to Puppeteer's test structure
 6. **Browser limitations** - gracefully handle unimplemented features (setScriptingEnabled)
+
+## Detailed Documentation
+
+For in-depth implementation details, see the following documents in the `CLAUDE/` directory:
+
+### Architecture and Design
+
+- **[Frame Architecture](CLAUDE/frame_architecture.md)** - Parent-based frame hierarchy following Puppeteer's design
+  - Constructor signature: `(parent, browsing_context)`
+  - Recursive page traversal
+  - Support for nested iframes
+
+### Click and Mouse Input
+
+- **[Wrapped Element Click](CLAUDE/wrapped_element_click.md)** - getClientRects() vs getBoundingClientRect()
+  - Why wrapped text elements need special handling
+  - Viewport clipping algorithm
+  - intersectBoundingBoxesWithFrame implementation
+
+### Testing Best Practices
+
+- **[RSpec: pending vs skip](CLAUDE/rspec_pending_vs_skip.md)** - Documenting browser limitations
+  - When to use `pending` (Firefox BiDi limitations)
+  - When to use `skip` (unimplemented features)
+  - Proper error trace documentation
 
 ### Test Assets Policy
 
