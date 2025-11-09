@@ -24,6 +24,12 @@ module Puppeteer
         @parent.is_a?(Page) ? @parent : @parent.page
       end
 
+      # Get the parent frame
+      # @return [Frame, nil] Parent frame if this is a child frame, nil if top-level
+      def parent_frame
+        @parent.is_a?(Frame) ? @parent : nil
+      end
+
       # Evaluate JavaScript in the frame context
       # @param script [String] JavaScript to evaluate (expression or function)
       # @param *args [Array] Arguments to pass to the function (if script is a function)

@@ -214,13 +214,14 @@ module Puppeteer
 
       # Get the clickable box for the element
       # Uses getClientRects() to handle wrapped/multi-line elements correctly
+      # Following Puppeteer's implementation:
+      # https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/ElementHandle.ts#clickableBox
       # @return [Hash, nil] Box {x:, y:, width:, height:}
       def clickable_box
         assert_not_disposed
 
         # Get client rects - returns multiple boxes for wrapped elements
-        # Following Puppeteer's approach: use first rect with dimensions >= 1x1
-        result = evaluate(<<~JS)
+        boxes = evaluate(<<~JS)
           element => {
             if (!(element instanceof Element)) {
               return null;
@@ -231,10 +232,19 @@ module Puppeteer
           }
         JS
 
-        return nil unless result&.is_a?(Array) && !result.empty?
+        return nil unless boxes&.is_a?(Array) && !boxes.empty?
+
+        # Intersect boxes with frame boundaries
+        intersect_bounding_boxes_with_frame(boxes)
+
+        # TODO: Handle parent frames (for iframe support)
+        # frame = self.frame
+        # while (parent_frame = frame.parent_frame)
+        #   # Adjust coordinates for parent frame offset
+        # end
 
         # Find first box with valid dimensions
-        box = result.find { |rect| rect['width'] >= 1 && rect['height'] >= 1 }
+        box = boxes.find { |rect| rect['width'] >= 1 && rect['height'] >= 1 }
         return nil unless box
 
         {
@@ -243,6 +253,58 @@ module Puppeteer
           width: box['width'],
           height: box['height']
         }
+      end
+
+      private
+
+      # Intersect bounding boxes with frame viewport boundaries
+      # Modifies boxes in-place to clip them to visible area
+      # @param boxes [Array<Hash>] Array of boxes with {x:, y:, width:, height:}
+      def intersect_bounding_boxes_with_frame(boxes)
+        # Get document dimensions using element's evaluate (which handles deserialization)
+        dimensions = evaluate(<<~JS)
+          element => {
+            return {
+              documentWidth: element.ownerDocument.documentElement.clientWidth,
+              documentHeight: element.ownerDocument.documentElement.clientHeight
+            };
+          }
+        JS
+
+        document_width = dimensions['documentWidth']
+        document_height = dimensions['documentHeight']
+
+        # Intersect each box with document boundaries
+        boxes.each do |box|
+          intersect_bounding_box(box, document_width, document_height)
+        end
+      end
+
+      # Intersect a single bounding box with given width/height boundaries
+      # Modifies box in-place
+      # @param box [Hash] Box with {x:, y:, width:, height:}
+      # @param width [Numeric] Boundary width
+      # @param height [Numeric] Boundary height
+      def intersect_bounding_box(box, width, height)
+        # Clip width
+        box['width'] = [
+          box['x'] >= 0 ?
+            [width - box['x'], box['width']].min :
+            [width, box['width'] + box['x']].min,
+          0
+        ].max
+
+        # Clip height
+        box['height'] = [
+          box['y'] >= 0 ?
+            [height - box['y'], box['height']].min :
+            [height, box['height'] + box['y']].min,
+          0
+        ].max
+
+        # Ensure non-negative coordinates
+        box['x'] = [box['x'], 0].max
+        box['y'] = [box['y'], 0].max
       end
 
       # String representation includes element type
