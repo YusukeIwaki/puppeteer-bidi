@@ -10,7 +10,7 @@ module Puppeteer
     # Frame represents a frame (main frame or iframe) in the page
     # This is a high-level wrapper around Core::BrowsingContext
     class Frame
-      attr_reader :browsing_context, :parent
+      attr_reader :browsing_context
 
       def initialize(parent, browsing_context)
         @parent = parent
@@ -21,11 +21,7 @@ module Puppeteer
       # Traverses up the parent chain until reaching a Page
       # @return [Page] The page containing this frame
       def page
-        current = @parent
-        while current.is_a?(Frame)
-          current = current.parent
-        end
-        current
+        @parent.is_a?(Page) ? @parent : @parent.page
       end
 
       # Evaluate JavaScript in the frame context
