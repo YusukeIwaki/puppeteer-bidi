@@ -213,34 +213,35 @@ module Puppeteer
       end
 
       # Get the clickable box for the element
+      # Uses getClientRects() to handle wrapped/multi-line elements correctly
       # @return [Hash, nil] Box {x:, y:, width:, height:}
       def clickable_box
         assert_not_disposed
 
-        # Get bounding box using BiDi-compatible approach
+        # Get client rects - returns multiple boxes for wrapped elements
+        # Following Puppeteer's approach: use first rect with dimensions >= 1x1
         result = evaluate(<<~JS)
           element => {
-            if (!element.getBoundingClientRect) {
+            if (!(element instanceof Element)) {
               return null;
             }
-            const rect = element.getBoundingClientRect();
-            return {
-              x: rect.x,
-              y: rect.y,
-              width: rect.width,
-              height: rect.height
-            };
+            return [...element.getClientRects()].map(rect => {
+              return {x: rect.x, y: rect.y, width: rect.width, height: rect.height};
+            });
           }
         JS
 
-        return nil unless result
-        return nil if result['width'] < 1 || result['height'] < 1
+        return nil unless result&.is_a?(Array) && !result.empty?
+
+        # Find first box with valid dimensions
+        box = result.find { |rect| rect['width'] >= 1 && rect['height'] >= 1 }
+        return nil unless box
 
         {
-          x: result['x'],
-          y: result['y'],
-          width: result['width'],
-          height: result['height']
+          x: box['x'],
+          y: box['y'],
+          width: box['width'],
+          height: box['height']
         }
       end
 

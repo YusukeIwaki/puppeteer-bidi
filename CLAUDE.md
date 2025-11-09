@@ -2263,3 +2263,24 @@ Based on Puppeteer's implementation:
 5. **Test simplicity** - stay faithful to Puppeteer's test structure
 6. **Browser limitations** - gracefully handle unimplemented features (setScriptingEnabled)
 
+### Test Assets Policy
+
+**CRITICAL**: Always use Puppeteer's official test assets without modification.
+
+- **Source**: https://github.com/puppeteer/puppeteer/tree/main/test/assets
+- **Rule**: Never modify test asset files (HTML, CSS, images) in `spec/assets/`
+- **Experiments**: If you need to modify assets for experiments, **always revert to official version** before creating Pull Requests
+- **Verification**: Before creating PR, verify all `spec/assets/` files match Puppeteer's official versions
+
+**Example workflow**:
+```bash
+# During development - OK to experiment
+vim spec/assets/test.html  # Temporary modification for debugging
+
+# Before PR - MUST revert to official
+curl -sL https://raw.githubusercontent.com/puppeteer/puppeteer/main/test/assets/test.html \
+  -o spec/assets/test.html
+```
+
+**Why this matters**: Test assets are designed to test specific edge cases (rotated elements, complex layouts, etc.). Using simplified versions defeats the purpose of these tests.
+
