@@ -92,7 +92,9 @@ module Puppeteer
           raise BrowsingContextClosedError, @reason if closed?
           params = { context: @id, url: url }
           params[:wait] = wait if wait
-          session.send_command('browsingContext.navigate', params)
+          result = session.send_command('browsingContext.navigate', params)
+          # URL will be updated via browsingContext.load event
+          result
         end
 
         # Reload the page

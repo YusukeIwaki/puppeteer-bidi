@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Checkbox test</title>
+</head>
+<body>
+  <label for="agree">
+    <input id="agree" type="checkbox">
+    <span>Remember Me</span>
+  </label>
+  <script>
+    window.events = [];
+    document.querySelector('input').addEventListener('click', e => events.push(e));
+    document.querySelector('input').addEventListener('input', e => events.push(e));
+    document.querySelector('input').addEventListener('change', e => events.push(e));
+    document.querySelector('label').addEventListener('click', e => events.push(e));
+  </script>
+</body>
+</html>

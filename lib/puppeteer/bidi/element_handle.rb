@@ -133,6 +133,180 @@ module Puppeteer
         end
       end
 
+      # Click the element
+      # @param button [String] Mouse button
+      # @param count [Integer] Number of clicks
+      # @param delay [Numeric] Delay between mousedown and mouseup
+      # @param offset [Hash] Click offset {x:, y:} relative to element center
+      # @param frame [Frame] Frame containing this element (passed from Frame#click)
+      def click(button: 'left', count: 1, delay: nil, offset: nil, frame: nil)
+        assert_not_disposed
+
+        scroll_into_view_if_needed
+        point = clickable_point(offset: offset)
+
+        # Use the frame parameter to get the page
+        # Frame is needed because ElementHandle doesn't have direct access to Page
+        raise 'Frame parameter required for click' unless frame
+
+        frame.page.mouse.click(point[:x], point[:y], button: button, count: count, delay: delay)
+      end
+
+      # Scroll element into view if needed
+      def scroll_into_view_if_needed
+        assert_not_disposed
+
+        # Check if element is already visible
+        return if intersecting_viewport?(threshold: 1)
+
+        scroll_into_view
+      end
+
+      # Scroll element into view
+      def scroll_into_view
+        assert_not_disposed
+
+        evaluate('element => element.scrollIntoView({block: "center", inline: "center", behavior: "instant"})')
+      end
+
+      # Check if element is intersecting the viewport
+      # @param threshold [Numeric] Intersection threshold (0.0 to 1.0)
+      # @return [Boolean] True if intersecting
+      def intersecting_viewport?(threshold: 0)
+        assert_not_disposed
+
+        result = evaluate(<<~JS, threshold)
+          (element, threshold) => {
+            return new Promise(resolve => {
+              const observer = new IntersectionObserver(entries => {
+                resolve(entries[0].intersectionRatio > threshold);
+                observer.disconnect();
+              });
+              observer.observe(element);
+            });
+          }
+        JS
+
+        result
+      end
+
+      # Get clickable point for the element
+      # @param offset [Hash, nil] Offset {x:, y:} from element center
+      # @return [Hash] Point {x:, y:}
+      def clickable_point(offset: nil)
+        assert_not_disposed
+
+        box = clickable_box
+        raise 'Node is either not clickable or not an Element' unless box
+
+        if offset
+          {
+            x: box[:x] + offset[:x],
+            y: box[:y] + offset[:y]
+          }
+        else
+          {
+            x: box[:x] + box[:width] / 2,
+            y: box[:y] + box[:height] / 2
+          }
+        end
+      end
+
+      # Get the clickable box for the element
+      # Uses getClientRects() to handle wrapped/multi-line elements correctly
+      # Following Puppeteer's implementation:
+      # https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/ElementHandle.ts#clickableBox
+      # @return [Hash, nil] Box {x:, y:, width:, height:}
+      def clickable_box
+        assert_not_disposed
+
+        # Get client rects - returns multiple boxes for wrapped elements
+        boxes = evaluate(<<~JS)
+          element => {
+            if (!(element instanceof Element)) {
+              return null;
+            }
+            return [...element.getClientRects()].map(rect => {
+              return {x: rect.x, y: rect.y, width: rect.width, height: rect.height};
+            });
+          }
+        JS
+
+        return nil unless boxes&.is_a?(Array) && !boxes.empty?
+
+        # Intersect boxes with frame boundaries
+        intersect_bounding_boxes_with_frame(boxes)
+
+        # TODO: Handle parent frames (for iframe support)
+        # frame = self.frame
+        # while (parent_frame = frame.parent_frame)
+        #   # Adjust coordinates for parent frame offset
+        # end
+
+        # Find first box with valid dimensions
+        box = boxes.find { |rect| rect['width'] >= 1 && rect['height'] >= 1 }
+        return nil unless box
+
+        {
+          x: box['x'],
+          y: box['y'],
+          width: box['width'],
+          height: box['height']
+        }
+      end
+
+      private
+
+      # Intersect bounding boxes with frame viewport boundaries
+      # Modifies boxes in-place to clip them to visible area
+      # @param boxes [Array<Hash>] Array of boxes with {x:, y:, width:, height:}
+      def intersect_bounding_boxes_with_frame(boxes)
+        # Get document dimensions using element's evaluate (which handles deserialization)
+        dimensions = evaluate(<<~JS)
+          element => {
+            return {
+              documentWidth: element.ownerDocument.documentElement.clientWidth,
+              documentHeight: element.ownerDocument.documentElement.clientHeight
+            };
+          }
+        JS
+
+        document_width = dimensions['documentWidth']
+        document_height = dimensions['documentHeight']
+
+        # Intersect each box with document boundaries
+        boxes.each do |box|
+          intersect_bounding_box(box, document_width, document_height)
+        end
+      end
+
+      # Intersect a single bounding box with given width/height boundaries
+      # Modifies box in-place
+      # @param box [Hash] Box with {x:, y:, width:, height:}
+      # @param width [Numeric] Boundary width
+      # @param height [Numeric] Boundary height
+      def intersect_bounding_box(box, width, height)
+        # Clip width
+        box['width'] = [
+          box['x'] >= 0 ?
+            [width - box['x'], box['width']].min :
+            [width, box['width'] + box['x']].min,
+          0
+        ].max
+
+        # Clip height
+        box['height'] = [
+          box['y'] >= 0 ?
+            [height - box['y'], box['height']].min :
+            [height, box['height'] + box['y']].min,
+          0
+        ].max
+
+        # Ensure non-negative coordinates
+        box['x'] = [box['x'], 0].max
+        box['y'] = [box['y'], 0].max
+      end
+
       # String representation includes element type
       # @return [String] Formatted string
       def to_s

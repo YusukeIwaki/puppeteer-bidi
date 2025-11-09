@@ -4,6 +4,7 @@ require 'base64'
 require 'fileutils'
 require_relative 'js_handle'
 require_relative 'element_handle'
+require_relative 'mouse'
 
 module Puppeteer
   module Bidi
@@ -227,6 +228,16 @@ module Puppeteer
         main_frame.eval_on_selector_all(selector, page_function, *args)
       end
 
+      # Click an element matching the selector
+      # @param selector [String] CSS selector
+      # @param button [String] Mouse button ('left', 'right', 'middle')
+      # @param count [Integer] Number of clicks (1, 2, 3)
+      # @param delay [Numeric] Delay between mousedown and mouseup in milliseconds
+      # @param offset [Hash] Click offset {x:, y:} relative to element center
+      def click(selector, button: Mouse::LEFT, count: 1, delay: nil, offset: nil)
+        main_frame.click(selector, button: button, count: count, delay: delay, offset: offset)
+      end
+
       # Get the page title
       # @return [String] Page title
       def title
@@ -255,7 +266,13 @@ module Puppeteer
       # Get the main frame
       # @return [Frame] Main frame
       def main_frame
-        @main_frame ||= Frame.new(@browsing_context)
+        @main_frame ||= Frame.new(self, @browsing_context)
+      end
+
+      # Get the mouse instance
+      # @return [Mouse] Mouse instance
+      def mouse
+        @mouse ||= Mouse.new(@browsing_context)
       end
 
       # Wait for navigation
@@ -287,6 +304,20 @@ module Puppeteer
       end
 
       alias viewport= set_viewport
+
+      # Set JavaScript enabled state
+      # @param enabled [Boolean] Whether JavaScript is enabled
+      # @note Changes take effect on next navigation
+      def set_javascript_enabled(enabled)
+        assert_not_closed
+        @browsing_context.set_javascript_enabled(enabled)
+      end
+
+      # Check if JavaScript is enabled
+      # @return [Boolean] Whether JavaScript is enabled
+      def javascript_enabled?
+        @browsing_context.javascript_enabled?
+      end
 
       private
 

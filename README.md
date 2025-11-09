@@ -89,6 +89,15 @@ puts "Sum: #{sum}"  # => 7
 frame = page.main_frame
 result = frame.evaluate('() => window.innerWidth')
 
+# Query selectors
+section = page.query_selector('section')
+divs = page.query_selector_all('div')
+
+# Evaluate on selectors (convenience methods)
+# Equivalent to Puppeteer's $eval and $$eval
+id = page.eval_on_selector('section', 'e => e.id')
+count = page.eval_on_selector_all('div', 'divs => divs.length')
+
 # Set page content
 page.set_content('<h1>Hello, World!</h1>')
 
@@ -301,13 +310,19 @@ Puppeteer-compatible API for browser automation:
 - ✅ **BrowserContext**: Isolated browsing sessions
 - ✅ **Page**: High-level page automation
   - ✅ Navigation (`goto`, `set_content`)
-  - ✅ JavaScript evaluation (`evaluate`) with functions, arguments, and IIFE support
+  - ✅ JavaScript evaluation (`evaluate`, `evaluate_handle`) with functions, arguments, and IIFE support
+  - ✅ Element querying (`query_selector`, `query_selector_all`)
+  - ✅ Selector evaluation (`eval_on_selector`, `eval_on_selector_all`) - Ruby equivalents of Puppeteer's `$eval` and `$$eval`
   - ✅ Screenshots (basic, clipping, full page, parallel)
   - ✅ Viewport management with automatic restoration
   - ✅ Page state queries (`title`, `url`, `viewport`)
   - ✅ Frame access (`main_frame`)
 - ✅ **Frame**: Frame-level operations
   - ✅ JavaScript evaluation with full feature parity to Page
+  - ✅ Element querying and selector evaluation
+- ✅ **JSHandle & ElementHandle**: JavaScript object references
+  - ✅ Handle creation, disposal, and property access
+  - ✅ Type-safe custom exceptions for error handling
 
 #### Screenshot Features
 Comprehensive screenshot functionality with 12 passing tests:
@@ -353,10 +368,32 @@ A low-level object-oriented abstraction over the WebDriver BiDi protocol:
 - ✅ Network request interception
 - ✅ Geolocation and timezone emulation
 
+### Custom Exception Handling
+
+The gem provides type-safe custom exceptions for better error handling:
+
+```ruby
+begin
+  page.eval_on_selector('.missing', 'e => e.id')
+rescue Puppeteer::Bidi::SelectorNotFoundError => e
+  puts "Selector '#{e.selector}' not found"
+rescue Puppeteer::Bidi::JSHandleDisposedError
+  puts "Handle was disposed"
+rescue Puppeteer::Bidi::PageClosedError
+  puts "Page is closed"
+rescue Puppeteer::Bidi::FrameDetachedError
+  puts "Frame was detached"
+end
+```
+
+Available custom exceptions:
+- `JSHandleDisposedError` - JSHandle or ElementHandle is disposed
+- `PageClosedError` - Page is closed
+- `FrameDetachedError` - Frame is detached
+- `SelectorNotFoundError` - Selector doesn't match any elements (includes `selector` attribute)
+
 ### Planned Features
 
-- DOM manipulation and element interaction
-- Full element selector support
 - Input simulation (mouse, keyboard)
 - File upload handling
 - Enhanced network monitoring (NetworkManager)

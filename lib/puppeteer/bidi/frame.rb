@@ -12,8 +12,22 @@ module Puppeteer
     class Frame
       attr_reader :browsing_context
 
-      def initialize(browsing_context)
+      def initialize(parent, browsing_context)
+        @parent = parent
         @browsing_context = browsing_context
+      end
+
+      # Get the page that owns this frame
+      # Traverses up the parent chain until reaching a Page
+      # @return [Page] The page containing this frame
+      def page
+        @parent.is_a?(Page) ? @parent : @parent.page
+      end
+
+      # Get the parent frame
+      # @return [Frame, nil] Parent frame if this is a child frame, nil if top-level
+      def parent_frame
+        @parent.is_a?(Frame) ? @parent : nil
       end
 
       # Evaluate JavaScript in the frame context
@@ -142,6 +156,25 @@ module Puppeteer
       # @return [Object] Result of evaluation
       def eval_on_selector_all(selector, page_function, *args)
         document.eval_on_selector_all(selector, page_function, *args)
+      end
+
+      # Click an element matching the selector
+      # @param selector [String] CSS selector
+      # @param button [String] Mouse button
+      # @param count [Integer] Number of clicks
+      # @param delay [Numeric] Delay between mousedown and mouseup
+      # @param offset [Hash] Click offset {x:, y:}
+      def click(selector, button: 'left', count: 1, delay: nil, offset: nil)
+        assert_not_detached
+
+        handle = query_selector(selector)
+        raise SelectorNotFoundError, selector unless handle
+
+        begin
+          handle.click(button: button, count: count, delay: delay, offset: offset, frame: self)
+        ensure
+          handle.dispose
+        end
       end
 
       # Get the frame URL

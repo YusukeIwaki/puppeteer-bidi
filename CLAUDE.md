@@ -1498,3 +1498,789 @@ Potential improvements for handle implementation:
 5. **Use Puppeteer's tricks** - like `evaluate('(value) => value')` for json_value
 6. **Test disposal thoroughly** - handle lifecycle bugs are subtle and common
 7. **Centralize serialization** - eliminates duplication and ensures consistency
+
+## Selector Evaluation Methods Implementation
+
+### Overview
+
+The `eval_on_selector` and `eval_on_selector_all` methods provide convenient shortcuts for querying elements and evaluating JavaScript functions on them, equivalent to Puppeteer's `$eval` and `$$eval`.
+
+### API Design
+
+#### Method Naming Convention
+
+Ruby cannot use `$` in method names, so we use descriptive alternatives:
+
+| Puppeteer | Ruby | Description |
+|-----------|------|-------------|
+| `$eval` | `eval_on_selector` | Evaluate on first matching element |
+| `$$eval` | `eval_on_selector_all` | Evaluate on all matching elements |
+
+#### Implementation Hierarchy
+
+Following Puppeteer's delegation pattern:
+
+```
+Page#eval_on_selector(_all)
+  ↓ delegates to
+Frame#eval_on_selector(_all)
+  ↓ delegates to
+ElementHandle#eval_on_selector(_all) (on document)
+  ↓ implementation
+  1. query_selector(_all) - Find element(s)
+  2. Validate results
+  3. evaluate() - Execute function
+  4. dispose - Clean up handles
+```
+
+### Implementation Details
+
+#### Page and Frame Methods
+
+```ruby
+# lib/puppeteer/bidi/page.rb
+def eval_on_selector(selector, page_function, *args)
+  main_frame.eval_on_selector(selector, page_function, *args)
+end
+
+# lib/puppeteer/bidi/frame.rb
+def eval_on_selector(selector, page_function, *args)
+  document.eval_on_selector(selector, page_function, *args)
+end
+```
+
+**Design rationale**: Page and Frame act as thin wrappers, delegating to the document element handle.
+
+#### ElementHandle#eval_on_selector
+
+```ruby
+def eval_on_selector(selector, page_function, *args)
+  assert_not_disposed
+
+  element_handle = query_selector(selector)
+  raise SelectorNotFoundError, selector unless element_handle
+
+  begin
+    element_handle.evaluate(page_function, *args)
+  ensure
+    element_handle.dispose
+  end
+end
+```
+
+**Key points**:
+- Throws `SelectorNotFoundError` if no element found (matches Puppeteer behavior)
+- Uses `begin/ensure` to guarantee handle disposal
+- Searches within element's subtree (not page-wide)
+
+#### ElementHandle#eval_on_selector_all
+
+```ruby
+def eval_on_selector_all(selector, page_function, *args)
+  assert_not_disposed
+
+  element_handles = query_selector_all(selector)
+
+  begin
+    # Create array handle in browser context
+    array_handle = @realm.call_function(
+      '(...elements) => elements',
+      false,
+      arguments: element_handles.map(&:remote_value)
+    )
+
+    array_js_handle = JSHandle.from(array_handle['result'], @realm)
+
+    begin
+      array_js_handle.evaluate(page_function, *args)
+    ensure
+      array_js_handle.dispose
+    end
+  ensure
+    element_handles.each(&:dispose)
+  end
+end
+```
+
+**Key points**:
+- Returns result for empty array without error (differs from `eval_on_selector`)
+- Creates array handle using spread operator trick: `(...elements) => elements`
+- Nested `ensure` blocks for proper resource cleanup
+- Disposes both individual element handles and array handle
+
+### Error Handling Differences
+
+| Method | Behavior when no elements found |
+|--------|--------------------------------|
+| `eval_on_selector` | Throws `SelectorNotFoundError` |
+| `eval_on_selector_all` | Returns evaluation result (e.g., `0` for `divs => divs.length`) |
+
+This matches Puppeteer's behavior:
+- `$eval`: Must find exactly one element
+- `$$eval`: Works with zero or more elements
+
+### Usage Examples
+
+```ruby
+# Basic usage
+page.set_content('<section id="test">Hello</section>')
+id = page.eval_on_selector('section', 'e => e.id')
+# => "test"
+
+# With arguments
+text = page.eval_on_selector('section', '(e, suffix) => e.textContent + suffix', '!')
+# => "Hello!"
+
+# ElementHandle arguments
+div = page.query_selector('div')
+result = page.eval_on_selector('section', '(e, div) => e.textContent + div.textContent', div)
+
+# eval_on_selector_all with multiple elements
+page.set_content('<div>A</div><div>B</div><div>C</div>')
+count = page.eval_on_selector_all('div', 'divs => divs.length')
+# => 3
+
+# Subtree search with ElementHandle
+tweet = page.query_selector('.tweet')
+likes = tweet.eval_on_selector('.like', 'node => node.innerText')
+# Only searches within .tweet element
+```
+
+### Test Coverage
+
+**Total**: 13 integration tests
+
+**Page.eval_on_selector** (4 tests):
+- Basic functionality (property access)
+- Argument passing
+- ElementHandle arguments
+- Error on missing selector
+
+**ElementHandle.eval_on_selector** (3 tests):
+- Basic functionality
+- Subtree isolation
+- Error on missing selector
+
+**Page.eval_on_selector_all** (4 tests):
+- Basic functionality (array length)
+- Extra arguments
+- ElementHandle arguments
+- Large element count (1001 elements)
+
+**ElementHandle.eval_on_selector_all** (2 tests):
+- Subtree retrieval
+- Empty result handling
+
+### Performance Considerations
+
+#### Handle Lifecycle
+
+- **eval_on_selector**: Creates 1 temporary handle per call
+- **eval_on_selector_all**: Creates N+1 handles (N elements + 1 array)
+- All handles automatically disposed after evaluation
+
+#### Large Element Sets
+
+Tested with 1001 elements without issues. The implementation efficiently:
+1. Queries all elements at once
+2. Creates single array handle
+3. Evaluates function in single round-trip
+4. Disposes all handles in parallel
+
+### Reference Implementation
+
+Based on Puppeteer's implementation:
+- [Page.$eval](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/Page.ts)
+- [Frame.$eval](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/Frame.ts)
+- [ElementHandle.$eval](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/ElementHandle.ts)
+- [Test specs](https://github.com/puppeteer/puppeteer/blob/main/test/src/queryselector.spec.ts)
+
+## Error Handling and Custom Exceptions
+
+### Philosophy
+
+Use custom exception classes instead of inline string raises for:
+- **Type safety**: Enable `rescue` by specific exception type
+- **DRY principle**: Centralize error messages
+- **Debugging**: Attach contextual data to exception objects
+- **Consistency**: Uniform error handling across codebase
+
+### Custom Exception Hierarchy
+
+```ruby
+StandardError
+└── Puppeteer::Bidi::Error
+    ├── JSHandleDisposedError
+    ├── PageClosedError
+    ├── FrameDetachedError
+    └── SelectorNotFoundError
+```
+
+All custom exceptions inherit from `Puppeteer::Bidi::Error` for consistent rescue patterns.
+
+### Exception Classes
+
+#### JSHandleDisposedError
+
+**When raised**: Attempting to use a disposed JSHandle or ElementHandle
+
+**Location**: `lib/puppeteer/bidi/errors.rb`
+
+```ruby
+class JSHandleDisposedError < Error
+  def initialize
+    super('JSHandle is disposed')
+  end
+end
+```
+
+**Usage**:
+```ruby
+# JSHandle and ElementHandle
+private
+
+def assert_not_disposed
+  raise JSHandleDisposedError if @disposed
+end
+```
+
+**Affected methods**:
+- `JSHandle#evaluate`, `#evaluate_handle`, `#get_property`, `#get_properties`, `#json_value`
+- `ElementHandle#query_selector`, `#query_selector_all`, `#eval_on_selector`, `#eval_on_selector_all`
+
+#### PageClosedError
+
+**When raised**: Attempting to use a closed Page
+
+**Location**: `lib/puppeteer/bidi/errors.rb`
+
+```ruby
+class PageClosedError < Error
+  def initialize
+    super('Page is closed')
+  end
+end
+```
+
+**Usage**:
+```ruby
+# Page
+private
+
+def assert_not_closed
+  raise PageClosedError if closed?
+end
+```
+
+**Affected methods**:
+- `Page#goto`, `#set_content`, `#screenshot`
+
+#### FrameDetachedError
+
+**When raised**: Attempting to use a detached Frame
+
+**Location**: `lib/puppeteer/bidi/errors.rb`
+
+```ruby
+class FrameDetachedError < Error
+  def initialize
+    super('Frame is detached')
+  end
+end
+```
+
+**Usage**:
+```ruby
+# Frame
+private
+
+def assert_not_detached
+  raise FrameDetachedError if @browsing_context.closed?
+end
+```
+
+**Affected methods**:
+- `Frame#evaluate`, `#evaluate_handle`, `#document`
+
+#### SelectorNotFoundError
+
+**When raised**: CSS selector doesn't match any elements in `eval_on_selector`
+
+**Location**: `lib/puppeteer/bidi/errors.rb`
+
+```ruby
+class SelectorNotFoundError < Error
+  attr_reader :selector
+
+  def initialize(selector)
+    @selector = selector
+    super("Error: failed to find element matching selector \"#{selector}\"")
+  end
+end
+```
+
+**Usage**:
+```ruby
+# ElementHandle#eval_on_selector
+element_handle = query_selector(selector)
+raise SelectorNotFoundError, selector unless element_handle
+```
+
+**Contextual data**: The `selector` value is accessible via the exception object for debugging.
+
+### Implementation Pattern
+
+#### 1. Define Custom Exception
+
+```ruby
+# lib/puppeteer/bidi/errors.rb
+class MyCustomError < Error
+  def initialize(context = nil)
+    @context = context
+    super("Error message with #{context}")
+  end
+end
+```
+
+#### 2. Add Private Assertion Method
+
+```ruby
+class MyClass
+  private
+
+  def assert_valid_state
+    raise MyCustomError, @context if invalid?
+  end
+end
+```
+
+#### 3. Replace Inline Raises
+
+```ruby
+# Before
+def my_method
+  raise 'Invalid state' if invalid?
+  # ...
+end
+
+# After
+def my_method
+  assert_valid_state
+  # ...
+end
+```
+
+### Benefits
+
+**Type-safe error handling**:
+```ruby
+begin
+  page.eval_on_selector('.missing', 'e => e.id')
+rescue SelectorNotFoundError => e
+  puts "Selector '#{e.selector}' not found"
+rescue JSHandleDisposedError
+  puts "Handle was disposed"
+end
+```
+
+**Consistent error messages**: Single source of truth for error text
+
+**Reduced duplication**: 16 inline raises eliminated across codebase
+
+**Better debugging**: Exception objects carry contextual information
+
+### Testing Custom Exceptions
+
+Tests use regex matching for backward compatibility:
+
+```ruby
+# Test remains compatible with custom exception
+expect {
+  page.eval_on_selector('non-existing', 'e => e.id')
+}.to raise_error(/failed to find element matching selector/)
+```
+
+This allows tests to pass with both string raises and custom exceptions.
+
+### Refactoring Statistics
+
+| Class | Inline Raises Replaced | Private Assert Method |
+|-------|------------------------|----------------------|
+| JSHandle | 5 | `assert_not_disposed` |
+| ElementHandle | 4 + 1 (selector) | (inherited) |
+| Page | 3 | `assert_not_closed` |
+| Frame | 3 | `assert_not_detached` |
+| **Total** | **16** | **3 methods** |
+
+### Future Considerations
+
+When adding new error conditions:
+
+1. **Create custom exception** in `lib/puppeteer/bidi/errors.rb`
+2. **Add to exception hierarchy** by inheriting from `Error`
+3. **Include contextual data** as `attr_reader` if needed
+4. **Create private assert method** in the relevant class
+5. **Replace inline raises** with assert method calls
+6. **Update tests** to use regex matching for flexibility
+
+This pattern ensures consistency and maintainability across the entire codebase.
+
+## Click Implementation and Mouse Input
+
+### Overview
+
+Implemented full click functionality following Puppeteer's architecture, including mouse input actions, element visibility detection, and automatic scrolling.
+
+### Architecture
+
+```
+Page#click
+  ↓ delegates to
+Frame#click
+  ↓ delegates to
+ElementHandle#click
+  ↓ implementation
+  1. scroll_into_view_if_needed
+  2. clickable_point calculation
+  3. Mouse#click (BiDi input.performActions)
+```
+
+### Key Components
+
+#### Mouse Class (`lib/puppeteer/bidi/mouse.rb`)
+
+Implements mouse input actions via BiDi `input.performActions`:
+
+```ruby
+def click(x, y, button: LEFT, count: 1, delay: nil)
+  actions = []
+  if @x != x || @y != y
+    actions << {
+      type: 'pointerMove',
+      x: x.to_i,
+      y: y.to_i,
+      origin: 'viewport'  # BiDi expects string, not hash!
+    }
+  end
+  @x = x
+  @y = y
+  bidi_button = button_to_bidi(button)
+  count.times do
+    actions << { type: 'pointerDown', button: bidi_button }
+    actions << { type: 'pause', duration: delay.to_i } if delay
+    actions << { type: 'pointerUp', button: bidi_button }
+  end
+  perform_actions(actions)
+end
+```
+
+**Critical BiDi Protocol Detail**: The `origin` parameter must be the string `'viewport'`, NOT a hash like `{type: 'viewport'}`. This caused a protocol error during initial implementation.
+
+#### ElementHandle Click Methods
+
+##### scroll_into_view_if_needed
+
+Uses IntersectionObserver API to detect viewport visibility:
+
+```ruby
+def scroll_into_view_if_needed
+  return if intersecting_viewport?
+
+  scroll_info = evaluate(<<~JS)
+    element => {
+      if (!element.isConnected) return 'Node is detached from document';
+      if (element.nodeType !== Node.ELEMENT_NODE) return 'Node is not of type HTMLElement';
+
+      element.scrollIntoView({
+        block: 'center',
+        inline: 'center',
+        behavior: 'instant'
+      });
+      return false;
+    }
+  JS
+
+  raise scroll_info if scroll_info
+end
+```
+
+##### intersecting_viewport?
+
+Uses browser's IntersectionObserver for accurate visibility detection:
+
+```ruby
+def intersecting_viewport?(threshold: 0)
+  evaluate(<<~JS, threshold)
+    (element, threshold) => {
+      return new Promise(resolve => {
+        const observer = new IntersectionObserver(entries => {
+          resolve(entries[0].intersectionRatio > threshold);
+          observer.disconnect();
+        });
+        observer.observe(element);
+      });
+    }
+  JS
+end
+```
+
+##### clickable_point
+
+Calculates click coordinates with optional offset:
+
+```ruby
+def clickable_point(offset: nil)
+  box = clickable_box
+  if offset
+    { x: box[:x] + offset[:x], y: box[:y] + offset[:y] }
+  else
+    { x: box[:x] + box[:width] / 2, y: box[:y] + box[:height] / 2 }
+  end
+end
+```
+
+### Critical Bug Fixes
+
+#### 1. Missing session.subscribe Call
+
+**Problem**: Navigation events (browsingContext.load, etc.) were not firing, causing tests to timeout.
+
+**Root Cause**: Missing subscription to BiDi modules. Puppeteer subscribes to these modules on session creation:
+- browsingContext
+- network
+- log
+- script
+- input
+
+**Fix**: Added subscription in two places:
+
+```ruby
+# lib/puppeteer/bidi/browser.rb
+subscribe_modules = %w[
+  browsingContext
+  network
+  log
+  script
+  input
+]
+@session.subscribe(subscribe_modules)
+
+# lib/puppeteer/bidi/core/session.rb
+def initialize_session
+  subscribe_modules = %w[
+    browsingContext
+    network
+    log
+    script
+    input
+  ]
+  subscribe(subscribe_modules)
+end
+```
+
+**Impact**: This fix enabled all navigation-related functionality, including the "click links which cause navigation" test.
+
+#### 2. Event-Based URL Updates
+
+**Problem**: Initial implementation updated `@url` directly in `navigate()` method, which is not how Puppeteer works.
+
+**Puppeteer's Approach**: URL updates happen via BiDi events:
+- `browsingContext.historyUpdated`
+- `browsingContext.domContentLoaded`
+- `browsingContext.load`
+
+**Fix**: Removed direct URL assignment from navigate():
+
+```ruby
+# lib/puppeteer/bidi/core/browsing_context.rb
+def navigate(url, wait: nil)
+  raise BrowsingContextClosedError, @reason if closed?
+  params = { context: @id, url: url }
+  params[:wait] = wait if wait
+  result = session.send_command('browsingContext.navigate', params)
+  # URL will be updated via browsingContext.load event
+  result
+end
+```
+
+Event handlers (already implemented) update URL automatically:
+
+```ruby
+# History updated
+session.on('browsingContext.historyUpdated') do |info|
+  next unless info['context'] == @id
+  @url = info['url']
+  emit(:history_updated, nil)
+end
+
+# DOM content loaded
+session.on('browsingContext.domContentLoaded') do |info|
+  next unless info['context'] == @id
+  @url = info['url']
+  emit(:dom_content_loaded, nil)
+end
+
+# Page loaded
+session.on('browsingContext.load') do |info|
+  next unless info['context'] == @id
+  @url = info['url']
+  emit(:load, nil)
+end
+```
+
+**Why this matters**: Event-based updates ensure URL synchronization even when navigation is triggered by user actions (like clicking links) rather than explicit `navigate()` calls.
+
+### Test Coverage
+
+#### Click Tests (20 tests in spec/integration/click_spec.rb)
+
+Ported from [Puppeteer's click.spec.ts](https://github.com/puppeteer/puppeteer/blob/main/test/src/click.spec.ts):
+
+1. **Basic clicking**: button, svg, wrapped links
+2. **Edge cases**: window.Node removed, span with inline elements
+3. **Navigation**: click after navigation, click links causing navigation
+4. **Scrolling**: offscreen buttons, scrollable content
+5. **Multi-click**: double click, triple click (text selection)
+6. **Different buttons**: left, right (contextmenu), middle (auxclick)
+7. **Visibility**: partially obscured button, rotated button
+8. **Form elements**: checkbox toggle (input and label)
+9. **Error handling**: missing selector
+10. **Special cases**: disabled JavaScript, iframes (pending)
+
+#### Page Tests (3 tests in spec/integration/page_spec.rb)
+
+1. **Page.url**: Verify URL updates after navigation
+2. **Page.setJavaScriptEnabled**: Control JavaScript execution (pending - Firefox limitation)
+
+**All 108 integration tests pass** (4 pending due to Firefox BiDi limitations).
+
+### Firefox BiDi Limitations
+
+- `emulation.setScriptingEnabled`: Part of WebDriver BiDi spec but not yet implemented in Firefox
+- Tests gracefully skip with clear messages using RSpec's `skip` feature
+
+### Implementation Best Practices Learned
+
+#### 1. Always Consult Puppeteer's Implementation First
+
+**Workflow**:
+1. Read Puppeteer's TypeScript implementation
+2. Understand BiDi protocol calls being made
+3. Implement Ruby equivalent with same logic flow
+4. Port corresponding test cases
+
+**Example**: The click implementation journey revealed that Puppeteer's architecture (Page → Frame → ElementHandle delegation) is critical for proper functionality.
+
+#### 2. Stay Faithful to Puppeteer's Test Structure
+
+**Initial mistake**: Created complex polling logic for navigation test
+**Correction**: Simplified to match Puppeteer's simple approach:
+
+```ruby
+# Simple and correct (matches Puppeteer)
+page.set_content("<a href=\"#{server.empty_page}\">empty.html</a>")
+page.click('a')  # Should not hang
+```
+
+#### 3. Event Subscription is Critical
+
+**Key lesson**: BiDi requires explicit subscription to event modules. Without it:
+- Navigation events don't fire
+- URL updates don't work
+- Tests timeout mysteriously
+
+**Solution**: Subscribe early in browser/session initialization.
+
+#### 4. Use RSpec `it` Syntax
+
+Per Ruby/RSpec conventions, use `it` instead of `example`:
+
+```ruby
+# Correct
+it 'should click the button' do
+  # ...
+end
+
+# Incorrect
+example 'should click the button' do
+  # ...
+end
+```
+
+### BiDi Protocol Format Requirements
+
+#### Origin Parameter Format
+
+**Critical**: BiDi `input.performActions` expects `origin` as a string, not a hash:
+
+```ruby
+# CORRECT
+origin: 'viewport'
+
+# WRONG - causes protocol error
+origin: { type: 'viewport' }
+```
+
+**Error message if wrong**:
+```
+Expected "origin" to be undefined, "viewport", "pointer", or an element,
+got: [object Object] {"type":"viewport"}
+```
+
+### Performance and Reliability
+
+- **IntersectionObserver**: Fast and accurate visibility detection
+- **Auto-scrolling**: Ensures elements are clickable before interaction
+- **Event-driven**: URL updates via events enable proper async handling
+- **Thread-safe**: BiDi protocol handles concurrent operations naturally
+
+### Future Enhancements
+
+Potential improvements for click/mouse functionality:
+
+1. **Drag and drop**: Implement drag operations
+2. **Hover**: Mouse move without click
+3. **Wheel**: Mouse wheel scrolling
+4. **Touch**: Touch events for mobile emulation
+5. **Keyboard modifiers**: Click with Ctrl/Shift/Alt
+6. **Frame support**: Click inside iframes (currently pending)
+
+### Reference Implementation
+
+Based on Puppeteer's implementation:
+- [Page.click](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/Page.ts)
+- [Frame.click](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/Frame.ts)
+- [ElementHandle.click](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/ElementHandle.ts)
+- [Mouse input](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/bidi/Input.ts)
+- [Test specs](https://github.com/puppeteer/puppeteer/blob/main/test/src/click.spec.ts)
+
+### Key Takeaways
+
+1. **session.subscribe is mandatory** for BiDi event handling - don't forget it!
+2. **Event-based state management** (URL updates via events, not direct assignment)
+3. **BiDi protocol details matter** (string vs hash for origin parameter)
+4. **Follow Puppeteer's architecture** (delegation patterns, event handling)
+5. **Test simplicity** - stay faithful to Puppeteer's test structure
+6. **Browser limitations** - gracefully handle unimplemented features (setScriptingEnabled)
+
+### Test Assets Policy
+
+**CRITICAL**: Always use Puppeteer's official test assets without modification.
+
+- **Source**: https://github.com/puppeteer/puppeteer/tree/main/test/assets
+- **Rule**: Never modify test asset files (HTML, CSS, images) in `spec/assets/`
+- **Experiments**: If you need to modify assets for experiments, **always revert to official version** before creating Pull Requests
+- **Verification**: Before creating PR, verify all `spec/assets/` files match Puppeteer's official versions
+
+**Example workflow**:
+```bash
+# During development - OK to experiment
+vim spec/assets/test.html  # Temporary modification for debugging
+
+# Before PR - MUST revert to official
+curl -sL https://raw.githubusercontent.com/puppeteer/puppeteer/main/test/assets/test.html \
+  -o spec/assets/test.html
+```
+
+**Why this matters**: Test assets are designed to test specific edge cases (rotated elements, complex layouts, etc.). Using simplified versions defeats the purpose of these tests.
+
