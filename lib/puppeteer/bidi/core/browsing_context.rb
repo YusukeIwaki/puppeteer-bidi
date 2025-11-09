@@ -93,8 +93,7 @@ module Puppeteer
           params = { context: @id, url: url }
           params[:wait] = wait if wait
           result = session.send_command('browsingContext.navigate', params)
-          # Update URL from navigation result
-          @url = result['url'] if result['url']
+          # URL will be updated via browsingContext.load event
           result
         end
 
