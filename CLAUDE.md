@@ -410,6 +410,39 @@ end
 
 This project uses the [socketry/async](https://github.com/socketry/async) library for asynchronous operations.
 
+### Why Async Instead of concurrent-ruby?
+
+**IMPORTANT**: This project uses `Async` (Fiber-based), **NOT** `concurrent-ruby` (Thread-based).
+
+| Feature | Async (Fiber-based) | concurrent-ruby (Thread-based) |
+|---------|---------------------|-------------------------------|
+| **Concurrency Model** | Cooperative multitasking (like JavaScript async/await) | Preemptive multitasking |
+| **Race Conditions** | ✅ Not possible within a Fiber | ❌ Requires Mutex, locks, etc. |
+| **Synchronization** | ✅ Not needed (cooperative) | ❌ Required (Mutex, Semaphore) |
+| **Mental Model** | ✅ Similar to JavaScript async/await | ❌ Traditional thread programming |
+| **Bug Risk** | ✅ Lower (no race conditions) | ❌ Higher (race conditions, deadlocks) |
+
+**Key advantages:**
+- **No race conditions**: Fibers yield control cooperatively, so no concurrent access to shared state
+- **No Mutex needed**: Since there are no race conditions, no synchronization primitives required
+- **Similar to JavaScript**: If you understand `async/await` in JavaScript, you understand Async in Ruby
+- **Easier to reason about**: Code executes sequentially within a Fiber until it explicitly yields
+
+**Example:**
+```ruby
+# ❌ DON'T: Use concurrent-ruby (Thread-based, requires Mutex)
+require 'concurrent'
+@pending = Concurrent::Map.new  # Thread-safe map
+promise = Concurrent::Promises.resolvable_future
+promise.fulfill(value)
+
+# ✅ DO: Use Async (Fiber-based, no synchronization needed)
+require 'async/promise'
+@pending = {}  # Plain Hash is safe with Fibers
+promise = Async::Promise.new
+promise.resolve(value)
+```
+
 ### Best Practices
 
 1. **Use `Sync` at top level**: When running async code at the top level of a thread or application, use `Sync { }` instead of `Async { }`
@@ -431,6 +464,23 @@ This project uses the [socketry/async](https://github.com/socketry/async) librar
      end
    end
    ```
+
+4. **Promise usage**: Use `Async::Promise` for async coordination:
+   ```ruby
+   promise = Async::Promise.new
+
+   # Resolve the promise
+   promise.resolve(value)
+
+   # Wait for the promise with timeout
+   Async do |task|
+     task.with_timeout(5) do
+       result = promise.wait
+     end
+   end.wait
+   ```
+
+5. **No Mutex needed**: Since Async is Fiber-based, you don't need Mutex for shared state within the same event loop
 
 ### Current Implementation
 

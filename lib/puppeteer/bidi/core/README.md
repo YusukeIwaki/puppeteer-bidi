@@ -161,7 +161,7 @@ puts "Disposed: #{browsing_context.disposed?}"
 2. **Keyword Arguments**: Uses Ruby keyword arguments instead of options hashes
 3. **Symbols**: Uses symbols for event names instead of strings
 4. **No Decorators**: Decorators like `@throwIfDisposed` are implemented as method guards
-5. **Concurrent Primitives**: Uses Ruby's Concurrent library instead of JavaScript promises
+5. **Async Primitives**: Uses Ruby's Async library (Fiber-based) instead of JavaScript promises (similar to async/await)
 
 ## References
 
