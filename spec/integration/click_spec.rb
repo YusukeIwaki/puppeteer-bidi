@@ -66,9 +66,9 @@ RSpec.describe 'Page.click' do
 
   it 'should click with disabled javascript' do
     with_test_state do |page:, server:, **|
-      # Skip: Firefox does not yet support emulation.setScriptingEnabled BiDi command
+      # Pending: Firefox does not yet support emulation.setScriptingEnabled BiDi command
       # This is part of the WebDriver BiDi spec but not yet implemented in Firefox
-      skip 'emulation.setScriptingEnabled not supported by Firefox yet'
+      pending 'emulation.setScriptingEnabled not supported by Firefox yet'
 
       page.set_javascript_enabled(false)
       page.goto("#{server.prefix}/wrappedlink.html")

@@ -14,12 +14,10 @@ RSpec.describe 'Page' do
   end
 
   describe 'Page.setJavaScriptEnabled' do
-    before do
-      # Skip: Firefox does not yet support emulation.setScriptingEnabled BiDi command
-      skip 'emulation.setScriptingEnabled not supported by Firefox yet'
-    end
-
     it 'should work' do
+      # Pending: Firefox does not yet support emulation.setScriptingEnabled BiDi command
+      pending 'emulation.setScriptingEnabled not supported by Firefox yet'
+
       with_test_state do |page:, **|
         page.set_javascript_enabled(false)
         expect(page.javascript_enabled?).to be false
@@ -46,6 +44,9 @@ RSpec.describe 'Page' do
     end
 
     it 'setInterval should pause' do
+      # Pending: Firefox does not yet support emulation.setScriptingEnabled BiDi command
+      pending 'emulation.setScriptingEnabled not supported by Firefox yet'
+
       with_test_state do |page:, **|
         # Set up an interval that increments a counter every 0ms
         page.evaluate(<<~JS)
