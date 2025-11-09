@@ -5,6 +5,7 @@ require 'fileutils'
 require_relative 'js_handle'
 require_relative 'element_handle'
 require_relative 'mouse'
+require_relative 'keyboard'
 
 module Puppeteer
   module Bidi
@@ -238,6 +239,14 @@ module Puppeteer
         main_frame.click(selector, button: button, count: count, delay: delay, offset: offset)
       end
 
+      # Type text into an element matching the selector
+      # @param selector [String] CSS selector
+      # @param text [String] Text to type
+      # @param delay [Numeric] Delay between key presses in milliseconds
+      def type(selector, text, delay: 0)
+        main_frame.type(selector, text, delay: delay)
+      end
+
       # Get the page title
       # @return [String] Page title
       def title
@@ -273,6 +282,12 @@ module Puppeteer
       # @return [Mouse] Mouse instance
       def mouse
         @mouse ||= Mouse.new(@browsing_context)
+      end
+
+      # Get the keyboard instance
+      # @return [Keyboard] Keyboard instance
+      def keyboard
+        @keyboard ||= Keyboard.new(@browsing_context)
       end
 
       # Wait for navigation

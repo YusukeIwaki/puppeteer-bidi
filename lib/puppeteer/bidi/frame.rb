@@ -177,6 +177,23 @@ module Puppeteer
         end
       end
 
+      # Type text into an element matching the selector
+      # @param selector [String] CSS selector
+      # @param text [String] Text to type
+      # @param delay [Numeric] Delay between key presses in milliseconds
+      def type(selector, text, delay: 0)
+        assert_not_detached
+
+        handle = query_selector(selector)
+        raise SelectorNotFoundError, selector unless handle
+
+        begin
+          handle.type(text, delay: delay)
+        ensure
+          handle.dispose
+        end
+      end
+
       # Get the frame URL
       # @return [String] Current URL
       def url
