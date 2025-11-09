@@ -39,10 +39,10 @@ RSpec.describe 'Core BiDi implementation' do
       puts "✓ Subscribed to events"
 
       # Listen for load event
-      load_promise = Concurrent::Promises.resolvable_future
+      load_promise = Async::Promise.new
       browsing_context.once(:load) do
         puts "✓ Page load event received"
-        load_promise.fulfill(true)
+        load_promise.resolve(true)
       end
 
       # Listen for navigation events
@@ -56,7 +56,11 @@ RSpec.describe 'Core BiDi implementation' do
       puts "✓ Navigation completed"
 
       # Wait for load event
-      load_promise.value!(5)
+      Async do |task|
+        task.with_timeout(5) do
+          load_promise.wait
+        end
+      end.wait
 
       puts "\nStep 8: Getting URL..."
       puts "✓ Current URL: #{browsing_context.url}"
