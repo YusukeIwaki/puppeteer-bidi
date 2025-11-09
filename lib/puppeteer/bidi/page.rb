@@ -266,7 +266,7 @@ module Puppeteer
       # Get the main frame
       # @return [Frame] Main frame
       def main_frame
-        @main_frame ||= Frame.new(@browsing_context, self)
+        @main_frame ||= Frame.new(self, @browsing_context)
       end
 
       # Get the mouse instance
