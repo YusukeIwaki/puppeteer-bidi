@@ -213,6 +213,24 @@ module Puppeteer
         @browsing_context.closed?
       end
 
+      # Get the isolated realm (default realm) for this frame
+      # @return [Core::WindowRealm] The default realm
+      def isolated_realm
+        @browsing_context.default_realm
+      end
+
+      # Get child frames
+      # @return [Array<Frame>] Child frames
+      def child_frames
+        # Get child browsing contexts directly from the browsing context
+        child_contexts = @browsing_context.children
+
+        # Create Frame objects for each child
+        child_contexts.map do |child_context|
+          Frame.new(self, child_context)
+        end
+      end
+
       private
 
       # Check if this frame is detached and raise error if so

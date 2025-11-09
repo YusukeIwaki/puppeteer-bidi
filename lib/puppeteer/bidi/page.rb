@@ -247,6 +247,19 @@ module Puppeteer
         main_frame.type(selector, text, delay: delay)
       end
 
+      # Focus an element matching the selector
+      # @param selector [String] CSS selector
+      def focus(selector)
+        handle = main_frame.query_selector(selector)
+        raise SelectorNotFoundError, selector unless handle
+
+        begin
+          handle.focus
+        ensure
+          handle.dispose
+        end
+      end
+
       # Get the page title
       # @return [String] Page title
       def title
@@ -278,6 +291,51 @@ module Puppeteer
         @main_frame ||= Frame.new(self, @browsing_context)
       end
 
+      # Get the focused frame
+      # @return [Frame] Focused frame (may be an iframe if one has focus)
+      def focused_frame
+        assert_not_closed
+
+        # Evaluate in main frame to find the focused window
+        handle = main_frame.evaluate_handle(<<~JS)
+          () => {
+            let win = window;
+            while (
+              win.document.activeElement instanceof win.HTMLIFrameElement ||
+              win.document.activeElement instanceof win.HTMLFrameElement
+            ) {
+              if (win.document.activeElement.contentWindow === null) {
+                break;
+              }
+              win = win.document.activeElement.contentWindow;
+            }
+            return win;
+          }
+        JS
+
+        # Get the remote value (should be a window object)
+        remote_value = handle.remote_value
+        handle.dispose
+
+        unless remote_value['type'] == 'window'
+          raise "Expected window type, got #{remote_value['type']}"
+        end
+
+        # Find the frame with matching context ID
+        context_id = remote_value['value']['context']
+        frame = frames.find { |f| f.browsing_context.id == context_id }
+
+        raise "Could not find frame with context #{context_id}" unless frame
+
+        frame
+      end
+
+      # Get all frames (main frame + child frames)
+      # @return [Array<Frame>] All frames
+      def frames
+        [main_frame] + main_frame.child_frames
+      end
+
       # Get the mouse instance
       # @return [Mouse] Mouse instance
       def mouse
@@ -287,7 +345,7 @@ module Puppeteer
       # Get the keyboard instance
       # @return [Keyboard] Keyboard instance
       def keyboard
-        @keyboard ||= Keyboard.new(@browsing_context)
+        @keyboard ||= Keyboard.new(self, @browsing_context)
       end
 
       # Wait for navigation

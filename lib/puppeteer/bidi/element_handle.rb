@@ -162,9 +162,9 @@ module Puppeteer
         # Focus the element first
         focus
 
-        # Get keyboard instance from realm's browsing context
-        # ElementHandle has realm which has browsing_context
-        keyboard = Keyboard.new(@realm.browsing_context)
+        # Get keyboard instance - need page reference
+        page = get_page
+        keyboard = Keyboard.new(page, @realm.browsing_context)
         keyboard.type(text, delay: delay)
       end
 
@@ -178,8 +178,9 @@ module Puppeteer
         # Focus the element first
         focus
 
-        # Get keyboard instance from realm's browsing context
-        keyboard = Keyboard.new(@realm.browsing_context)
+        # Get keyboard instance - need page reference
+        page = get_page
+        keyboard = Keyboard.new(page, @realm.browsing_context)
         keyboard.press(key, delay: delay, text: text)
       end
 
@@ -294,6 +295,15 @@ module Puppeteer
       end
 
       private
+
+      # Get the page from the browsing context
+      # @return [Page] Page instance
+      def get_page
+        # Create a temporary Frame to access the page
+        frame = Frame.new(nil, @realm.browsing_context)
+        # Navigate up to find the page by creating a page wrapper
+        Page.new(nil, @realm.browsing_context)
+      end
 
       # Intersect bounding boxes with frame viewport boundaries
       # Modifies boxes in-place to clip them to visible area

@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
-require_relative 'us_keyboard_layout'
-
 module Puppeteer
   module Bidi
     # Keyboard class for keyboard input operations
     # Based on Puppeteer's BidiKeyboard implementation
     class Keyboard
-      def initialize(browsing_context)
+      def initialize(page, browsing_context)
+        @page = page
         @browsing_context = browsing_context
         @pressed_keys = Set.new
       end
@@ -15,8 +14,9 @@ module Puppeteer
       # Press key down
       # @param key [String] Key name (e.g., 'a', 'Enter', 'ArrowLeft')
       # @param text [String, nil] Text to insert (for CDP compatibility, not used in BiDi)
-      def down(key, text: nil)
-        # Note: text parameter exists for CDP compatibility but is not used in BiDi
+      # @param commands [Array<String>, nil] Commands to trigger (for CDP compatibility, not used in BiDi)
+      def down(key, text: nil, commands: nil)
+        # Note: text and commands parameters exist for CDP compatibility but are not used in BiDi
         actions = [{
           type: 'keyDown',
           value: get_bidi_key_value(key)
@@ -42,7 +42,9 @@ module Puppeteer
       # @param key [String] Key name
       # @param delay [Numeric, nil] Delay between keydown and keyup in milliseconds
       # @param text [String, nil] Text to insert (for CDP compatibility, not used in BiDi)
-      def press(key, delay: nil, text: nil)
+      # @param commands [Array<String>, nil] Commands to trigger (for CDP compatibility, not used in BiDi)
+      def press(key, delay: nil, text: nil, commands: nil)
+        # Note: text and commands parameters exist for CDP compatibility but are not used in BiDi
         actions = [{ type: 'keyDown', value: get_bidi_key_value(key) }]
 
         if delay
@@ -84,9 +86,17 @@ module Puppeteer
       # Send character directly (bypasses keyboard events, uses execCommand)
       # @param char [String] Character to send
       def send_character(char)
-        # Use execCommand to insert text directly
-        # This is executed in the focused element's context
-        @browsing_context.default_realm.call_function(
+        # Validate: cannot send more than 1 character
+        # Measures the number of code points rather than UTF-16 code units
+        if char.chars.length > 1
+          raise ArgumentError, 'Cannot send more than 1 character.'
+        end
+
+        # Get the focused frame (may be an iframe)
+        focused_frame = @page.focused_frame
+
+        # Execute insertText in the focused frame's isolated realm
+        focused_frame.isolated_realm.call_function(
           'function(char) { document.execCommand("insertText", false, char); }',
           false,
           arguments: [{ type: 'string', value: char }]
@@ -116,12 +126,20 @@ module Puppeteer
         # Modifier keys
         when 'Shift', 'ShiftLeft' then "\uE008"
         when 'ShiftRight' then "\uE050"
-        when 'Control', 'ControlLeft' then "\uE009"
-        when 'ControlRight' then "\uE051"
+        when 'Ctrl', 'Control', 'CtrlLeft', 'ControlLeft' then "\uE009"
+        when 'CtrlRight', 'ControlRight' then "\uE051"
         when 'Alt', 'AltLeft' then "\uE00A"
         when 'AltRight' then "\uE052"
         when 'Meta', 'MetaLeft' then "\uE03D"
         when 'MetaRight' then "\uE053"
+
+        when 'CtrlOrMeta', 'ControlOrMeta' then (
+          if RUBY_PLATFORM.include?('darwin')
+            "\uE03D" # Meta
+          else
+            "\uE009" # Control
+          end
+        )
 
         # Whitespace keys
         when 'Enter', 'NumpadEnter' then "\uE007"

@@ -132,10 +132,24 @@ module Puppeteer
             child.close(prompt_unload: prompt_unload)
           end
 
-          session.send_command('browsingContext.close', {
-            context: @id,
-            promptUnload: prompt_unload
-          })
+          # Send close command
+          # Note: For non-top-level contexts (iframes), this may fail with
+          # "Browsing context ... is not top-level" error, which is expected
+          # because parent closure automatically closes children in BiDi protocol
+          begin
+            session.send_command('browsingContext.close', {
+              context: @id,
+              promptUnload: prompt_unload
+            })
+          rescue Connection::ProtocolError => e
+            # Ignore "not top-level" errors for iframe contexts
+            # This happens when parent context closes and BiDi auto-closes children
+            # The error message is in format: "BiDi error (browsingContext.close): Browsing context with id ... is not top-level"
+            if ENV['DEBUG_BIDI_COMMAND']
+              puts "[BiDi] Close error for context #{@id}: #{e.message.inspect}"
+            end
+            raise unless e.message.include?('is not top-level')
+          end
         end
 
         # Traverse history
