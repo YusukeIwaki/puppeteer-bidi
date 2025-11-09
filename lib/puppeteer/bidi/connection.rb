@@ -3,7 +3,7 @@
 require 'async'
 require 'async/barrier'
 require 'async/queue'
-require 'concurrent'
+require 'async/promise'
 
 module Puppeteer
   module Bidi
@@ -18,8 +18,8 @@ module Puppeteer
       def initialize(transport)
         @transport = transport
         @next_id = 1
-        @pending_commands = Concurrent::Map.new
-        @event_listeners = Concurrent::Map.new
+        @pending_commands = {}
+        @event_listeners = {}
         @closed = false
 
         setup_transport_handlers
@@ -41,7 +41,7 @@ module Puppeteer
         }
 
         # Create promise for this command
-        promise = Concurrent::Promises.resolvable_future
+        promise = Async::Promise.new
 
         @pending_commands[id] = {
           promise: promise,
@@ -60,7 +60,11 @@ module Puppeteer
         # Wait for response with timeout
         begin
           timeout_seconds = timeout / 1000.0
-          result = promise.value!(timeout_seconds)
+          result = Async do |task|
+            task.with_timeout(timeout_seconds) do
+              promise.wait
+            end
+          end.wait
 
           # Debug output
           if ENV['DEBUG_BIDI_COMMAND']
@@ -75,7 +79,7 @@ module Puppeteer
           end
 
           result['result']
-        rescue Concurrent::TimeoutError
+        rescue Async::TimeoutError
           @pending_commands.delete(id)
           raise TimeoutError, "Timeout waiting for #{method} (#{timeout}ms)"
         end
@@ -158,8 +162,8 @@ module Puppeteer
           return
         end
 
-        # Fulfill the promise with the response
-        pending[:promise].fulfill(message)
+        # Resolve the promise with the response
+        pending[:promise].resolve(message)
       end
 
       def handle_event(message)
