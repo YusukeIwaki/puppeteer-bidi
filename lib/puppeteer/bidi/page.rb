@@ -44,13 +44,7 @@ module Puppeteer
       # @param html [String] HTML content to set
       # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')
       def set_content(html, wait_until: 'load')
-        assert_not_closed
-
-        # Use data URL to set content
-        # Encode HTML in base64 to avoid URL encoding issues
-        encoded = Base64.strict_encode64(html)
-        data_url = "data:text/html;base64,#{encoded}"
-        goto(data_url, wait_until: wait_until)
+        main_frame.set_content(html, wait_until: wait_until)
       end
 
       # Take a screenshot

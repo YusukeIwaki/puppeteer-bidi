@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'base64'
 require_relative 'js_handle'
 require_relative 'element_handle'
 require_relative 'serializer'
@@ -203,6 +204,31 @@ module Puppeteer
       # @return [String] Current URL
       def url
         @browsing_context.url
+      end
+
+      # Set frame content
+      # @param html [String] HTML content to set
+      # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')
+      def set_content(html, wait_until: 'load')
+        assert_not_detached
+
+        # Use data URL to set content
+        # Encode HTML in base64 to avoid URL encoding issues
+        encoded = Base64.strict_encode64(html)
+        data_url = "data:text/html;base64,#{encoded}"
+
+        wait = case wait_until
+               when 'load'
+                 'complete'
+               when 'domcontentloaded'
+                 'interactive'
+               else
+                 'none'
+               end
+
+        # Navigate and wait for the content to load
+        @browsing_context.navigate(data_url, wait: wait)
+        nil
       end
 
       # Get the frame name
