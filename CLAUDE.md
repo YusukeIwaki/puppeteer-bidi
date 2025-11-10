@@ -892,6 +892,12 @@ The following topics have detailed documentation in the `CLAUDE/` directory:
   - When to use `skip` (unimplemented features)
   - Proper error trace documentation
 
+- **[Test Server Dynamic Routes](CLAUDE/test_server_routes.md)** - Dynamic route handling for tests
+  - `server.set_route(path)` for intercepting requests
+  - `server.wait_for_request(path)` for synchronization
+  - Testing navigation events (domcontentloaded vs load)
+  - Known limitations and challenges
+
 ### Architecture
 
 - **[Frame Architecture](CLAUDE/frame_architecture.md)** - Parent-based frame hierarchy
