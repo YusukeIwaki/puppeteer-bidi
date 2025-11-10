@@ -18,9 +18,7 @@ RSpec.describe 'Page.waitForNavigation' do
   it 'should work with clicking on anchor links' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
-      # Puppeteer: await page.setContent('<a href="#foobar">foobar</a>');
-      # Using evaluate as workaround since setContent changes base URL to data:
-      page.evaluate('() => { document.body.innerHTML = \'<a href="#foobar">foobar</a>\' }')
+      page.set_content('<a href="#foobar">foobar</a>')
 
       response = page.wait_for_navigation do
         page.click('a')
@@ -34,16 +32,14 @@ RSpec.describe 'Page.waitForNavigation' do
   it 'should work with history.pushState()' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
-      # Puppeteer: await page.setContent(html`...`);
-      # Using evaluate as workaround since setContent changes base URL to data:
-      page.evaluate(<<~JS)
-        () => {
-          document.body.innerHTML = '<a onclick="javascript:pushState()">SPA</a>';
-          window.pushState = function() {
+      page.set_content(<<~HTML)
+        <a onclick="javascript:pushState()">SPA</a>
+        <script>
+          function pushState() {
             history.pushState({}, '', 'wow.html');
-          };
-        }
-      JS
+          }
+        </script>
+      HTML
 
       response = page.wait_for_navigation do
         page.click('a')
@@ -57,16 +53,14 @@ RSpec.describe 'Page.waitForNavigation' do
   it 'should work with history.replaceState()' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
-      # Puppeteer: await page.setContent(html`...`);
-      # Using evaluate as workaround since setContent changes base URL to data:
-      page.evaluate(<<~JS)
-        () => {
-          document.body.innerHTML = '<a onclick="javascript:replaceState()">SPA</a>';
-          window.replaceState = function() {
+      page.set_content(<<~HTML)
+        <a onclick="javascript:replaceState()">SPA</a>
+        <script>
+          function replaceState() {
             history.replaceState({}, '', '/replaced.html');
-          };
-        }
-      JS
+          }
+        </script>
+      HTML
 
       response = page.wait_for_navigation do
         page.click('a')
@@ -80,20 +74,20 @@ RSpec.describe 'Page.waitForNavigation' do
   it 'should work with DOM history.back()/history.forward()' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
-      # Puppeteer: await page.setContent(html`...`);
-      # Using evaluate as workaround since setContent changes base URL to data:
-      page.evaluate(<<~JS)
-        () => {
+      page.set_content(<<~HTML)
+        <a id="back" onclick="javascript:goBack()">back</a>
+        <a id="forward" onclick="javascript:goForward()">forward</a>
+        <script>
+          function goBack() {
+            history.back();
+          }
+          function goForward() {
+            history.forward();
+          }
           history.pushState({}, '', '/first.html');
           history.pushState({}, '', '/second.html');
-          document.body.innerHTML = `
-            <a id="back" onclick="javascript:goBack()">back</a>
-            <a id="forward" onclick="javascript:goForward()">forward</a>
-          `;
-          window.goBack = function() { history.back(); };
-          window.goForward = function() { history.forward(); };
-        }
-      JS
+        </script>
+      HTML
 
       expect(page.url).to eq("#{server.prefix}/second.html")
 

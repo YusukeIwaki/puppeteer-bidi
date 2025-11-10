@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'base64'
 require_relative 'js_handle'
 require_relative 'element_handle'
 require_relative 'serializer'
@@ -211,25 +210,70 @@ module Puppeteer
       # @param html [String] HTML content to set
       # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')
       def set_content(html, wait_until: 'load')
+        # Puppeteer BiDi implementation:
+        # await Promise.all([
+        #   this.setFrameContent(html),
+        #   firstValueFrom(combineLatest([this.#waitForLoad$(options), this.#waitForNetworkIdle$(options)]))
+        # ]);
+
+        # Set frame content and wait for load
+        set_frame_content(html)
+
+        # Wait for load event after setting content
+        # Note: Puppeteer also waits for network idle, but we don't implement that yet
+        # The document.write() triggers a load event, so we need to wait for it
+        wait_for_load(wait_until: wait_until)
+
+        nil
+      end
+
+      # Set frame content using document.open/write/close
+      # This is a low-level method that doesn't wait for load events
+      # @param content [String] HTML content to set
+      def set_frame_content(content)
         assert_not_detached
 
-        # Use data URL to set content
-        # Encode HTML in base64 to avoid URL encoding issues
-        encoded = Base64.strict_encode64(html)
-        data_url = "data:text/html;base64,#{encoded}"
+        # Puppeteer implementation:
+        # return await this.evaluate(html => {
+        #   document.open();
+        #   document.write(html);
+        #   document.close();
+        # }, content);
+        evaluate(<<~JS, content)
+          html => {
+            document.open();
+            document.write(html);
+            document.close();
+          }
+        JS
+      end
 
-        wait = case wait_until
-               when 'load'
-                 'complete'
-               when 'domcontentloaded'
-                 'interactive'
-               else
-                 'none'
-               end
+      # Wait for load event
+      # @param wait_until [String] Event to wait for ('load' or 'domcontentloaded')
+      private def wait_for_load(wait_until: 'load')
+        load_event = case wait_until
+                     when 'load'
+                       :load
+                     when 'domcontentloaded'
+                       :dom_content_loaded
+                     else
+                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
+                     end
 
-        # Navigate and wait for the content to load
-        @browsing_context.navigate(data_url, wait: wait)
-        nil
+        promise = Async::Promise.new
+        listener = proc { promise.resolve(nil) }
+
+        @browsing_context.once(load_event, &listener)
+
+        begin
+          Async do |task|
+            task.with_timeout(30) do  # 30 second timeout
+              promise.wait
+            end
+          end.wait
+        rescue Async::TimeoutError
+          raise Puppeteer::Bidi::TimeoutError, 'Timeout waiting for load event after setContent'
+        end
       end
 
       # Get the frame name
