@@ -32,5 +32,9 @@ module Puppeteer
         super("Error: failed to find element matching selector \"#{selector}\"")
       end
     end
+
+    # Raised when a timeout occurs (e.g., navigation timeout)
+    class TimeoutError < Error
+    end
   end
 end

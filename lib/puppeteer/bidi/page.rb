@@ -348,13 +348,13 @@ module Puppeteer
         @keyboard ||= Keyboard.new(self, @browsing_context)
       end
 
-      # Wait for navigation
-      # @param timeout [Integer] Timeout in milliseconds
-      # @return [HTTPResponse, nil] Main response
-      def wait_for_navigation(timeout: 30000)
-        # TODO: Implement proper navigation waiting
-        sleep 0.1
-        nil
+      # Wait for navigation to complete
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')
+      # @yield Optional block to execute that triggers navigation
+      # @return [HTTPResponse, nil] Main response (nil for fragment navigation or history API)
+      def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
+        main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
       end
 
       # Set viewport size

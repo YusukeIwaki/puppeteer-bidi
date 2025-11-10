@@ -312,6 +312,10 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 
 ### Phase 2: Core Features ✅ COMPLETED
 - [x] Navigation (`browsingContext.navigate`)
+- [x] **Page.waitForNavigation and Frame.waitForNavigation** - Navigation waiting with timeout support
+  - Handles full page navigation, fragment navigation (#hash), and History API (pushState/replaceState)
+  - Block-based API to hide Async complexity from users
+  - Event-driven pattern with proper listener cleanup
 - [x] JavaScript execution (`script.evaluate`, `script.callFunction`)
 - [x] **Page.evaluate and Frame.evaluate** - Full JavaScript evaluation with argument serialization
 - [x] Event handling system (EventEmitter)
@@ -482,6 +486,43 @@ promise.resolve(value)
 
 5. **No Mutex needed**: Since Async is Fiber-based, you don't need Mutex for shared state within the same event loop
 
+### AsyncUtils: Promise.all and Promise.race
+
+The `lib/puppeteer/bidi/async_utils.rb` module provides JavaScript-like Promise utilities:
+
+```ruby
+# Promise.all - Wait for all tasks to complete
+results = AsyncUtils.promise_all(
+  -> { sleep 0.1; 'first' },
+  -> { sleep 0.2; 'second' },
+  -> { sleep 0.05; 'third' }
+)
+# => ['first', 'second', 'third'] (in order, runs in parallel)
+
+# Promise.race - Return the first to complete
+result = AsyncUtils.promise_race(
+  -> { sleep 0.3; 'slow' },
+  -> { sleep 0.1; 'fast' },
+  -> { sleep 0.2; 'medium' }
+)
+# => 'fast' (cancels remaining tasks)
+```
+
+**When to use AsyncUtils:**
+- ✅ **Parallel task execution**: Running multiple independent async operations
+- ✅ **Racing timeouts**: First of multiple operations to complete
+- ❌ **Event-driven waiting**: Use `Async::Promise` directly for event listeners
+
+**Example - NOT suitable for event-driven patterns:**
+```ruby
+# ❌ DON'T: Use promise_race for event listeners
+# The current wait_for_navigation implementation is event-driven and uses
+# Async::Promise directly, which is more appropriate than promise_race.
+# promise_race is for racing independent tasks, not coordinating event listeners.
+```
+
+See `spec/async_utils_spec.rb` for comprehensive usage examples.
+
 ### Current Implementation
 
 The Browser class uses this pattern for WebSocket connection management:
@@ -503,6 +544,7 @@ This ensures:
 ### References
 - [Async Best Practices](https://socketry.github.io/async/guides/best-practices/)
 - [Async Documentation](https://socketry.github.io/async/)
+- [Async::Barrier Guide](https://socketry.github.io/async/guides/tasks/index.html)
 
 ## Implementation Best Practices
 
@@ -827,6 +869,15 @@ The following topics have detailed documentation in the `CLAUDE/` directory:
   - Why getBoundingClientRect() fails for wrapped text
   - intersectBoundingBoxesWithFrame viewport clipping
   - Debugging techniques
+
+### Navigation
+
+- **[Navigation Waiting Pattern](CLAUDE/navigation_waiting.md)** - `Page.waitForNavigation` and `Frame.waitForNavigation`
+  - Three navigation types: full page, fragment (#hash), History API
+  - Event-driven waiting pattern with Async::Promise
+  - Why AsyncUtils.promise_race doesn't simplify this pattern
+  - Navigation object integration and race condition prevention
+  - Comprehensive test coverage
 
 ### Testing
 

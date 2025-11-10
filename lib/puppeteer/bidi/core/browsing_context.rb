@@ -3,6 +3,7 @@
 require_relative 'event_emitter'
 require_relative 'disposable'
 require_relative 'realm'
+require_relative 'navigation'
 
 module Puppeteer
   module Bidi
@@ -435,6 +436,13 @@ module Puppeteer
             emit(:history_updated, nil)
           end
 
+          # Fragment navigated (anchor links, hash changes)
+          session.on('browsingContext.fragmentNavigated') do |info|
+            next unless info['context'] == @id
+            @url = info['url']
+            emit(:fragment_navigated, nil)
+          end
+
           # DOM content loaded
           session.on('browsingContext.domContentLoaded') do |info|
             next unless info['context'] == @id
@@ -460,8 +468,24 @@ module Puppeteer
             next if @navigation && !@navigation.disposed?
 
             # Create new navigation
-            # @navigation = Navigation.from(self)
-            # emit(:navigation, { navigation: @navigation })
+            @navigation = Navigation.from(self)
+
+            # Wrap navigation in EventEmitter and register with disposables
+            # This follows Puppeteer's pattern: new EventEmitter(this.#navigation)
+            navigation_emitter = EventEmitter.new
+            @disposables.use(navigation_emitter)
+
+            # Listen for navigation completion events to update URL
+            # Puppeteer: for (const eventName of ['fragment', 'failed', 'aborted'])
+            [:fragment, :failed, :aborted].each do |event_name|
+              @navigation.once(event_name) do |data|
+                navigation_emitter.dispose
+                @url = data[:url]
+              end
+            end
+
+            # Emit navigation event for subscribers (e.g., Frame#wait_for_navigation)
+            emit(:navigation, { navigation: @navigation })
           end
 
           # Network events

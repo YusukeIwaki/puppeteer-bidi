@@ -236,6 +236,95 @@ module Puppeteer
         end
       end
 
+      # Wait for navigation to complete
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')
+      # @yield Optional block to execute that triggers navigation
+      # @return [HTTPResponse, nil] Main response (nil for fragment navigation or history API)
+      def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
+        assert_not_detached
+
+        # Determine which event to wait for
+        load_event = case wait_until
+                     when 'load'
+                       :load
+                     when 'domcontentloaded'
+                       :dom_content_loaded
+                     else
+                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
+                     end
+
+        # Use Async::Promise for signaling
+        promise = Async::Promise.new
+
+        # Store the response (if any)
+        response_holder = { value: nil }
+        navigation_received = false
+
+        # Listen for navigation events from BrowsingContext
+        # This follows Puppeteer's pattern: race between 'navigation', 'historyUpdated', and 'fragmentNavigated'
+        navigation_listener = proc do |data|
+          navigation = data[:navigation]
+          navigation_received = true
+
+          # Set up listeners for navigation completion
+          # Listen for fragment, failed, aborted events
+          navigation.once(:fragment) do
+            promise.resolve(nil) unless promise.resolved?
+          end
+
+          navigation.once(:failed) do
+            promise.resolve(nil) unless promise.resolved?
+          end
+
+          navigation.once(:aborted) do
+            promise.resolve(nil) unless promise.resolved?
+          end
+
+          # Also listen for load/domcontentloaded events to complete navigation
+          @browsing_context.once(load_event) do
+            promise.resolve(response_holder[:value]) unless promise.resolved?
+          end
+        end
+
+        history_listener = proc do
+          # History API navigations (without Navigation object)
+          # This handles history.pushState/replaceState
+          # Only resolve if we haven't received a navigation event
+          promise.resolve(nil) unless navigation_received || promise.resolved?
+        end
+
+        fragment_listener = proc do
+          # Fragment navigations (anchor links, hash changes)
+          # Only resolve if we haven't received a navigation event
+          promise.resolve(nil) unless navigation_received || promise.resolved?
+        end
+
+        @browsing_context.on(:navigation, &navigation_listener)
+        @browsing_context.on(:history_updated, &history_listener)
+        @browsing_context.on(:fragment_navigated, &fragment_listener)
+
+        begin
+          # Execute the block if provided (this may trigger navigation)
+          block.call if block
+
+          # Wait for navigation with timeout (convert milliseconds to seconds)
+          timeout_seconds = timeout / 1000.0
+          Async do |task|
+            task.with_timeout(timeout_seconds) do
+              promise.wait
+            end
+          end.wait
+        rescue Async::TimeoutError
+          raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
+        ensure
+          # Clean up listeners
+          @browsing_context.off(:navigation, &navigation_listener)
+          @browsing_context.off(:history_updated, &history_listener)
+          @browsing_context.off(:fragment_navigated, &fragment_listener)
+        end
+      end
+
       private
 
       # Check if this frame is detached and raise error if so
