@@ -210,19 +210,51 @@ module Puppeteer
       # @param html [String] HTML content to set
       # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')
       def set_content(html, wait_until: 'load')
+        assert_not_detached
+
         # Puppeteer BiDi implementation:
         # await Promise.all([
         #   this.setFrameContent(html),
         #   firstValueFrom(combineLatest([this.#waitForLoad$(options), this.#waitForNetworkIdle$(options)]))
         # ]);
 
-        # Set frame content and wait for load
-        set_frame_content(html)
+        # IMPORTANT: Must start waiting BEFORE calling setFrameContent
+        # to ensure we don't miss the load event
+        load_event = case wait_until
+                     when 'load'
+                       :load
+                     when 'domcontentloaded'
+                       :dom_content_loaded
+                     else
+                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
+                     end
 
-        # Wait for load event after setting content
-        # Note: Puppeteer also waits for network idle, but we don't implement that yet
-        # The document.write() triggers a load event, so we need to wait for it
-        wait_for_load(wait_until: wait_until)
+        # Create promise and register listener BEFORE document.write
+        promise = Async::Promise.new
+        listener = proc { promise.resolve(nil) }
+        @browsing_context.once(load_event, &listener)
+
+        # Now execute document.write (this will trigger the event)
+        evaluate(<<~JS, html)
+          html => {
+            document.open();
+            document.write(html);
+            document.close();
+          }
+        JS
+
+        # Wait for the event with timeout
+        begin
+          Async do |task|
+            task.with_timeout(30) do  # 30 second timeout
+              promise.wait
+            end
+          end.wait
+        rescue Async::TimeoutError
+          # Remove listener on timeout
+          @browsing_context.off(load_event, &listener)
+          raise Puppeteer::Bidi::TimeoutError, "Timeout waiting for #{wait_until} event after setContent"
+        end
 
         nil
       end
@@ -230,6 +262,7 @@ module Puppeteer
       # Set frame content using document.open/write/close
       # This is a low-level method that doesn't wait for load events
       # @param content [String] HTML content to set
+      # @deprecated Use set_content instead
       def set_frame_content(content)
         assert_not_detached
 
@@ -240,34 +273,6 @@ module Puppeteer
             document.close();
           }
         JS
-      end
-
-      # Wait for load event
-      # @param wait_until [String] Event to wait for ('load' or 'domcontentloaded')
-      private def wait_for_load(wait_until: 'load')
-        load_event = case wait_until
-                     when 'load'
-                       :load
-                     when 'domcontentloaded'
-                       :dom_content_loaded
-                     else
-                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
-                     end
-
-        promise = Async::Promise.new
-        listener = proc { promise.resolve(nil) }
-
-        @browsing_context.once(load_event, &listener)
-
-        begin
-          Async do |task|
-            task.with_timeout(30) do  # 30 second timeout
-              promise.wait
-            end
-          end.wait
-        rescue Async::TimeoutError
-          raise Puppeteer::Bidi::TimeoutError, 'Timeout waiting for load event after setContent'
-        end
       end
 
       # Get the frame name
