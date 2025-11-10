@@ -5,6 +5,7 @@ require_relative 'js_handle'
 require_relative 'element_handle'
 require_relative 'serializer'
 require_relative 'deserializer'
+require_relative 'http_response'
 
 module Puppeteer
   module Bidi
@@ -283,8 +284,8 @@ module Puppeteer
         # Use Async::Promise for signaling
         promise = Async::Promise.new
 
-        # Store the response (if any)
-        response_holder = { value: nil }
+        # Track navigation type for response creation
+        navigation_type = nil  # :full_page, :fragment, or :history
         navigation_received = false
 
         # Listen for navigation events from BrowsingContext
@@ -292,6 +293,7 @@ module Puppeteer
         navigation_listener = proc do |data|
           navigation = data[:navigation]
           navigation_received = true
+          navigation_type = :full_page
 
           # Set up listeners for navigation completion
           # Listen for fragment, failed, aborted events
@@ -309,7 +311,7 @@ module Puppeteer
 
           # Also listen for load/domcontentloaded events to complete navigation
           @browsing_context.once(load_event) do
-            promise.resolve(response_holder[:value]) unless promise.resolved?
+            promise.resolve(:full_page) unless promise.resolved?
           end
         end
 
@@ -336,11 +338,18 @@ module Puppeteer
 
           # Wait for navigation with timeout (convert milliseconds to seconds)
           timeout_seconds = timeout / 1000.0
-          Async do |task|
+          result = Async do |task|
             task.with_timeout(timeout_seconds) do
               promise.wait
             end
           end.wait
+
+          # Return HTTPResponse for full page navigation, nil for fragment/history
+          if result == :full_page
+            HTTPResponse.new(url: @browsing_context.url, status: 200)
+          else
+            nil
+          end
         rescue Async::TimeoutError
           raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
         ensure

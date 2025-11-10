@@ -6,6 +6,7 @@ require_relative 'js_handle'
 require_relative 'element_handle'
 require_relative 'mouse'
 require_relative 'keyboard'
+require_relative 'http_response'
 
 module Puppeteer
   module Bidi
@@ -36,8 +37,10 @@ module Puppeteer
                end
 
         @browsing_context.navigate(url, wait: wait)
-        # TODO: Return HTTPResponse object
-        nil
+        # Return HTTPResponse with the final URL
+        # Note: Currently we don't track HTTP status codes from BiDi protocol
+        # Assuming successful navigation (200 OK)
+        HTTPResponse.new(url: @browsing_context.url, status: 200)
       end
 
       # Set page content

@@ -9,14 +9,9 @@ RSpec.describe 'Page.waitForNavigation' do
         page.evaluate('url => { return (window.location.href = url) }', "#{server.prefix}/grid.html")
       end
 
-      # TODO: Implement HTTPResponse tracking
-      # Puppeteer expects: expect(response.ok()).toBe(true)
-      # expect(response).not_to be_nil
-      # expect(response.ok?).to be true
-      # expect(response.url).to include('grid.html')
-
-      # For now, we just verify navigation completed
-      expect(page.url).to include('grid.html')
+      expect(response).not_to be_nil
+      expect(response.ok?).to be true
+      expect(response.url).to include('grid.html')
     end
   end
 
