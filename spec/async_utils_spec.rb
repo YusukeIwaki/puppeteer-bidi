@@ -158,4 +158,128 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
       sleep 0.3 # Wait to ensure canceled task doesn't cause issues
     end
   end
+
+  describe 'with Async::Promise arguments' do
+    describe '.promise_all' do
+      it 'waits for all promises to resolve' do
+        promise1 = Async::Promise.new
+        promise2 = Async::Promise.new
+        promise3 = Async::Promise.new
+
+        # Resolve promises in background threads
+        Thread.new { sleep 0.1; promise1.resolve('first') }
+        Thread.new { sleep 0.2; promise2.resolve('second') }
+        Thread.new { sleep 0.05; promise3.resolve('third') }
+
+        results = described_class.promise_all(promise1, promise2, promise3)
+
+        expect(results).to eq(['first', 'second', 'third'])
+      end
+
+      it 'works with mix of procs and promises' do
+        promise = Async::Promise.new
+        Thread.new { sleep 0.1; promise.resolve('from promise') }
+
+        results = described_class.promise_all(
+          -> { sleep 0.05; 'from proc' },
+          promise
+        )
+
+        expect(results).to eq(['from proc', 'from promise'])
+      end
+
+      it 'propagates exceptions from failed promises' do
+        promise1 = Async::Promise.new
+        promise2 = Async::Promise.new
+
+        Thread.new { sleep 0.05; promise1.resolve('success') }
+        Thread.new do
+          sleep 0.1
+          promise2.reject(StandardError.new('Promise failed'))
+        end
+
+        expect do
+          described_class.promise_all(promise1, promise2)
+        end.to raise_error(StandardError, 'Promise failed')
+      end
+    end
+
+    describe '.promise_race' do
+      it 'returns result of fastest promise' do
+        promise1 = Async::Promise.new
+        promise2 = Async::Promise.new
+        promise3 = Async::Promise.new
+
+        # Resolve at different times
+        Thread.new { sleep 0.3; promise1.resolve('slow') }
+        Thread.new { sleep 0.1; promise2.resolve('fast') }
+        Thread.new { sleep 0.2; promise3.resolve('medium') }
+
+        result = described_class.promise_race(promise1, promise2, promise3)
+
+        expect(result).to eq('fast')
+      end
+
+      it 'works with mix of procs and promises' do
+        promise = Async::Promise.new
+        Thread.new { sleep 0.2; promise.resolve('from promise') }
+
+        result = described_class.promise_race(
+          -> { sleep 0.1; 'from proc' },
+          promise
+        )
+
+        expect(result).to eq('from proc')
+      end
+
+      it 'propagates exception if winning promise fails' do
+        promise1 = Async::Promise.new
+        promise2 = Async::Promise.new
+
+        Thread.new { sleep 0.2; promise1.resolve('slow success') }
+        Thread.new do
+          # Fast failure
+          promise2.reject(StandardError.new('Fast failure'))
+        end
+
+        expect do
+          described_class.promise_race(promise1, promise2)
+        end.to raise_error(StandardError, 'Fast failure')
+      end
+
+      it 'cancels remaining promises after first completes' do
+        promise1 = Async::Promise.new
+        promise2 = Async::Promise.new
+
+        completed = []
+        mutex = Mutex.new
+
+        Thread.new do
+          sleep 0.05
+          promise1.resolve('fast')
+          mutex.synchronize { completed << 'fast' }
+        end
+
+        Thread.new do
+          sleep 0.5
+          begin
+            promise2.resolve('slow')
+            mutex.synchronize { completed << 'slow' }
+          rescue StandardError
+            # Promise may be canceled
+          end
+        end
+
+        result = described_class.promise_race(promise1, promise2)
+
+        expect(result).to eq('fast')
+
+        # Give a bit of time
+        sleep 0.1
+
+        # Only fast promise should have completed
+        expect(completed).to eq(['fast'])
+      end
+    end
+  end
 end
