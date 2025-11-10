@@ -4,11 +4,11 @@ require 'spec_helper'
 require_relative '../lib/puppeteer/bidi/async_utils'
 
 RSpec.describe Puppeteer::Bidi::AsyncUtils do
-  describe '.promise_all' do
+  describe '.await_promise_all' do
     it 'waits for all tasks to complete and returns results in order' do
       start_time = Time.now
 
-      results = described_class.promise_all(
+      results = described_class.await_promise_all(
         -> { sleep 0.1; 'first' },
         -> { sleep 0.2; 'second' },
         -> { sleep 0.05; 'third' }
@@ -27,7 +27,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
     end
 
     it 'returns results in the same order as input tasks' do
-      results = described_class.promise_all(
+      results = described_class.await_promise_all(
         -> { sleep 0.2; 'slow' },
         -> { sleep 0.05; 'fast' },
         -> { sleep 0.1; 'medium' }
@@ -37,7 +37,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
     end
 
     it 'works with different return types' do
-      results = described_class.promise_all(
+      results = described_class.await_promise_all(
         -> { 42 },
         -> { 'string' },
         -> { [1, 2, 3] },
@@ -49,7 +49,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
 
     it 'propagates exceptions from failed tasks' do
       expect do
-        described_class.promise_all(
+        described_class.await_promise_all(
           -> { sleep 0.1; 'success' },
           -> { raise StandardError, 'Task failed' },
           -> { sleep 0.1; 'also success' }
@@ -58,13 +58,13 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
     end
 
     it 'handles empty task list' do
-      results = described_class.promise_all()
+      results = described_class.await_promise_all()
 
       expect(results).to eq([])
     end
 
     it 'handles single task' do
-      results = described_class.promise_all(
+      results = described_class.await_promise_all(
         -> { 'single result' }
       )
 
@@ -72,11 +72,11 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
     end
   end
 
-  describe '.promise_race' do
+  describe '.await_promise_race' do
     it 'returns the result of the fastest task' do
       start_time = Time.now
 
-      result = described_class.promise_race(
+      result = described_class.await_promise_race(
         -> { sleep 0.3; 'slow' },
         -> { sleep 0.1; 'fast' },
         -> { sleep 0.2; 'medium' }
@@ -96,7 +96,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
       completed_tasks = []
       mutex = Mutex.new
 
-      result = described_class.promise_race(
+      result = described_class.await_promise_race(
         -> {
           sleep 0.05
           mutex.synchronize { completed_tasks << 'fast' }
@@ -119,7 +119,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
     end
 
     it 'works with different return types' do
-      result = described_class.promise_race(
+      result = described_class.await_promise_race(
         -> { sleep 0.2; { key: 'value' } },
         -> { sleep 0.1; 'string' },
         -> { sleep 0.3; 42 }
@@ -130,7 +130,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
 
     it 'propagates exception if the winning task fails' do
       expect do
-        described_class.promise_race(
+        described_class.await_promise_race(
           -> { sleep 0.2; 'slow success' },
           -> { raise StandardError, 'Fast failure' },
           -> { sleep 0.3; 'slower success' }
@@ -139,7 +139,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
     end
 
     it 'handles single task' do
-      result = described_class.promise_race(
+      result = described_class.await_promise_race(
         -> { 'only one' }
       )
 
@@ -147,7 +147,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
     end
 
     it 'returns first task that completes even if later tasks would fail' do
-      result = described_class.promise_race(
+      result = described_class.await_promise_race(
         -> { sleep 0.05; 'success' },
         -> { sleep 0.2; raise StandardError, 'This should not be raised' }
       )
@@ -160,7 +160,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
   end
 
   describe 'with Async::Promise arguments' do
-    describe '.promise_all' do
+    describe '.await_promise_all' do
       it 'waits for all promises to resolve' do
         promise1 = Async::Promise.new
         promise2 = Async::Promise.new
@@ -171,7 +171,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
         Thread.new { sleep 0.2; promise2.resolve('second') }
         Thread.new { sleep 0.05; promise3.resolve('third') }
 
-        results = described_class.promise_all(promise1, promise2, promise3)
+        results = described_class.await_promise_all(promise1, promise2, promise3)
 
         expect(results).to eq(['first', 'second', 'third'])
       end
@@ -180,7 +180,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
         promise = Async::Promise.new
         Thread.new { sleep 0.1; promise.resolve('from promise') }
 
-        results = described_class.promise_all(
+        results = described_class.await_promise_all(
           -> { sleep 0.05; 'from proc' },
           promise
         )
@@ -199,13 +199,13 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
         end
 
         expect do
-          described_class.promise_all(promise1, promise2)
+          described_class.await_promise_all(promise1, promise2)
         end.to raise_error(StandardError, 'Promise failed')
       end
     end
 
-    describe '.promise_race' do
-      it 'returns result of fastest promise' do
+    describe '.promise_race (returns Async::Task)' do
+      it 'returns task that resolves to fastest promise result' do
         promise1 = Async::Promise.new
         promise2 = Async::Promise.new
         promise3 = Async::Promise.new
@@ -215,21 +215,23 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
         Thread.new { sleep 0.1; promise2.resolve('fast') }
         Thread.new { sleep 0.2; promise3.resolve('medium') }
 
-        result = described_class.promise_race(promise1, promise2, promise3)
-
-        expect(result).to eq('fast')
+        task = described_class.promise_race(promise1, promise2, promise3)
+        expect(task.wait).to eq('fast')
       end
 
       it 'works with mix of procs and promises' do
         promise = Async::Promise.new
+        promise_x = Async::Promise.new
         Thread.new { sleep 0.2; promise.resolve('from promise') }
+        Thread.new { sleep 0.2; promise_x.reject(StandardError.new('fail')) }
 
-        result = described_class.promise_race(
+        task = described_class.promise_race(
           -> { sleep 0.1; 'from proc' },
-          promise
+          promise,
+          promise_x,
         )
 
-        expect(result).to eq('from proc')
+        expect(task.wait).to eq('from proc')
       end
 
       it 'propagates exception if winning promise fails' do
@@ -243,10 +245,12 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
         end
 
         expect do
-          described_class.promise_race(promise1, promise2)
+          described_class.promise_race(promise1, promise2).wait
         end.to raise_error(StandardError, 'Fast failure')
       end
+    end
 
+    describe '.await_promise_race (returns result directly)' do
       it 'cancels remaining promises after first completes' do
         promise1 = Async::Promise.new
         promise2 = Async::Promise.new
@@ -270,7 +274,7 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
           end
         end
 
-        result = described_class.promise_race(promise1, promise2)
+        result = described_class.await_promise_race(promise1, promise2)
 
         expect(result).to eq('fast')
 

@@ -5,6 +5,7 @@ require_relative 'element_handle'
 require_relative 'serializer'
 require_relative 'deserializer'
 require_relative 'http_response'
+require_relative 'async_utils'
 
 module Puppeteer
   module Bidi
@@ -218,8 +219,7 @@ module Puppeteer
         #   firstValueFrom(combineLatest([this.#waitForLoad$(options), this.#waitForNetworkIdle$(options)]))
         # ]);
 
-        # IMPORTANT: Must start waiting BEFORE calling setFrameContent
-        # to ensure we don't miss the load event
+        # IMPORTANT: Register listener BEFORE document.write to avoid race condition
         load_event = case wait_until
                      when 'load'
                        :load
@@ -229,32 +229,16 @@ module Puppeteer
                        raise ArgumentError, "Unknown wait_until value: #{wait_until}"
                      end
 
-        # Create promise and register listener BEFORE document.write
         promise = Async::Promise.new
         listener = proc { promise.resolve(nil) }
         @browsing_context.once(load_event, &listener)
 
-        # Now execute document.write (this will trigger the event)
-        evaluate(<<~JS, html)
-          html => {
-            document.open();
-            document.write(html);
-            document.close();
-          }
-        JS
-
-        # Wait for the event with timeout
-        begin
-          Async do |task|
-            task.with_timeout(30) do  # 30 second timeout
-              promise.wait
-            end
-          end.wait
-        rescue Async::TimeoutError
-          # Remove listener on timeout
-          @browsing_context.off(load_event, &listener)
-          raise Puppeteer::Bidi::TimeoutError, "Timeout waiting for #{wait_until} event after setContent"
-        end
+        # Execute both operations: document.write AND wait for load
+        # Use promise_all to wait for both to complete (like Puppeteer's Promise.all)
+        AsyncUtils.await_promise_all(
+          -> { set_frame_content(html) },
+          promise
+        )
 
         nil
       end
@@ -262,7 +246,6 @@ module Puppeteer
       # Set frame content using document.open/write/close
       # This is a low-level method that doesn't wait for load events
       # @param content [String] HTML content to set
-      # @deprecated Use set_content instead
       def set_frame_content(content)
         assert_not_detached
 
@@ -349,6 +332,7 @@ module Puppeteer
           end
 
           navigation.once(:aborted) do
+            next if detached?
             promise.resolve(nil) unless promise.resolved?
           end
 
@@ -371,9 +355,15 @@ module Puppeteer
           promise.resolve(nil) unless navigation_received || promise.resolved?
         end
 
+        closed_listener = proc do
+          # Handle frame detachment by raising an error directly
+          raise FrameDetachedError, 'Navigating frame was detached'
+        end
+
         @browsing_context.on(:navigation, &navigation_listener)
         @browsing_context.on(:history_updated, &history_listener)
         @browsing_context.on(:fragment_navigated, &fragment_listener)
+        @browsing_context.once(:closed, &closed_listener)
 
         begin
           # Execute the block if provided (this may trigger navigation)
@@ -400,6 +390,7 @@ module Puppeteer
           @browsing_context.off(:navigation, &navigation_listener)
           @browsing_context.off(:history_updated, &history_listener)
           @browsing_context.off(:fragment_navigated, &fragment_listener)
+          @browsing_context.off(:closed, &closed_listener)
         end
       end
 
