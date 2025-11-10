@@ -233,12 +233,6 @@ module Puppeteer
       def set_frame_content(content)
         assert_not_detached
 
-        # Puppeteer implementation:
-        # return await this.evaluate(html => {
-        #   document.open();
-        #   document.write(html);
-        #   document.close();
-        # }, content);
         evaluate(<<~JS, content)
           html => {
             document.open();
