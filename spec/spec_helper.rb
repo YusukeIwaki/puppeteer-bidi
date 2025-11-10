@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "puppeteer/bidi"
+require 'timeout'
 
 # Load support files
 require_relative 'support/test_server'
@@ -42,6 +43,12 @@ RSpec.configure do |config|
     if $shared_test_server
       $shared_test_server.stop
       puts "[Test Suite] Server stopped"
+    end
+  end
+
+  config.around(:each, type: :integration) do |example|
+    Timeout.timeout(15) do
+      example.run
     end
   end
 
