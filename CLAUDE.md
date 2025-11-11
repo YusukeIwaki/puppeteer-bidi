@@ -541,6 +541,70 @@ This ensures:
 - Main thread remains responsive
 - Proper cleanup on browser close
 
+### Navigation Implementation Example
+
+The `Frame#wait_for_navigation` demonstrates proper Async/Fiber-based patterns:
+
+```ruby
+# lib/puppeteer/bidi/frame.rb
+def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
+  # Use Async::Promise for event coordination (NOT Thread-based)
+  promise = Async::Promise.new
+
+  # Set up event listeners
+  @browsing_context.on(:navigation) do |data|
+    navigation = data[:navigation]
+
+    # Resolve promise when navigation completes
+    navigation.once(:load) do
+      promise.resolve(:full_page)
+    end
+  end
+
+  # Check for existing navigation (Puppeteer pattern)
+  existing_nav = @browsing_context.navigation
+  if existing_nav && !existing_nav.disposed?
+    # Attach to existing navigation
+    setup_navigation_listeners.call(existing_nav)
+  end
+
+  # Execute block (may trigger navigation)
+  block.call if block
+
+  # Wait using Async (Fiber-based, not Thread-based)
+  result = Async do |task|
+    task.with_timeout(timeout / 1000.0) do
+      promise.wait
+    end
+  end.wait
+
+  result == :full_page ? HTTPResponse.new(...) : nil
+ensure
+  # Always clean up listeners
+  @browsing_context.off(:navigation, &navigation_listener)
+end
+```
+
+**Key points:**
+- ✅ Uses `Async::Promise` for signaling (Fiber-based)
+- ✅ No `Sync` wrapper at method level (avoids nesting issues)
+- ✅ Checks for existing navigation before executing block
+- ✅ Proper cleanup in `ensure` block
+- ✅ Matches Puppeteer's Promise-based pattern
+
+**Usage:**
+```ruby
+# Block pattern (existing tests compatible)
+page.wait_for_navigation do
+  page.click('a')
+end
+
+# Can be called from Async context
+Async do
+  page.wait_for_navigation(wait_until: 'domcontentloaded')
+end
+```
+
 ### References
 - [Async Best Practices](https://socketry.github.io/async/guides/best-practices/)
 - [Async Documentation](https://socketry.github.io/async/)
@@ -904,6 +968,50 @@ The following topics have detailed documentation in the `CLAUDE/` directory:
   - Constructor signature: `(parent, browsing_context)`
   - Recursive page traversal
   - Support for nested iframes
+
+### Navigation Implementation
+
+- **Navigation Tracking Pattern** - Following Puppeteer's BiDi Core implementation
+  - `BrowsingContext#navigation` accessor exposes current navigation
+  - `Frame#wait_for_navigation` can attach to existing navigations
+  - Multiple `wait_for_navigation` calls can wait for same navigation
+  - Supports different `wait_until` values ('load', 'domcontentloaded')
+
+- **Async/Fiber-based Concurrency** - Following CLAUDE.md guidance
+  - Uses `Async::Promise` for signaling (not Thread-based)
+  - Cooperative multitasking (no race conditions)
+  - No Mutex/locks required
+  - Similar mental model to JavaScript's async/await
+
+- **Implementation Pattern**:
+  ```ruby
+  # Check for existing navigation BEFORE executing block
+  existing_nav = @browsing_context.navigation
+  if existing_nav && !existing_nav.disposed?
+    # Attach to the existing navigation
+    setup_navigation_listeners.call(existing_nav)
+  end
+
+  # Execute block (may trigger new navigation)
+  block.call if block
+
+  # Wait using Async::Promise (Fiber-based)
+  result = Async do |task|
+    task.with_timeout(timeout_seconds) do
+      promise.wait
+    end
+  end.wait
+  ```
+
+- **Navigation Event Types**:
+  1. **Full page navigation**: `navigationStarted` → `load`/`domContentLoaded` → Returns HTTPResponse
+  2. **Fragment navigation**: `fragmentNavigated` only → Returns nil
+  3. **History API**: `historyUpdated` only → Returns nil
+
+- **Key Differences from Thread-based**:
+  - ❌ Thread-based: Race conditions, requires Mutex, unpredictable execution order
+  - ✅ Fiber-based: Cooperative multitasking, no race conditions, predictable behavior
+  - ✅ Matches Puppeteer's Promise-based pattern
 
 ## Summary
 

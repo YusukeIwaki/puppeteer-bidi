@@ -307,18 +307,17 @@ module Puppeteer
                        raise ArgumentError, "Unknown wait_until value: #{wait_until}"
                      end
 
-        # Use Async::Promise for signaling
+        # Use Async::Promise for signaling (Fiber-based, not Thread-based)
+        # This avoids race conditions and follows Puppeteer's Promise-based pattern
         promise = Async::Promise.new
 
         # Track navigation type for response creation
         navigation_type = nil  # :full_page, :fragment, or :history
-        navigation_received = false
+        navigation_obj = nil  # The navigation object we're waiting for
 
-        # Listen for navigation events from BrowsingContext
-        # This follows Puppeteer's pattern: race between 'navigation', 'historyUpdated', and 'fragmentNavigated'
-        navigation_listener = proc do |data|
-          navigation = data[:navigation]
-          navigation_received = true
+        # Helper to set up navigation listeners
+        setup_navigation_listeners = proc do |navigation|
+          navigation_obj = navigation
           navigation_type = :full_page
 
           # Set up listeners for navigation completion
@@ -342,22 +341,31 @@ module Puppeteer
           end
         end
 
+        # Listen for navigation events from BrowsingContext
+        # This follows Puppeteer's pattern: race between 'navigation', 'historyUpdated', and 'fragmentNavigated'
+        navigation_listener = proc do |data|
+          # Only handle if we haven't already attached to a navigation
+          next if navigation_obj
+
+          navigation = data[:navigation]
+          setup_navigation_listeners.call(navigation)
+        end
+
         history_listener = proc do
           # History API navigations (without Navigation object)
-          # This handles history.pushState/replaceState
-          # Only resolve if we haven't received a navigation event
-          promise.resolve(nil) unless navigation_received || promise.resolved?
+          # Only resolve if we haven't attached to a navigation
+          promise.resolve(nil) unless navigation_obj || promise.resolved?
         end
 
         fragment_listener = proc do
           # Fragment navigations (anchor links, hash changes)
-          # Only resolve if we haven't received a navigation event
-          promise.resolve(nil) unless navigation_received || promise.resolved?
+          # Only resolve if we haven't attached to a navigation
+          promise.resolve(nil) unless navigation_obj || promise.resolved?
         end
 
         closed_listener = proc do
-          # Handle frame detachment by raising an error directly
-          raise FrameDetachedError, 'Navigating frame was detached'
+          # Handle frame detachment by rejecting the promise
+          promise.reject(FrameDetachedError.new('Navigating frame was detached')) unless promise.resolved?
         end
 
         @browsing_context.on(:navigation, &navigation_listener)
@@ -366,10 +374,21 @@ module Puppeteer
         @browsing_context.once(:closed, &closed_listener)
 
         begin
+          # CRITICAL: Check for existing navigation BEFORE executing block
+          # This follows Puppeteer's pattern where waitForNavigation can attach to
+          # an already-started navigation (e.g., when called after goto)
+          existing_nav = @browsing_context.navigation
+          if existing_nav && !existing_nav.disposed?
+            # Attach to the existing navigation
+            setup_navigation_listeners.call(existing_nav)
+          end
+
           # Execute the block if provided (this may trigger navigation)
+          # Block executes in the same Fiber context for cooperative multitasking
           block.call if block
 
-          # Wait for navigation with timeout (convert milliseconds to seconds)
+          # Wait for navigation with timeout using Async (convert milliseconds to seconds)
+          # This is Fiber-based, not Thread-based
           timeout_seconds = timeout / 1000.0
           result = Async do |task|
             task.with_timeout(timeout_seconds) do

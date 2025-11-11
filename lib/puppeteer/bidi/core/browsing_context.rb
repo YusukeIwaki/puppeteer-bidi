@@ -25,7 +25,7 @@ module Puppeteer
           context
         end
 
-        attr_reader :id, :user_context, :parent, :original_opener, :default_realm
+        attr_reader :id, :user_context, :parent, :original_opener, :default_realm, :navigation
 
         def initialize(user_context, parent, id, url, original_opener)
           super()

@@ -52,6 +52,13 @@ RSpec.configure do |config|
     end
   end
 
+  # Clean up custom routes after each test
+  config.after(:each, type: :integration) do
+    if $shared_test_server
+      $shared_test_server.clear_routes
+    end
+  end
+
   helper_module = Module.new do
     include GoldenComparator
 

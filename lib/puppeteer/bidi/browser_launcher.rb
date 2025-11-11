@@ -91,6 +91,7 @@ module Puppeteer
         candidates = [
           ENV['FIREFOX_PATH'],
           '/usr/bin/firefox',
+          '/usr/bin/firefox-devedition',
           '/usr/bin/firefox-esr',
           '/snap/bin/firefox',
           '/Applications/Firefox.app/Contents/MacOS/firefox',
