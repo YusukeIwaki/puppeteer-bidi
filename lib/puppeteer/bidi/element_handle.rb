@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'js_handle'
-require_relative 'keyboard'
-
 module Puppeteer
   module Bidi
     # ElementHandle represents a reference to a DOM element

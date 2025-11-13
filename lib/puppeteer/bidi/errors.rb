@@ -2,6 +2,8 @@
 
 module Puppeteer
   module Bidi
+    class Error < StandardError; end
+
     # Raised when attempting to use a disposed JSHandle or ElementHandle
     class JSHandleDisposedError < Error
       def initialize

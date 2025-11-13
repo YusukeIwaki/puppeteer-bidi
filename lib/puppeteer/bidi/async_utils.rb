@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'async'
+require 'async/promise'
 require 'async/barrier'
 
 module Puppeteer
@@ -16,6 +18,37 @@ module Puppeteer
           task.wait
         else
           task
+        end
+      end
+
+      # Execute a task with a timeout using Async::Task#with_timeout
+      # @param timeout_ms [Numeric] Timeout duration in milliseconds
+      # @param task [Proc, Async::Promise, nil] Task to execute; falls back to block
+      # @yield [async_task] Execute a task within the timeout, optionally receiving Async::Task
+      # @return [Async::Task] Async task that resolves/rejects once the operation completes
+      def async_timeout(timeout_ms, task = nil, &block)
+        timeout_seconds = timeout_ms / 1000.0
+
+        if task
+          Async do |async_task|
+            async_task.with_timeout(timeout_seconds) do
+              if task.is_a?(Proc)
+                args = task.arity.positive? ? [async_task] : []
+                task.call(*args)
+              else
+                await(task)
+              end
+            end
+          end
+        elsif block
+          Async do |async_task|
+            async_task.with_timeout(timeout_seconds) do
+              args = block.arity.positive? ? [async_task] : []
+              await(block.call(*args))
+            end
+          end
+        else
+          raise ArgumentError, 'AsyncUtils.async_timeout requires a task or block'
         end
       end
 

@@ -2,18 +2,13 @@
 
 require 'base64'
 require 'fileutils'
-require_relative 'js_handle'
-require_relative 'element_handle'
-require_relative 'mouse'
-require_relative 'keyboard'
-require_relative 'http_response'
 
 module Puppeteer
   module Bidi
     # Page represents a single page/tab in the browser
     # This is a high-level wrapper around Core::BrowsingContext
     class Page
-      attr_reader :browsing_context
+      attr_reader :browsing_context, :browser_context
 
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context

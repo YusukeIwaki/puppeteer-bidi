@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'deserializer'
-require_relative 'serializer'
-
 module Puppeteer
   module Bidi
     # JSHandle represents a reference to a JavaScript object

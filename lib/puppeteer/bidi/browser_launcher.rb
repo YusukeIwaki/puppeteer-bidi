@@ -14,15 +14,6 @@ module Puppeteer
     class BrowserLauncher
       class LaunchError < Error; end
 
-      DEFAULT_ARGS = [
-        '--no-remote',
-        '--foreground'
-      ].freeze
-
-      BIDI_REQUIRED_PREFS = {
-        'remote.active-protocols' => 3  # Enable WebDriver BiDi (bit 0=CDP, bit 1=BiDi)
-      }.freeze
-
       attr_reader :executable_path, :user_data_dir
 
       def initialize(executable_path: nil, user_data_dir: nil, headless: true, args: [])
@@ -122,12 +113,21 @@ module Puppeteer
         FileUtils.mkdir_p(profile_dir)
 
         prefs_file = File.join(profile_dir, 'prefs.js')
-        prefs_content = BIDI_REQUIRED_PREFS.map do |key, value|
+        prefs_content = default_prefs.map do |key, value|
           value_str = value.is_a?(String) ? "\"#{value}\"" : value
           "user_pref(\"#{key}\", #{value_str});"
         end.join("\n")
 
         File.write(prefs_file, prefs_content)
+      end
+
+      def default_prefs
+        {
+          # Force all web content to use a single content process. TODO: remove
+          # this once Firefox supports mouse event dispatch from the main frame
+          # context. See https://bugzilla.mozilla.org/show_bug.cgi?id=1773393.
+          'fission.webContentIsolationStrategy': 0,
+        }
       end
 
       def cleanup_temp_user_data_dir
@@ -143,7 +143,11 @@ module Puppeteer
       end
 
       def build_launch_args(port)
-        args = DEFAULT_ARGS.dup
+        args = []
+
+        if RUBY_PLATFORM =~ /darwin/
+          args << '--foreground'
+        end
 
         # Add headless flag if needed
         args << '--headless' if @headless

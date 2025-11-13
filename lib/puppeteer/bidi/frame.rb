@@ -1,12 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'js_handle'
-require_relative 'element_handle'
-require_relative 'serializer'
-require_relative 'deserializer'
-require_relative 'http_response'
-require_relative 'async_utils'
-
 module Puppeteer
   module Bidi
     # Frame represents a frame (main frame or iframe) in the page
@@ -387,14 +380,8 @@ module Puppeteer
           # Block executes in the same Fiber context for cooperative multitasking
           block.call if block
 
-          # Wait for navigation with timeout using Async (convert milliseconds to seconds)
-          # This is Fiber-based, not Thread-based
-          timeout_seconds = timeout / 1000.0
-          result = Async do |task|
-            task.with_timeout(timeout_seconds) do
-              promise.wait
-            end
-          end.wait
+          # Wait for navigation with timeout using Async (Fiber-based)
+          result = AsyncUtils.async_timeout(timeout, promise).wait
 
           # Return HTTPResponse for full page navigation, nil for fragment/history
           if result == :full_page

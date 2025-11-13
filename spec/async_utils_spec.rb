@@ -4,6 +4,70 @@ require 'spec_helper'
 require_relative '../lib/puppeteer/bidi/async_utils'
 
 RSpec.describe Puppeteer::Bidi::AsyncUtils do
+  describe '.async_timeout' do
+    it 'returns result when block completes before timeout' do
+      task = described_class.async_timeout(200) do
+        sleep 0.05
+        'finished'
+      end
+
+      expect(task.wait).to eq('finished')
+    end
+
+    it 'returns result when block completes before timeout' do
+      task = described_class.async_timeout(200) do
+        Async do
+          sleep 0.05
+          'finished'
+        end
+      end
+
+      expect(task.wait).to eq('finished')
+    end
+
+    it 'raises Async::TimeoutError when block exceeds timeout' do
+      expect do
+        described_class.async_timeout(50) do
+          Async do
+            sleep 0.1
+            'never reached'
+          end
+        end.wait
+      end.to raise_error(Async::TimeoutError)
+    end
+
+    it 'accepts promise as argument' do
+      promise = Async::Promise.new
+      Thread.new do
+        sleep 0.05
+        promise.resolve('from promise')
+      end
+
+      task = described_class.async_timeout(200, promise)
+
+      expect(task.wait).to eq('from promise')
+    end
+
+    it 'passes async task to block when requested' do
+      received_task = nil
+
+      described_class.async_timeout(100) do |task|
+        received_task = task
+        'ok'
+      end.wait
+
+      expect(received_task).to be_a(Async::Task)
+    end
+
+    it 'passes async task to proc argument when requested' do
+      received_task = nil
+
+      described_class.async_timeout(100, ->(task) { received_task = task }).wait
+
+      expect(received_task).to be_a(Async::Task)
+    end
+  end
+
   describe '.await_promise_all' do
     it 'waits for all tasks to complete and returns results in order' do
       start_time = Time.now

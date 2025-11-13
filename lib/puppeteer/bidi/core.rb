@@ -10,17 +10,17 @@
 # - Follows WebDriver BiDi spec strictly, not Puppeteer's needs
 # - Implements BiDi comprehensively but minimally
 
-require_relative 'core/errors'
-require_relative 'core/event_emitter'
-require_relative 'core/disposable'
-require_relative 'core/session'
-require_relative 'core/browser'
-require_relative 'core/user_context'
-require_relative 'core/browsing_context'
-require_relative 'core/navigation'
-require_relative 'core/realm'
-require_relative 'core/request'
-require_relative 'core/user_prompt'
+require 'puppeteer/bidi/core/errors'
+require 'puppeteer/bidi/core/event_emitter'
+require 'puppeteer/bidi/core/disposable'
+require 'puppeteer/bidi/core/request'
+require 'puppeteer/bidi/core/navigation'
+require 'puppeteer/bidi/core/realm'
+require 'puppeteer/bidi/core/session'
+require 'puppeteer/bidi/core/browser'
+require 'puppeteer/bidi/core/user_context'
+require 'puppeteer/bidi/core/browsing_context'
+require 'puppeteer/bidi/core/user_prompt'
 
 module Puppeteer
   module Bidi

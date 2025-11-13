@@ -1,9 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'event_emitter'
-require_relative 'disposable'
-require_relative 'browsing_context'
-
 module Puppeteer
   module Bidi
     module Core
