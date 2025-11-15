@@ -703,20 +703,39 @@ server.run
 
 ```ruby
 # spec/spec_helper.rb
-def with_test_state(**options)
-  server = TestServer::Server.new
-  server.start
+
+# Optimized helper - reuses shared browser, creates new page per test
+# This is much faster as it avoids browser launch overhead
+def with_test_state
+  # Create a new page (tab) for this test
+  page = $shared_browser.new_page
+  context = $shared_browser.default_browser_context
 
   begin
-    with_browser(**options) do |browser|
-      page = browser.new_page
-      yield(page: page, server: server, browser: browser)
-    end
+    yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
   ensure
-    server.stop
+    # Close the page to clean up resources
+    page.close unless page.closed?
   end
 end
+
+# Legacy helper - launches a new browser for each call
+# Use with_test_state for better performance
+def with_browser(**options)
+  options[:headless] = headless_mode?
+  browser = Puppeteer::Bidi.launch(**options)
+  yield(browser)
+ensure
+  browser&.close
+end
 ```
+
+**Performance optimization:**
+
+- `with_test_state` reuses a shared browser instance (`$shared_browser`) across all tests
+- Each test gets a new page (tab) instead of launching a new browser
+- Shared test server (`$shared_test_server`) eliminates server restart overhead
+- Tests that need custom browser options should use `with_browser` directly
 
 #### 3. Golden Image Testing
 
