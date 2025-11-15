@@ -13,6 +13,7 @@ The test server (`spec/support/test_server.rb`) has been extended to support dyn
 **Purpose**: Intercept specific routes and control the response timing/content.
 
 **API:**
+
 ```ruby
 server.set_route(path) do |request, response|
   # Control when/how to respond
@@ -21,6 +22,7 @@ end
 ```
 
 **Usage Example:**
+
 ```ruby
 it 'should intercept CSS loading' do
   with_test_state do |page:, server:, **|
@@ -47,6 +49,7 @@ end
 **Purpose**: Wait for a specific request to arrive at the server before proceeding.
 
 **API:**
+
 ```ruby
 # Returns an Async task that resolves when request is received
 task = server.wait_for_request(path)
@@ -54,6 +57,7 @@ task.wait  # Block until request arrives (with 5s timeout)
 ```
 
 **Usage Example:**
+
 ```ruby
 it 'should wait for image request' do
   with_test_state do |page:, server:, **|
@@ -73,46 +77,41 @@ end
 
 ## Implementation Details
 
-### Class Variables
+### Async HTTP Server
 
-The `App` class uses class-level accessors to store routes and promises:
+`TestServer::Server` now runs an `Async::HTTP::Server` inside a dedicated thread. The server keeps two shared hashes guarded by mutexes:
 
-```ruby
-class App < Sinatra::Base
-  class << self
-    attr_accessor :dynamic_routes, :request_promises
-  end
+- `@routes` maps request paths to custom handlers.
+- `@request_promises` stores waiters created via `wait_for_request`.
 
-  # Initialize class variables
-  self.dynamic_routes = {}
-  self.request_promises = {}
-end
-```
-
-### Route Handler
-
-All requests pass through a wildcard handler that checks for dynamic routes:
+Incoming requests execute the following flow:
 
 ```ruby
-get '*' do
-  path = request.path_info
-  if App.dynamic_routes[path]
-    # Execute custom handler
-    App.dynamic_routes[path].call(request, response)
-
-    # Resolve promise if someone is waiting for this request
-    if App.request_promises[path]
-      promise = App.request_promises[path]
-      App.request_promises.delete(path)
-      promise.resolve(request)
-    end
-
-    halt response.status
+server = Async::HTTP::Server.for(endpoint) do |request|
+  if handler = lookup_route(request.path)
+    notify_request(request.path)
+    respond_with_handler(handler, request)
   else
-    pass  # Continue to static file serving
+    serve_static_asset(request)
   end
 end
 ```
+
+Static assets are served from `spec/assets`, while dynamic route handlers receive a lightweight wrapper (`RouteRequest`) exposing `path`, `headers`, `params`, and optional `body` accessors.
+
+### Response Writer
+
+Dynamic handlers interact with a `ResponseWriter` instance that buffers data until `finish` is invoked:
+
+```ruby
+server.set_route('/slow.css') do |_request, writer|
+  writer.add_header('content-type', 'text/css; charset=utf-8')
+  writer.write("body { background: red; }")
+  writer.finish
+end
+```
+
+The server task waits asynchronously for `writer.finish` before constructing the final `Protocol::HTTP::Response`. Handlers may capture the writer and complete it later from other tasks or threads, enabling Puppeteer-style resource gating.
 
 ## Testing Navigation Events
 
@@ -121,25 +120,30 @@ end
 A common Puppeteer test pattern tests the timing of `domcontentloaded` vs `load` events:
 
 ```typescript
-it('should work with both domcontentloaded and load', async () => {
+it("should work with both domcontentloaded and load", async () => {
   let response!: ServerResponse;
-  server.setRoute('/one-style.css', (_req, res) => {
+  server.setRoute("/one-style.css", (_req, res) => {
     return (response = res);
   });
 
   let bothFired = false;
 
-  const navigationPromise = page.goto(server.PREFIX + '/one-style.html');
-  const domContentLoadedPromise = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
-  const loadFiredPromise = page.waitForNavigation({ waitUntil: 'load' })
-    .then(() => { bothFired = true; });
+  const navigationPromise = page.goto(server.PREFIX + "/one-style.html");
+  const domContentLoadedPromise = page.waitForNavigation({
+    waitUntil: "domcontentloaded",
+  });
+  const loadFiredPromise = page
+    .waitForNavigation({ waitUntil: "load" })
+    .then(() => {
+      bothFired = true;
+    });
 
-  await server.waitForRequest('/one-style.css');
+  await server.waitForRequest("/one-style.css");
   await domContentLoadedPromise;
-  expect(bothFired).toBe(false);  // load hasn't fired yet
+  expect(bothFired).toBe(false); // load hasn't fired yet
 
-  response.end();  // Release CSS
-  await loadFiredPromise;  // Now load fires
+  response.end(); // Release CSS
+  await loadFiredPromise; // Now load fires
 });
 ```
 
@@ -148,11 +152,13 @@ it('should work with both domcontentloaded and load', async () => {
 ### 1. Navigation Timing Coordination
 
 **Challenge**: Testing `domcontentloaded` vs `load` timing requires careful coordination of:
+
 - Navigation start (must not wait for load)
 - Event listeners (must be registered before events fire)
 - Resource loading (must control when resources complete)
 
 **Issue**: In Ruby implementation, using `page.goto()` causes problems because:
+
 - `goto(url)` internally calls `navigate(url, wait: 'complete')` by default
 - This blocks until the `load` event fires
 - Cannot register `wait_for_navigation` listeners after navigation completes
@@ -160,9 +166,11 @@ it('should work with both domcontentloaded and load', async () => {
 **Attempted Solutions:**
 
 1. **Using `wait: 'none'`**:
+
    ```ruby
    page.browsing_context.navigate(url, wait: 'none')
    ```
+
    - Doesn't block on navigation
    - But bypasses high-level `Page` API
    - Still has timing issues with event listener registration
@@ -187,6 +195,7 @@ Async::TimeoutError: execution expired
 This is expected behavior when the request arrives immediately (before `wait_for_request` is called), but the warning is noisy.
 
 **Current Workaround:**
+
 ```ruby
 begin
   server.wait_for_request('/one-style.css').wait
@@ -195,14 +204,9 @@ rescue Async::TimeoutError
 end
 ```
 
-### 3. Response Object API
+### 3. Response Writer Semantics
 
-**Limitation**: WEBrick's response object API differs from Node.js:
-
-- **Node.js**: `response.end()` - sends response and closes connection
-- **WEBrick**: `response.finish` - completes response
-
-Must use WEBrick-specific methods in route handlers.
+**Limitation**: The custom `ResponseWriter` currently buffers the entire body before sending it back through `Protocol::HTTP::Response`. True streaming responses are not yet implemented, so large payloads are held in memory until `finish` is called. Handlers should keep payloads small, or extend the writer to stream chunks if needed in future work.
 
 ## Future Improvements
 
@@ -256,4 +260,4 @@ expect(requests.map(&:path)).to include('/one-style.css')
 
 - [Puppeteer test server](https://github.com/puppeteer/puppeteer/blob/main/test/src/server/index.ts)
 - [Puppeteer navigation tests](https://github.com/puppeteer/puppeteer/blob/main/test/src/navigation.spec.ts)
-- [WEBrick Response API](https://ruby-doc.org/stdlib-3.0.0/libdoc/webrick/rdoc/WEBrick/HTTPResponse.html)
+- [async-http server guide](https://socketry.github.io/async-http/guides/getting-started/index.html#making-a-server)
