@@ -2,17 +2,13 @@
 
 require 'base64'
 require 'fileutils'
-require_relative 'js_handle'
-require_relative 'element_handle'
-require_relative 'mouse'
-require_relative 'keyboard'
 
 module Puppeteer
   module Bidi
     # Page represents a single page/tab in the browser
     # This is a high-level wrapper around Core::BrowsingContext
     class Page
-      attr_reader :browsing_context
+      attr_reader :browsing_context, :browser_context
 
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
@@ -36,21 +32,17 @@ module Puppeteer
                end
 
         @browsing_context.navigate(url, wait: wait)
-        # TODO: Return HTTPResponse object
-        nil
+        # Return HTTPResponse with the final URL
+        # Note: Currently we don't track HTTP status codes from BiDi protocol
+        # Assuming successful navigation (200 OK)
+        HTTPResponse.new(url: @browsing_context.url, status: 200)
       end
 
       # Set page content
       # @param html [String] HTML content to set
       # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')
       def set_content(html, wait_until: 'load')
-        assert_not_closed
-
-        # Use data URL to set content
-        # Encode HTML in base64 to avoid URL encoding issues
-        encoded = Base64.strict_encode64(html)
-        data_url = "data:text/html;base64,#{encoded}"
-        goto(data_url, wait_until: wait_until)
+        main_frame.set_content(html, wait_until: wait_until)
       end
 
       # Take a screenshot
@@ -348,13 +340,13 @@ module Puppeteer
         @keyboard ||= Keyboard.new(self, @browsing_context)
       end
 
-      # Wait for navigation
-      # @param timeout [Integer] Timeout in milliseconds
-      # @return [HTTPResponse, nil] Main response
-      def wait_for_navigation(timeout: 30000)
-        # TODO: Implement proper navigation waiting
-        sleep 0.1
-        nil
+      # Wait for navigation to complete
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')
+      # @yield Optional block to execute that triggers navigation
+      # @return [HTTPResponse, nil] Main response (nil for fragment navigation or history API)
+      def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
+        main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
       end
 
       # Set viewport size

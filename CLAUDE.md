@@ -5,16 +5,18 @@ This document outlines the design philosophy, architecture, and implementation g
 ## Project Overview
 
 ### Purpose
+
 Port the WebDriver BiDi protocol portions of Puppeteer to Ruby, providing a standards-based tool for Firefox automation.
 
 ### Comparison with Existing Tools
 
-| Gem | Protocol | Target Browser | Features |
-|-----|----------|---------------|----------|
-| **puppeteer-ruby** | CDP (Chrome DevTools Protocol) | Chrome/Chromium | Chrome-specific, full-featured |
-| **puppeteer-bidi** (this gem) | WebDriver BiDi | Firefox (primary) | W3C standard, cross-browser |
+| Gem                           | Protocol                       | Target Browser    | Features                       |
+| ----------------------------- | ------------------------------ | ----------------- | ------------------------------ |
+| **puppeteer-ruby**            | CDP (Chrome DevTools Protocol) | Chrome/Chromium   | Chrome-specific, full-featured |
+| **puppeteer-bidi** (this gem) | WebDriver BiDi                 | Firefox (primary) | W3C standard, cross-browser    |
 
 ### Development Principles
+
 - **BiDi-only**: Do not port CDP protocol-related code
 - **Standards compliance**: Adhere to W3C WebDriver BiDi specification
 - **Firefox optimization**: Maximize BiDi protocol capabilities
@@ -38,13 +40,13 @@ Browser
 
 #### Key Components
 
-| Component | Role | Creation Method |
-|-----------|------|-----------------|
-| **Browser** | Entire browser instance | `puppeteer.launch()` / `puppeteer.connect()` |
-| **BrowserContext** | Isolated user session | `browser.createIncognitoBrowserContext()` |
-| **Page** | Single tab/popup | `context.newPage()` |
-| **Frame** | Frame within page | Auto-generated (iframe/frame tags) |
-| **ElementHandle** | Reference to DOM element | `page.$()` / `page.$$()` |
+| Component          | Role                     | Creation Method                              |
+| ------------------ | ------------------------ | -------------------------------------------- |
+| **Browser**        | Entire browser instance  | `puppeteer.launch()` / `puppeteer.connect()` |
+| **BrowserContext** | Isolated user session    | `browser.createIncognitoBrowserContext()`    |
+| **Page**           | Single tab/popup         | `context.newPage()`                          |
+| **Frame**          | Frame within page        | Auto-generated (iframe/frame tags)           |
+| **ElementHandle**  | Reference to DOM element | `page.$()` / `page.$$()`                     |
 
 ### Three-Layer Architecture
 
@@ -67,6 +69,7 @@ Browser
 ## WebDriver BiDi Protocol
 
 ### Characteristics
+
 - **Communication**: WebSocket (bidirectional)
 - **Message format**: JSON-RPC compliant
 - **Standardization**: W3C standard specification
@@ -75,6 +78,7 @@ Browser
 ### Communication Flow
 
 #### Command Sending
+
 ```json
 {
   "id": 1,
@@ -87,6 +91,7 @@ Browser
 ```
 
 #### Response Receiving
+
 ```json
 {
   "id": 1,
@@ -98,6 +103,7 @@ Browser
 ```
 
 #### Event Receiving
+
 ```json
 {
   "method": "browsingContext.navigationStarted",
@@ -111,31 +117,35 @@ Browser
 
 ### Protocol Comparison
 
-| Feature | CDP | WebDriver BiDi |
-|---------|-----|----------------|
+| Feature                 | CDP                       | WebDriver BiDi            |
+| ----------------------- | ------------------------- | ------------------------- |
 | **Communication Model** | Bidirectional (WebSocket) | Bidirectional (WebSocket) |
-| **Standardization** | Non-standard (Google) | W3C standard |
-| **Browser Support** | Chromium only | All browsers |
-| **API Stability** | Low (frequent changes) | High (standardized) |
+| **Standardization**     | Non-standard (Google)     | W3C standard              |
+| **Browser Support**     | Chromium only             | All browsers              |
+| **API Stability**       | Low (frequent changes)    | High (standardized)       |
 
 ## Implementation Guidelines
 
 ### Essential Components
 
 #### 1. Protocol Layer
+
 - **WebSocket communication**: Connection management with BiDi server
 - **Command sending**: Method invocation and response waiting
 - **Event handling**: Subscription and processing of async events
 - **Session management**: Connection state management
 
 #### 2. Core API
+
 - **Browser**: Browser instance management
 - **BrowserContext**: Isolated browsing contexts
 - **Page**: Core of page operations
 - **Frame**: Frame management
 
 #### 3. State Management
+
 - **FrameManager**: Frame tree tracking
+
   - `browsingContext.contextCreated`
   - `browsingContext.contextDestroyed`
   - `browsingContext.navigationStarted`
@@ -148,11 +158,13 @@ Browser
 ### Anatomy of API Calls
 
 #### Navigation Example
+
 ```ruby
 page.goto('https://example.com', wait_until: 'networkidle')
 ```
 
 Internal processing flow:
+
 1. **Issue command**: `browsingContext.navigate`
 2. **Subscribe to events**: NavigationManager monitors events
 3. **Track state**: NetworkManager tracks requests
@@ -160,11 +172,13 @@ Internal processing flow:
 5. **Resolve promise**: Complete when condition is satisfied
 
 #### Click Example
+
 ```ruby
 page.click(selector)
 ```
 
 Internal processing flow:
+
 1. **Find element**: Execute selector via `script.evaluate`
 2. **Check preconditions**: Verify visibility and validity
 3. **Scroll**: Scroll element into viewport if needed
@@ -173,13 +187,13 @@ Internal processing flow:
 
 ### Major BiDi Modules
 
-| Module | Role | Key Methods |
-|--------|------|-------------|
-| `browsingContext` | Context management | navigate, create, close |
-| `script` | JavaScript execution | evaluate, callFunction |
-| `input` | User input | performActions, releaseActions |
-| `network` | Network | addIntercept, continueRequest |
-| `session` | Session management | subscribe, unsubscribe |
+| Module            | Role                 | Key Methods                    |
+| ----------------- | -------------------- | ------------------------------ |
+| `browsingContext` | Context management   | navigate, create, close        |
+| `script`          | JavaScript execution | evaluate, callFunction         |
+| `input`           | User input           | performActions, releaseActions |
+| `network`         | Network              | addIntercept, continueRequest  |
+| `session`         | Session management   | subscribe, unsubscribe         |
 
 ## Core Layer Architecture
 
@@ -197,11 +211,13 @@ The Core layer follows Puppeteer's BiDi core design principles:
 ### Core Classes
 
 #### Infrastructure Classes
+
 - **EventEmitter** (`event_emitter.rb`): Event subscription and emission system
 - **Disposable** (`disposable.rb`): Resource management with DisposableStack pattern
 - **Errors** (`errors.rb`): Custom exception hierarchy for type-safe error handling
 
 #### Protocol Management Classes
+
 - **Session** (`session.rb`): BiDi session management, wraps Connection
 - **Browser** (`browser.rb`): Browser instance management with user contexts
 - **UserContext** (`user_context.rb`): Isolated browsing contexts (incognito-like)
@@ -211,6 +227,7 @@ The Core layer follows Puppeteer's BiDi core design principles:
 - **UserPrompt** (`user_prompt.rb`): User prompt (alert/confirm/prompt) handling
 
 #### JavaScript Execution Classes
+
 - **Realm** (`realm.rb`): Base class for JavaScript execution contexts
   - **WindowRealm**: Window and iframe script execution
   - **DedicatedWorkerRealm**: Web Worker script execution
@@ -299,6 +316,7 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 ## Development Roadmap
 
 ### Phase 1: Foundation ✅ COMPLETED
+
 - [x] WebSocket communication layer (`lib/puppeteer/bidi/transport.rb`)
 - [x] Basic BiDi protocol implementation (`lib/puppeteer/bidi/connection.rb`)
 - [x] Browser/BrowserContext/Page base classes (`lib/puppeteer/bidi/browser.rb`)
@@ -311,7 +329,12 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
   - Custom exception hierarchy
 
 ### Phase 2: Core Features ✅ COMPLETED
+
 - [x] Navigation (`browsingContext.navigate`)
+- [x] **Page.waitForNavigation and Frame.waitForNavigation** - Navigation waiting with timeout support
+  - Handles full page navigation, fragment navigation (#hash), and History API (pushState/replaceState)
+  - Block-based API to hide Async complexity from users
+  - Event-driven pattern with proper listener cleanup
 - [x] JavaScript execution (`script.evaluate`, `script.callFunction`)
 - [x] **Page.evaluate and Frame.evaluate** - Full JavaScript evaluation with argument serialization
 - [x] Event handling system (EventEmitter)
@@ -323,6 +346,7 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 - [ ] FrameManager implementation - **TODO**
 
 ### Phase 3: Advanced Features 🚧 IN PROGRESS
+
 - [x] Network request management (Request class)
 - [ ] NetworkManager implementation - **TODO**
 - [ ] Network interception (partial support in Request)
@@ -330,6 +354,7 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 - [x] Enhanced event handling (Core layer)
 
 ### Phase 4: Stabilization 🚧 IN PROGRESS
+
 - [x] Error handling (Custom exception classes)
 - [ ] Timeout management - **TODO**
 - [x] Test suite development (integration tests)
@@ -338,16 +363,19 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 ## Technical Considerations
 
 ### Performance
+
 - Single operations may involve multiple communication round-trips
 - WebSocket connection maintenance cost
 - Event listener memory management
 
 ### Reliability
+
 - Reconnection strategy for WebSocket disconnections
 - Appropriate timeout settings
 - Cleanup on error conditions
 
 ### Debugging
+
 - BiDi protocol message logging
 - Internal state visualization
 - WebSocket traffic monitoring
@@ -355,32 +383,38 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 ## References
 
 ### Specifications & Documentation
+
 - [WebDriver BiDi Specification](https://w3c.github.io/webdriver-bidi/)
 - [Puppeteer Documentation](https://pptr.dev/)
 - [Puppeteer Source Code](https://github.com/puppeteer/puppeteer)
 
 ### Implementation References
+
 - [puppeteer-ruby](https://github.com/YusukeIwaki/puppeteer-ruby) - CDP implementation reference
 - [Puppeteer BiDi implementation](https://github.com/puppeteer/puppeteer/tree/main/packages/puppeteer-core/src/bidi) - Original implementation
 
 ## Coding Conventions
 
 ### Ruby Conventions
+
 - Use Ruby 3.0+ features
 - Follow RuboCop guidelines
 - Provide RBS type definitions
 
 ### Naming Conventions
+
 - Class names: `PascalCase`
 - Method names: `snake_case`
 - Constants: `SCREAMING_SNAKE_CASE`
 
 ### Testing
+
 - Use RSpec
 - Unit tests + integration tests
 - Appropriate use of mocks/stubs
 
 ### Test Organization
+
 - **Unit tests**: `spec/` - Fast, isolated component tests
 - **Integration tests**: `spec/integration/` - End-to-end browser automation tests
 - Run integration tests: `bundle exec rspec spec/integration/`
@@ -404,6 +438,7 @@ end
 ```
 
 **Environment Variables:**
+
 - `HEADLESS=false` - Run browser in non-headless mode (default: headless)
 
 ## Async Programming with socketry/async
@@ -414,21 +449,23 @@ This project uses the [socketry/async](https://github.com/socketry/async) librar
 
 **IMPORTANT**: This project uses `Async` (Fiber-based), **NOT** `concurrent-ruby` (Thread-based).
 
-| Feature | Async (Fiber-based) | concurrent-ruby (Thread-based) |
-|---------|---------------------|-------------------------------|
-| **Concurrency Model** | Cooperative multitasking (like JavaScript async/await) | Preemptive multitasking |
-| **Race Conditions** | ✅ Not possible within a Fiber | ❌ Requires Mutex, locks, etc. |
-| **Synchronization** | ✅ Not needed (cooperative) | ❌ Required (Mutex, Semaphore) |
-| **Mental Model** | ✅ Similar to JavaScript async/await | ❌ Traditional thread programming |
-| **Bug Risk** | ✅ Lower (no race conditions) | ❌ Higher (race conditions, deadlocks) |
+| Feature               | Async (Fiber-based)                                    | concurrent-ruby (Thread-based)         |
+| --------------------- | ------------------------------------------------------ | -------------------------------------- |
+| **Concurrency Model** | Cooperative multitasking (like JavaScript async/await) | Preemptive multitasking                |
+| **Race Conditions**   | ✅ Not possible within a Fiber                         | ❌ Requires Mutex, locks, etc.         |
+| **Synchronization**   | ✅ Not needed (cooperative)                            | ❌ Required (Mutex, Semaphore)         |
+| **Mental Model**      | ✅ Similar to JavaScript async/await                   | ❌ Traditional thread programming      |
+| **Bug Risk**          | ✅ Lower (no race conditions)                          | ❌ Higher (race conditions, deadlocks) |
 
 **Key advantages:**
+
 - **No race conditions**: Fibers yield control cooperatively, so no concurrent access to shared state
 - **No Mutex needed**: Since there are no race conditions, no synchronization primitives required
 - **Similar to JavaScript**: If you understand `async/await` in JavaScript, you understand Async in Ruby
 - **Easier to reason about**: Code executes sequentially within a Fiber until it explicitly yields
 
 **Example:**
+
 ```ruby
 # ❌ DON'T: Use concurrent-ruby (Thread-based, requires Mutex)
 require 'concurrent'
@@ -446,6 +483,7 @@ promise.resolve(value)
 ### Best Practices
 
 1. **Use `Sync` at top level**: When running async code at the top level of a thread or application, use `Sync { }` instead of `Async { }`
+
    ```ruby
    Thread.new do
      Sync do
@@ -457,6 +495,7 @@ promise.resolve(value)
 2. **Reactor lifecycle**: The reactor is automatically managed by `Sync { }`. No need to create explicit `Async::Reactor` instances in application code.
 
 3. **Background operations**: For long-running background tasks (like WebSocket connections), wrap `Sync { }` in a Thread:
+
    ```ruby
    connection_task = Thread.new do
      Sync do
@@ -466,6 +505,7 @@ promise.resolve(value)
    ```
 
 4. **Promise usage**: Use `Async::Promise` for async coordination:
+
    ```ruby
    promise = Async::Promise.new
 
@@ -482,6 +522,45 @@ promise.resolve(value)
 
 5. **No Mutex needed**: Since Async is Fiber-based, you don't need Mutex for shared state within the same event loop
 
+### AsyncUtils: Promise.all and Promise.race
+
+The `lib/puppeteer/bidi/async_utils.rb` module provides JavaScript-like Promise utilities:
+
+```ruby
+# Promise.all - Wait for all tasks to complete
+results = AsyncUtils.promise_all(
+  -> { sleep 0.1; 'first' },
+  -> { sleep 0.2; 'second' },
+  -> { sleep 0.05; 'third' }
+)
+# => ['first', 'second', 'third'] (in order, runs in parallel)
+
+# Promise.race - Return the first to complete
+result = AsyncUtils.promise_race(
+  -> { sleep 0.3; 'slow' },
+  -> { sleep 0.1; 'fast' },
+  -> { sleep 0.2; 'medium' }
+)
+# => 'fast' (cancels remaining tasks)
+```
+
+**When to use AsyncUtils:**
+
+- ✅ **Parallel task execution**: Running multiple independent async operations
+- ✅ **Racing timeouts**: First of multiple operations to complete
+- ❌ **Event-driven waiting**: Use `Async::Promise` directly for event listeners
+
+**Example - NOT suitable for event-driven patterns:**
+
+```ruby
+# ❌ DON'T: Use promise_race for event listeners
+# The current wait_for_navigation implementation is event-driven and uses
+# Async::Promise directly, which is more appropriate than promise_race.
+# promise_race is for racing independent tasks, not coordinating event listeners.
+```
+
+See `spec/async_utils_spec.rb` for comprehensive usage examples.
+
 ### Current Implementation
 
 The Browser class uses this pattern for WebSocket connection management:
@@ -496,13 +575,82 @@ end
 ```
 
 This ensures:
+
 - Async operations run efficiently in an event loop
 - Main thread remains responsive
 - Proper cleanup on browser close
 
+### Navigation Implementation Example
+
+The `Frame#wait_for_navigation` demonstrates proper Async/Fiber-based patterns:
+
+```ruby
+# lib/puppeteer/bidi/frame.rb
+def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
+  # Use Async::Promise for event coordination (NOT Thread-based)
+  promise = Async::Promise.new
+
+  # Set up event listeners
+  @browsing_context.on(:navigation) do |data|
+    navigation = data[:navigation]
+
+    # Resolve promise when navigation completes
+    navigation.once(:load) do
+      promise.resolve(:full_page)
+    end
+  end
+
+  # Check for existing navigation (Puppeteer pattern)
+  existing_nav = @browsing_context.navigation
+  if existing_nav && !existing_nav.disposed?
+    # Attach to existing navigation
+    setup_navigation_listeners.call(existing_nav)
+  end
+
+  # Execute block (may trigger navigation)
+  block.call if block
+
+  # Wait using Async (Fiber-based, not Thread-based)
+  result = Async do |task|
+    task.with_timeout(timeout / 1000.0) do
+      promise.wait
+    end
+  end.wait
+
+  result == :full_page ? HTTPResponse.new(...) : nil
+ensure
+  # Always clean up listeners
+  @browsing_context.off(:navigation, &navigation_listener)
+end
+```
+
+**Key points:**
+
+- ✅ Uses `Async::Promise` for signaling (Fiber-based)
+- ✅ No `Sync` wrapper at method level (avoids nesting issues)
+- ✅ Checks for existing navigation before executing block
+- ✅ Proper cleanup in `ensure` block
+- ✅ Matches Puppeteer's Promise-based pattern
+
+**Usage:**
+
+```ruby
+# Block pattern (existing tests compatible)
+page.wait_for_navigation do
+  page.click('a')
+end
+
+# Can be called from Async context
+Async do
+  page.wait_for_navigation(wait_until: 'domcontentloaded')
+end
+```
+
 ### References
+
 - [Async Best Practices](https://socketry.github.io/async/guides/best-practices/)
 - [Async Documentation](https://socketry.github.io/async/)
+- [Async::Barrier Guide](https://socketry.github.io/async/guides/tasks/index.html)
 
 ## Implementation Best Practices
 
@@ -513,6 +661,7 @@ This ensures:
 **Always consult the official Puppeteer implementation before implementing features:**
 
 - **TypeScript source files**:
+
   - `packages/puppeteer-core/src/bidi/Page.ts` - High-level Page API
   - `packages/puppeteer-core/src/bidi/BrowsingContext.ts` - Core BiDi context
   - `packages/puppeteer-core/src/api/Page.ts` - Common Page interface
@@ -522,6 +671,7 @@ This ensures:
   - `test/golden-firefox/` - Golden images for visual regression testing
 
 **Example workflow:**
+
 ```ruby
 # 1. Read Puppeteer's TypeScript implementation
 # 2. Understand the BiDi protocol calls being made
@@ -531,44 +681,61 @@ This ensures:
 
 #### 2. Test Infrastructure Setup
 
-**Use Sinatra + WEBrick for test servers** (standard, simple):
+**Use async-http for test servers** (lightweight + Async-friendly):
 
 ```ruby
 # spec/support/test_server.rb
-class App < Sinatra::Base
-  set :public_folder, File.join(__dir__, '../assets')
-  set :static, true
-  set :logging, false
+endpoint = Async::HTTP::Endpoint.parse("http://127.0.0.1:#{@port}")
+
+server = Async::HTTP::Server.for(endpoint) do |request|
+  if handler = lookup_route(request.path)
+    notify_request(request.path)
+    respond_with_handler(handler, request)
+  else
+    serve_static_asset(request)
+  end
 end
 
-# Suppress WEBrick logs
-App.run!(
-  port: @port,
-  server_settings: {
-    Logger: WEBrick::Log.new('/dev/null'),
-    AccessLog: []
-  }
-)
+server.run
 ```
 
 **Helper pattern for integration tests:**
 
 ```ruby
 # spec/spec_helper.rb
-def with_test_state(**options)
-  server = TestServer::Server.new
-  server.start
+
+# Optimized helper - reuses shared browser, creates new page per test
+# This is much faster as it avoids browser launch overhead
+def with_test_state
+  # Create a new page (tab) for this test
+  page = $shared_browser.new_page
+  context = $shared_browser.default_browser_context
 
   begin
-    with_browser(**options) do |browser|
-      page = browser.new_page
-      yield(page: page, server: server, browser: browser)
-    end
+    yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
   ensure
-    server.stop
+    # Close the page to clean up resources
+    page.close unless page.closed?
   end
 end
+
+# Legacy helper - launches a new browser for each call
+# Use with_test_state for better performance
+def with_browser(**options)
+  options[:headless] = headless_mode?
+  browser = Puppeteer::Bidi.launch(**options)
+  yield(browser)
+ensure
+  browser&.close
+end
 ```
+
+**Performance optimization:**
+
+- `with_test_state` reuses a shared browser instance (`$shared_browser`) across all tests
+- Each test gets a new page (tab) instead of launching a new browser
+- Shared test server (`$shared_test_server`) eliminates server restart overhead
+- Tests that need custom browser options should use `with_browser` directly
 
 #### 3. Golden Image Testing
 
@@ -659,6 +826,7 @@ end
 ```
 
 **Key principles:**
+
 - Use `begin/ensure` blocks for cleanup (viewport restoration, etc.)
 - Match Puppeteer's parameter defaults exactly
 - Follow the same conditional logic order
@@ -730,6 +898,7 @@ end
 ```
 
 **Key points:**
+
 - BrowserContext manages multiple Page instances
 - Pages in same context share cookies/localStorage but have separate browsing contexts
 - Thread-safe screenshot execution (BiDi protocol handles concurrency)
@@ -748,6 +917,7 @@ end
 ```
 
 **Why base64:**
+
 - Avoids URL encoding issues with special characters
 - Handles multi-byte characters correctly
 - Standard approach in browser automation tools
@@ -778,10 +948,10 @@ end
 ```
 
 **Important:**
+
 - Use `begin/ensure` to guarantee restoration even on errors
 - Handle nil viewport case (no explicit viewport was set)
 - Save window.innerWidth/innerHeight as fallback
-
 
 ## Implementation Details
 
@@ -790,12 +960,14 @@ The following topics have detailed documentation in the `CLAUDE/` directory:
 ### JavaScript and DOM Interaction
 
 - **[JavaScript Evaluation](CLAUDE/javascript_evaluation.md)** - `evaluate()` and `evaluate_handle()` implementation
+
   - IIFE detection logic
   - Argument serialization to BiDi LocalValue format
   - Result deserialization
   - Core::Realm return values
 
 - **[JSHandle and ElementHandle](CLAUDE/jshandle_implementation.md)** - Object and element handle management
+
   - BiDi protocol parameters (resultOwnership, serializationOptions)
   - Handle lifecycle and disposal
   - Debugging with DEBUG_BIDI_COMMAND=1
@@ -818,6 +990,7 @@ The following topics have detailed documentation in the `CLAUDE/` directory:
 ### User Input and Interactions
 
 - **[Click Implementation](CLAUDE/click_implementation.md)** - Mouse input and click functionality
+
   - Architecture: Page → Frame → ElementHandle delegation
   - Mouse class and BiDi input.performActions
   - Critical bug fixes (session.subscribe, event-based URL updates)
@@ -828,18 +1001,35 @@ The following topics have detailed documentation in the `CLAUDE/` directory:
   - intersectBoundingBoxesWithFrame viewport clipping
   - Debugging techniques
 
+### Navigation
+
+- **[Navigation Waiting Pattern](CLAUDE/navigation_waiting.md)** - `Page.waitForNavigation` and `Frame.waitForNavigation`
+  - Three navigation types: full page, fragment (#hash), History API
+  - Event-driven waiting pattern with Async::Promise
+  - Why AsyncUtils.promise_race doesn't simplify this pattern
+  - Navigation object integration and race condition prevention
+  - Comprehensive test coverage
+
 ### Testing
 
 - **[Testing Strategy](CLAUDE/testing_strategy.md)** - Integration tests and optimization
+
   - Test organization and structure
   - Performance optimization (19x faster with browser reuse)
   - Golden image testing
   - Environment variables
 
 - **[RSpec: pending vs skip](CLAUDE/rspec_pending_vs_skip.md)** - Documenting browser limitations
+
   - When to use `pending` (Firefox BiDi limitations)
   - When to use `skip` (unimplemented features)
   - Proper error trace documentation
+
+- **[Test Server Dynamic Routes](CLAUDE/test_server_routes.md)** - Dynamic route handling for tests
+  - `server.set_route(path)` for intercepting requests
+  - `server.wait_for_request(path)` for synchronization
+  - Testing navigation events (domcontentloaded vs load)
+  - Known limitations and challenges
 
 ### Architecture
 
@@ -848,11 +1038,60 @@ The following topics have detailed documentation in the `CLAUDE/` directory:
   - Recursive page traversal
   - Support for nested iframes
 
+### Navigation Implementation
+
+- **Navigation Tracking Pattern** - Following Puppeteer's BiDi Core implementation
+
+  - `BrowsingContext#navigation` accessor exposes current navigation
+  - `Frame#wait_for_navigation` can attach to existing navigations
+  - Multiple `wait_for_navigation` calls can wait for same navigation
+  - Supports different `wait_until` values ('load', 'domcontentloaded')
+
+- **Async/Fiber-based Concurrency** - Following CLAUDE.md guidance
+
+  - Uses `Async::Promise` for signaling (not Thread-based)
+  - Cooperative multitasking (no race conditions)
+  - No Mutex/locks required
+  - Similar mental model to JavaScript's async/await
+
+- **Implementation Pattern**:
+
+  ```ruby
+  # Check for existing navigation BEFORE executing block
+  existing_nav = @browsing_context.navigation
+  if existing_nav && !existing_nav.disposed?
+    # Attach to the existing navigation
+    setup_navigation_listeners.call(existing_nav)
+  end
+
+  # Execute block (may trigger new navigation)
+  block.call if block
+
+  # Wait using Async::Promise (Fiber-based)
+  result = Async do |task|
+    task.with_timeout(timeout_seconds) do
+      promise.wait
+    end
+  end.wait
+  ```
+
+- **Navigation Event Types**:
+
+  1. **Full page navigation**: `navigationStarted` → `load`/`domContentLoaded` → Returns HTTPResponse
+  2. **Fragment navigation**: `fragmentNavigated` only → Returns nil
+  3. **History API**: `historyUpdated` only → Returns nil
+
+- **Key Differences from Thread-based**:
+  - ❌ Thread-based: Race conditions, requires Mutex, unpredictable execution order
+  - ✅ Fiber-based: Cooperative multitasking, no race conditions, predictable behavior
+  - ✅ Matches Puppeteer's Promise-based pattern
+
 ## Summary
 
 puppeteer-bidi aims to provide a Ruby implementation that inherits Puppeteer's design philosophy while leveraging WebDriver BiDi protocol characteristics. Through layered architecture, event-driven design, and adoption of standardized protocols, we deliver a reliable Firefox automation tool.
 
 **Development workflow:**
+
 1. Study Puppeteer's implementation first
 2. Understand BiDi protocol calls
 3. Implement with proper deserialization
@@ -871,6 +1110,7 @@ puppeteer-bidi aims to provide a Ruby implementation that inherits Puppeteer's d
 - **Verification**: Before creating PR, verify all `spec/assets/` files match Puppeteer's official versions
 
 **Example workflow**:
+
 ```bash
 # During development - OK to experiment
 vim spec/assets/test.html  # Temporary modification for debugging

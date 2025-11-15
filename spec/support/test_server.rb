@@ -1,92 +1,456 @@
 # frozen_string_literal: true
 
-require 'sinatra/base'
-require 'webrick'
+require 'async'
+require 'async/http/server'
+require 'async/http/client'
+require 'async/http/endpoint'
+require 'protocol/http/response'
 require 'socket'
 require 'timeout'
-require 'net/http'
+require 'uri'
 
 module TestServer
-  class App < Sinatra::Base
-    set :public_folder, File.join(__dir__, '../assets')
-    set :static, true
-
-    # Disable verbose logging
-    set :logging, false
-    set :dump_errors, false
-    set :show_exceptions, false
-
-    # Serve static files
-    get '*' do
-      pass
-    end
-  end
-
   class Server
     attr_reader :port, :prefix, :cross_process_prefix, :empty_page
+
+    DEFAULT_TIMEOUT = 5 # seconds
 
     def initialize
       @port = find_available_port
       @prefix = "http://localhost:#{@port}"
       @cross_process_prefix = "http://127.0.0.1:#{@port}"
       @empty_page = "#{@prefix}/empty.html"
-      @server_thread = nil
+      @assets_directory = File.expand_path('../assets', __dir__)
+
+      @routes = {}
+      @routes_mutex = Mutex.new
+
+  @request_promises = {}
+  @request_promises_mutex = Mutex.new
+
+  @server_thread = nil
+
+      @ready_mutex = Mutex.new
+      @ready_condition = ConditionVariable.new
+      @ready = false
+      @server_error = nil
     end
 
     def start
-      @server_thread = Thread.new do
-        # Suppress WEBrick logs
-        App.set :bind, 'localhost'
-        App.set :server, :webrick
-        App.set :quiet, true
+      return if @server_thread&.alive?
 
-        App.run!(
-          port: @port,
-          server_settings: {
-            Logger: WEBrick::Log.new('/dev/null'),
-            AccessLog: []
-          }
-        )
+      @server_thread = Thread.new do
+        run_server
+      rescue StandardError => error
+        signal_server_failure(error)
       end
 
-      # Wait for server to be ready
+      wait_until_ready
       wait_for_server
     end
 
     def stop
-      App.quit!
-      @server_thread&.kill
-      @server_thread&.join(1)
+      clear_routes
+
+      shutdown_server
+      if @server_thread&.alive?
+        @server_thread.join(1)
+        if @server_thread.alive?
+          @server_thread.kill
+          @server_thread.join(1)
+        end
+      end
+      @server_thread = nil
+
+      @ready_mutex.synchronize do
+        @ready = false
+        @server_error = nil
+      end
+    end
+
+    def clear_routes
+      @routes_mutex.synchronize { @routes.clear }
+      @request_promises_mutex.synchronize { @request_promises.clear }
+    end
+
+    def set_route(path, &block)
+      @routes_mutex.synchronize do
+        @routes[path] = block
+      end
+    end
+
+    def wait_for_request(path, timeout: nil)
+      promise = RequestPromise.new
+
+      @request_promises_mutex.synchronize do
+        @request_promises[path] ||= []
+        @request_promises[path] << promise
+      end
+
+      duration = timeout || DEFAULT_TIMEOUT
+
+      if (task = current_async_task)
+        task.with_timeout(duration) do
+          promise.wait
+        end
+      else
+        Timeout.timeout(duration) do
+          promise.wait
+        end
+      end
+    rescue Async::TimeoutError, Timeout::Error
+      raise "Timeout waiting for request to #{path}"
     end
 
     private
 
-    def find_available_port
-      (4567..4577).each do |port|
+    def run_server
+      Sync do
+        endpoint = Async::HTTP::Endpoint.parse("http://127.0.0.1:#{@port}")
+        server = Async::HTTP::Server.for(endpoint) do |request|
+          handle_request(request)
+        end
+
+        register_server(server)
+
         begin
-          server = TCPServer.new('localhost', port)
+          server.run
+        ensure
           server.close
-          return port
+        end
+      end
+    end
+
+    def handle_request(request)
+      path = request.path
+      handler = lookup_route(path)
+
+      if handler
+        notify_request(path)
+        respond_with_handler(handler, request)
+      else
+        serve_static_asset(request)
+      end
+    rescue StandardError => error
+      warn "[TestServer] Unhandled exception for #{request&.path}: #{error.class}: #{error.message}"
+      ::Protocol::HTTP::Response[500, [['content-type', 'text/plain; charset=utf-8']], ['Internal Server Error']]
+    ensure
+      request.body&.close
+    end
+
+    def respond_with_handler(handler, request)
+      writer = ResponseWriter.new
+      route_request = RouteRequest.new(request)
+
+      begin
+        handler.call(route_request, writer)
+      rescue StandardError => error
+        warn "[TestServer] Route handler error for #{request.path}: #{error.class}: #{error.message}"
+        writer.status = 500
+        writer.write('Internal Server Error')
+        writer.finish
+      ensure
+        writer.finish unless writer.finished?
+      end
+
+      writer.wait_for_finish
+
+      status = writer.status
+      body = writer.body
+      headers = writer.headers
+
+      ::Protocol::HTTP::Response[status, headers.to_a, [body]]
+    end
+
+    def serve_static_asset(request)
+      return method_not_allowed(request) unless %w[GET HEAD].include?(request.method)
+
+      relative_path = request.path == '/' ? '/index.html' : request.path
+      sanitized = sanitize_path(relative_path)
+
+      unless sanitized
+        return ::Protocol::HTTP::Response[400, [['content-type', 'text/plain; charset=utf-8']], ['Bad Request']]
+      end
+
+      file_path = File.join(@assets_directory, sanitized)
+
+      unless File.file?(file_path)
+        return ::Protocol::HTTP::Response[404, [['content-type', 'text/plain; charset=utf-8']], ['Not Found']]
+      end
+
+      body = File.binread(file_path)
+      headers = {
+        'content-type' => mime_type_for(file_path)
+      }
+
+      response_body = request.method == 'HEAD' ? '' : body
+
+      ::Protocol::HTTP::Response[200, headers.to_a, [response_body]]
+    end
+
+    def method_not_allowed(_request)
+      headers = [
+        ['content-type', 'text/plain; charset=utf-8'],
+        ['allow', 'GET, HEAD']
+      ]
+      ::Protocol::HTTP::Response[405, headers, ['Method Not Allowed']]
+    end
+
+    def lookup_route(path)
+      @routes_mutex.synchronize do
+        @routes[path]
+      end
+    end
+
+    def notify_request(path)
+      promises = nil
+      @request_promises_mutex.synchronize do
+        promises = @request_promises.delete(path)
+      end
+      promises&.each(&:resolve)
+    end
+
+    def register_server(_server)
+      @ready_mutex.synchronize do
+        @ready = true
+        @ready_condition.broadcast
+      end
+    end
+
+    def shutdown_server
+      @ready_mutex.synchronize do
+        @ready = false
+      end
+    end
+
+    def wait_until_ready
+      @ready_mutex.synchronize do
+        until @ready || @server_error
+          @ready_condition.wait(@ready_mutex)
+        end
+      end
+
+      raise @server_error if @server_error
+    end
+
+    def signal_server_failure(error)
+      @ready_mutex.synchronize do
+        @server_error = error
+        @ready_condition.broadcast
+      end
+    end
+
+    def sanitize_path(path)
+      clean = path.sub(%r{^/}, '')
+      full_path = File.expand_path(clean, @assets_directory)
+      return nil unless full_path.start_with?(@assets_directory)
+
+      full_path[@assets_directory.length + 1..]
+    end
+
+    def mime_type_for(file_path)
+      ext = File.extname(file_path)
+      case ext
+      when '.html' then 'text/html; charset=utf-8'
+      when '.htm' then 'text/html; charset=utf-8'
+      when '.css' then 'text/css; charset=utf-8'
+      when '.js' then 'application/javascript; charset=utf-8'
+      when '.json' then 'application/json; charset=utf-8'
+      when '.png' then 'image/png'
+      when '.jpg', '.jpeg' then 'image/jpeg'
+      when '.gif' then 'image/gif'
+      when '.svg' then 'image/svg+xml'
+      when '.txt' then 'text/plain; charset=utf-8'
+      else 'application/octet-stream'
+      end
+    end
+
+    def find_available_port
+      (8081..8089).each do |candidate|
+        begin
+          server = TCPServer.new('localhost', candidate)
+          server.close
+          return candidate
         rescue Errno::EADDRINUSE
-          # Port is in use, try next one
+          next
         end
       end
       raise 'No available port found'
     end
 
     def wait_for_server
-      Timeout.timeout(5) do
-        loop do
+      endpoint = Async::HTTP::Endpoint.parse(@prefix)
+
+      Sync do |task|
+        task.with_timeout(10) do
+          client = Async::HTTP::Client.new(endpoint)
+
           begin
-            response = Net::HTTP.get_response(URI("#{@prefix}/empty.html"))
-            break if response.code.to_i < 500
-          rescue Errno::ECONNREFUSED, Errno::EADDRNOTAVAIL
-            sleep 0.1
+            loop do
+              begin
+                response = client.get('/empty.html')
+                status = response.status
+                response.finish
+                break if status < 500
+              rescue Errno::ECONNREFUSED, Errno::EADDRNOTAVAIL, Errno::ECONNRESET, SocketError
+                task.sleep(0.1)
+                next
+              end
+
+              task.sleep(0.05)
+            end
+          ensure
+            client.close
           end
         end
       end
-    rescue Timeout::Error
+    rescue Async::TimeoutError
       raise 'Test server failed to start'
+    end
+
+    def current_async_task
+      Async::Task.current
+    rescue RuntimeError
+      nil
+    end
+  end
+
+  class RouteRequest
+    attr_reader :method, :headers
+
+    def initialize(request)
+      @request = request
+      @method = request.method
+      @headers = {}
+      request.headers.each do |field|
+        if field.respond_to?(:name) && field.respond_to?(:value)
+          key = field.name
+          value = field.value
+        else
+          key, value = field
+        end
+
+        @headers[key.to_s.downcase] = value
+      end
+    end
+
+    def path
+      @request.path
+    end
+    alias path_info path
+
+    def query
+      @request.query
+    end
+
+    def params
+      return {} unless query
+      URI.decode_www_form(query).to_h
+    end
+
+    def body
+      return nil unless @request.body
+      @body ||= @request.body.read
+    end
+  end
+
+  class RequestPromise
+    def initialize
+      @resolved = false
+      @mutex = Mutex.new
+      @condition = ConditionVariable.new
+    end
+
+    def resolve
+      @mutex.synchronize do
+        @resolved = true
+        @condition.broadcast
+      end
+    end
+
+    def wait
+      @mutex.synchronize do
+        @condition.wait(@mutex) unless @resolved
+      end
+    end
+
+    def resolved?
+      @mutex.synchronize { @resolved }
+    end
+  end
+
+  class ResponseWriter
+    attr_reader :body
+    attr_accessor :status
+
+    def initialize
+      @body = +''
+      @status = 200
+      @headers = {}
+      @finished = false
+      @mutex = Mutex.new
+      @condition = ConditionVariable.new
+    end
+
+    def write(data)
+      @mutex.synchronize do
+        @body << data.to_s
+      end
+    end
+
+    def add_header(name, value)
+      normalized = normalize_header_name(name)
+      @mutex.synchronize do
+        @headers[normalized] = value
+      end
+    end
+
+    def headers
+      @mutex.synchronize do
+        @headers.dup
+      end
+    end
+
+    def finish(status: nil, headers: nil)
+      @mutex.synchronize do
+        return if @finished
+
+        @status = status if status
+        headers&.each do |key, value|
+          @headers[normalize_header_name(key)] = value
+        end
+
+        @finished = true
+        @condition.broadcast
+      end
+    end
+
+    def finished?
+      @mutex.synchronize { @finished }
+    end
+
+    def wait_for_finish
+      until finished?
+        if (async_task = current_async_task)
+          async_task.sleep(0.01)
+        else
+          @mutex.synchronize do
+            @condition.wait(@mutex, 0.05) unless @finished
+          end
+        end
+      end
+    end
+
+    private
+
+    def current_async_task
+      Async::Task.current
+    rescue RuntimeError
+      nil
+    end
+
+    def normalize_header_name(name)
+      name.to_s.downcase
     end
   end
 end

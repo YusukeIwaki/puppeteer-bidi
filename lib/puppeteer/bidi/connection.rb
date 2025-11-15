@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require 'async'
-require 'async/barrier'
-require 'async/queue'
 require 'async/promise'
 
 module Puppeteer
@@ -59,12 +57,7 @@ module Puppeteer
 
         # Wait for response with timeout
         begin
-          timeout_seconds = timeout / 1000.0
-          result = Async do |task|
-            task.with_timeout(timeout_seconds) do
-              promise.wait
-            end
-          end.wait
+          result = AsyncUtils.async_timeout(timeout, promise).wait
 
           # Debug output
           if ENV['DEBUG_BIDI_COMMAND']

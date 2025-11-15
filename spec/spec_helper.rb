@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "puppeteer/bidi"
+require 'timeout'
 
 # Load support files
 require_relative 'support/test_server'
@@ -45,6 +46,19 @@ RSpec.configure do |config|
     end
   end
 
+  config.around(:each, type: :integration) do |example|
+    Timeout.timeout(15) do
+      example.run
+    end
+  end
+
+  # Clean up custom routes after each test
+  config.after(:each, type: :integration) do
+    if $shared_test_server
+      $shared_test_server.clear_routes
+    end
+  end
+
   helper_module = Module.new do
     include GoldenComparator
 
@@ -64,33 +78,16 @@ RSpec.configure do |config|
 
     # Optimized helper - reuses shared browser, creates new page per test
     # This is much faster as it avoids browser launch overhead
-    def with_test_state(**options)
-      # Use shared browser if available, otherwise fall back to per-test browser
-      if $shared_browser && options.empty?
-        # Create a new page (tab) for this test
-        page = $shared_browser.new_page
-        context = $shared_browser.default_browser_context
+    def with_test_state
+      # Create a new page (tab) for this test
+      page = $shared_browser.new_page
+      context = $shared_browser.default_browser_context
 
-        begin
-          yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
-        ensure
-          # Close the page to clean up resources
-          page.close unless page.closed?
-        end
-      else
-        # Fall back to per-test browser for tests with custom options
-        server = TestServer::Server.new
-        server.start
-
-        begin
-          with_browser(**options) do |browser|
-            context = browser.default_browser_context
-            page = browser.new_page
-            yield(page: page, server: server, browser: browser, context: context)
-          end
-        ensure
-          server.stop
-        end
+      begin
+        yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
+      ensure
+        # Close the page to clean up resources
+        page.close unless page.closed?
       end
     end
   end

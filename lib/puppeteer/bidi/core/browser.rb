@@ -1,10 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'event_emitter'
-require_relative 'disposable'
-require_relative 'session'
-require_relative 'user_context'
-
 module Puppeteer
   module Bidi
     module Core

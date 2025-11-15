@@ -101,6 +101,32 @@ count = page.eval_on_selector_all('div', 'divs => divs.length')
 # Set page content
 page.set_content('<h1>Hello, World!</h1>')
 
+# Wait for navigation (Async/Fiber-based, no race conditions)
+# Block pattern - executes code and waits for resulting navigation
+response = page.wait_for_navigation do
+  page.click('a#navigation-link')
+end
+
+# Wait for fragment navigation (#hash changes)
+page.wait_for_navigation do
+  page.click('a[href="#section"]')
+end  # => nil (fragment navigation returns nil)
+
+# Wait for History API navigation
+page.wait_for_navigation do
+  page.evaluate('history.pushState({}, "", "/new-url")')
+end  # => nil (History API returns nil)
+
+# Wait with different conditions
+page.wait_for_navigation(wait_until: 'domcontentloaded') do
+  page.click('a')
+end
+
+# User input simulation
+page.click('button#submit')
+page.type('input[name="email"]', 'user@example.com', delay: 100)
+page.focus('textarea')
+
 # Close the page
 page.close
 
@@ -274,28 +300,46 @@ Integration tests in `spec/integration/` demonstrate real-world usage by launchi
 
 **Performance Note**: Integration tests are optimized to reuse a single browser instance across all tests (~19x faster than launching per test). Each test gets a fresh page (tab) for proper isolation.
 
-#### Evaluation Tests
+#### Test Coverage
 
-The `evaluation_spec.rb` includes 23 comprehensive tests ported from Puppeteer:
+**Integration Tests**: 136 examples covering end-to-end functionality
 
-- JavaScript expression and function evaluation
-- Argument serialization (numbers, arrays, objects, special values)
-- Result deserialization (NaN, Infinity, -0, Maps)
-- Exception handling and thrown values
-- IIFE (Immediately Invoked Function Expression) support
-- Frame.evaluate functionality
+- **Evaluation Tests** (`evaluation_spec.rb`): 23 tests ported from Puppeteer
+  - JavaScript expression and function evaluation
+  - Argument serialization (numbers, arrays, objects, special values)
+  - Result deserialization (NaN, Infinity, -0, Maps)
+  - Exception handling and thrown values
+  - IIFE (Immediately Invoked Function Expression) support
+  - Frame.evaluate functionality
 
-#### Screenshot Tests
+- **Screenshot Tests** (`screenshot_spec.rb`): 12 tests ported from Puppeteer
+  - Basic screenshots and clipping regions
+  - Full page screenshots with viewport management
+  - Parallel execution across single/multiple pages
+  - Retina display compatibility
+  - Viewport restoration
+  - All tests use golden image comparison with tolerance for cross-platform compatibility
 
-The `screenshot_spec.rb` includes 12 comprehensive tests ported from Puppeteer:
+- **Navigation Tests** (`navigation_spec.rb`): 8 tests ported from Puppeteer
+  - Full page navigation with HTTPResponse
+  - Fragment navigation (#hash changes)
+  - History API navigation (pushState, replaceState, back, forward)
+  - Multiple wait conditions (load, domcontentloaded)
+  - Async/Fiber-based concurrent navigation waiting
 
-- Basic screenshots and clipping regions
-- Full page screenshots with viewport management
-- Parallel execution across single/multiple pages
-- Retina display compatibility
-- Viewport restoration
+- **Click Tests** (`click_spec.rb`): 20 tests ported from Puppeteer
+  - Element clicking (buttons, links, SVG, checkboxes)
+  - Scrolling and viewport handling
+  - Wrapped element clicks (multi-line text)
+  - Obscured element detection
+  - Rotated element clicks
+  - Mouse button variations (left, right, middle)
+  - Click counts (single, double, triple)
 
-All tests use golden image comparison with tolerance for cross-platform compatibility.
+- **Keyboard Tests** (`keyboard_spec.rb`): Tests for keyboard input simulation
+  - Text typing with customizable delay
+  - Special key presses
+  - Key combinations
 
 ## Project Status
 
@@ -309,20 +353,34 @@ Puppeteer-compatible API for browser automation:
 - ✅ **Browser**: Browser instance management
 - ✅ **BrowserContext**: Isolated browsing sessions
 - ✅ **Page**: High-level page automation
-  - ✅ Navigation (`goto`, `set_content`)
+  - ✅ Navigation (`goto`, `set_content`, `wait_for_navigation`)
+    - ✅ Wait for full page navigation, fragment navigation (#hash), and History API (pushState/replaceState)
+    - ✅ Async/Fiber-based concurrency (no race conditions, Thread-safe)
+    - ✅ Multiple wait conditions (`load`, `domcontentloaded`)
   - ✅ JavaScript evaluation (`evaluate`, `evaluate_handle`) with functions, arguments, and IIFE support
   - ✅ Element querying (`query_selector`, `query_selector_all`)
   - ✅ Selector evaluation (`eval_on_selector`, `eval_on_selector_all`) - Ruby equivalents of Puppeteer's `$eval` and `$$eval`
+  - ✅ User input (`click`, `type`, `focus`)
+  - ✅ Mouse operations (click with offset, double-click, context menu, middle-click)
+  - ✅ Keyboard operations (type with delay, press, key combinations)
   - ✅ Screenshots (basic, clipping, full page, parallel)
   - ✅ Viewport management with automatic restoration
   - ✅ Page state queries (`title`, `url`, `viewport`)
-  - ✅ Frame access (`main_frame`)
+  - ✅ Frame access (`main_frame`, `focused_frame`)
 - ✅ **Frame**: Frame-level operations
   - ✅ JavaScript evaluation with full feature parity to Page
   - ✅ Element querying and selector evaluation
+  - ✅ Navigation waiting (`wait_for_navigation`)
+  - ✅ User input (`click`, `type`, `focus`)
 - ✅ **JSHandle & ElementHandle**: JavaScript object references
   - ✅ Handle creation, disposal, and property access
+  - ✅ Element operations (click, bounding box, scroll into view)
   - ✅ Type-safe custom exceptions for error handling
+- ✅ **Mouse & Keyboard**: User input simulation
+  - ✅ Mouse clicks (single, double, triple) with customizable delay
+  - ✅ Mouse movements and button states
+  - ✅ Keyboard typing with per-character delay
+  - ✅ Special key support
 
 #### Screenshot Features
 Comprehensive screenshot functionality with 12 passing tests:
@@ -394,11 +452,12 @@ Available custom exceptions:
 
 ### Planned Features
 
-- Input simulation (mouse, keyboard)
 - File upload handling
 - Enhanced network monitoring (NetworkManager)
-- Frame management (FrameManager)
+- Frame management (FrameManager with iframe support)
 - Service Worker support
+- Dialog handling (alert, confirm, prompt)
+- Advanced navigation options (referrer, AbortSignal support)
 
 ## Comparison with Puppeteer (Node.js)
 

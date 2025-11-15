@@ -2,6 +2,8 @@
 
 module Puppeteer
   module Bidi
+    class Error < StandardError; end
+
     # Raised when attempting to use a disposed JSHandle or ElementHandle
     class JSHandleDisposedError < Error
       def initialize
@@ -31,6 +33,10 @@ module Puppeteer
         @selector = selector
         super("Error: failed to find element matching selector \"#{selector}\"")
       end
+    end
+
+    # Raised when a timeout occurs (e.g., navigation timeout)
+    class TimeoutError < Error
     end
   end
 end

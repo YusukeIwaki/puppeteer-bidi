@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'async'
+require 'async/promise'
 
 module Puppeteer
   module Bidi
@@ -45,6 +46,9 @@ module Puppeteer
         # Create default browser context
         default_user_context = @core_browser.default_user_context
         @default_browser_context = BrowserContext.new(self, default_user_context)
+        @browser_contexts = {
+          default_user_context.id => @default_browser_context
+        }
       end
 
       # Launch a new Firefox browser instance
@@ -80,7 +84,9 @@ module Puppeteer
 
         connection = Connection.new(transport)
 
-        new(connection: connection, launcher: launcher, connection_task: connection_task)
+        browser = new(connection: connection, launcher: launcher, connection_task: connection_task)
+        target = browser.wait_for_target { |target| target.type == 'page' }
+        browser
       end
 
       # Connect to an existing browser instance
@@ -194,9 +200,138 @@ module Puppeteer
         @closed
       end
 
+      # Wait until a target (top-level browsing context) satisfies the predicate.
+      # @param timeout [Integer, nil] Timeout in milliseconds (default: 30000).
+      # @yield [target] Predicate evaluated against each Target (defaults to truthy).
+      # @return [Target] Matching target.
+      # @raise [TimeoutError] When timeout is reached without a match.
+      # @raise [Core::BrowserDisconnectedError] When browser disconnects before match.
+      def wait_for_target(timeout: nil, &predicate)
+        predicate ||= ->(_target) { true }
+        timeout_ms = timeout.nil? ? 30_000 : timeout
+        raise ArgumentError, 'timeout must be >= 0' if timeout_ms && timeout_ms.negative?
+
+        if (target = find_target(predicate))
+          return target
+        end
+
+        promise = Async::Promise.new
+        session_listeners = []
+        browser_listeners = []
+
+        cleanup = lambda do
+          session_listeners.each do |event, listener|
+            @session.off(event, &listener)
+          end
+          session_listeners.clear
+
+          browser_listeners.each do |event, listener|
+            @core_browser.off(event, &listener)
+          end
+          browser_listeners.clear
+        end
+
+        check_and_resolve = lambda do
+          return if promise.resolved?
+
+          begin
+            if (match = find_target(predicate))
+              promise.resolve(match)
+              cleanup.call
+            end
+          rescue => error
+            promise.reject(error) unless promise.resolved?
+            cleanup.call
+          end
+        end
+
+        session_listener = proc { |_data| check_and_resolve.call }
+        session_events = [
+          :'browsingContext.contextCreated',
+          :'browsingContext.navigationStarted',
+          :'browsingContext.historyUpdated',
+          :'browsingContext.fragmentNavigated',
+          :'browsingContext.domContentLoaded',
+          :'browsingContext.load'
+        ]
+
+        session_events.each do |event|
+          @session.on(event, &session_listener)
+          session_listeners << [event, session_listener]
+        end
+
+        browser_disconnect_listener = proc do |data|
+          next if promise.resolved?
+
+          reason = data[:reason] || 'Browser disconnected'
+          promise.reject(Core::BrowserDisconnectedError.new(reason))
+          cleanup.call
+        end
+
+        @core_browser.on(:disconnected, &browser_disconnect_listener)
+        browser_listeners << [:disconnected, browser_disconnect_listener]
+
+        # Re-check after listeners are set up to avoid missing fast events.
+        check_and_resolve.call
+
+        begin
+          result = if timeout_ms
+                     AsyncUtils.async_timeout(timeout_ms, promise).wait
+                   else
+                     promise.wait
+                   end
+        rescue Async::TimeoutError
+          raise TimeoutError, "Waiting for target failed: timeout #{timeout_ms}ms exceeded"
+        ensure
+          cleanup.call
+        end
+
+        result
+      end
+
       # Wait for browser process to exit
       def wait_for_exit
         @launcher&.wait
+      end
+
+      private
+
+      def each_target
+        return enum_for(:each_target) unless block_given?
+        return unless @core_browser
+
+        yield BrowserTarget.new(self)
+
+        @core_browser.user_contexts.each do |user_context|
+          next if user_context.disposed?
+
+          browser_context = browser_context_for(user_context)
+          next unless browser_context
+
+          user_context.browsing_contexts.each do |browsing_context|
+            next if browsing_context.disposed?
+
+            page = browser_context.page_for(browsing_context)
+            yield PageTarget.new(page) if page
+          end
+        end
+      end
+
+      def find_target(predicate)
+        each_target do |target|
+          return target if predicate.call(target)
+        end
+        nil
+      end
+
+      def browser_context_for(user_context)
+        return @browser_contexts[user_context.id] if @browser_contexts.key?(user_context.id)
+
+        context = BrowserContext.new(self, user_context)
+        user_context.once(:closed) do
+          @browser_contexts.delete(user_context.id)
+        end
+        @browser_contexts[user_context.id] = context
       end
     end
   end

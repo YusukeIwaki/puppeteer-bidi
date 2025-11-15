@@ -56,11 +56,7 @@ RSpec.describe 'Core BiDi implementation' do
       puts "✓ Navigation completed"
 
       # Wait for load event
-      Async do |task|
-        task.with_timeout(5) do
-          load_promise.wait
-        end
-      end.wait
+  Puppeteer::Bidi::AsyncUtils.async_timeout(5000, load_promise).wait
 
       puts "\nStep 8: Getting URL..."
       puts "✓ Current URL: #{browsing_context.url}"

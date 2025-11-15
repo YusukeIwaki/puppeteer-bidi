@@ -1,10 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'js_handle'
-require_relative 'element_handle'
-require_relative 'serializer'
-require_relative 'deserializer'
-
 module Puppeteer
   module Bidi
     # Frame represents a frame (main frame or iframe) in the page
@@ -205,6 +200,57 @@ module Puppeteer
         @browsing_context.url
       end
 
+      # Set frame content
+      # @param html [String] HTML content to set
+      # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')
+      def set_content(html, wait_until: 'load')
+        assert_not_detached
+
+        # Puppeteer BiDi implementation:
+        # await Promise.all([
+        #   this.setFrameContent(html),
+        #   firstValueFrom(combineLatest([this.#waitForLoad$(options), this.#waitForNetworkIdle$(options)]))
+        # ]);
+
+        # IMPORTANT: Register listener BEFORE document.write to avoid race condition
+        load_event = case wait_until
+                     when 'load'
+                       :load
+                     when 'domcontentloaded'
+                       :dom_content_loaded
+                     else
+                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
+                     end
+
+        promise = Async::Promise.new
+        listener = proc { promise.resolve(nil) }
+        @browsing_context.once(load_event, &listener)
+
+        # Execute both operations: document.write AND wait for load
+        # Use promise_all to wait for both to complete (like Puppeteer's Promise.all)
+        AsyncUtils.await_promise_all(
+          -> { set_frame_content(html) },
+          promise
+        )
+
+        nil
+      end
+
+      # Set frame content using document.open/write/close
+      # This is a low-level method that doesn't wait for load events
+      # @param content [String] HTML content to set
+      def set_frame_content(content)
+        assert_not_detached
+
+        evaluate(<<~JS, content)
+          html => {
+            document.open();
+            document.write(html);
+            document.close();
+          }
+        JS
+      end
+
       # Get the frame name
       # @return [String, nil] Frame name
       def name
@@ -233,6 +279,124 @@ module Puppeteer
         # Create Frame objects for each child
         child_contexts.map do |child_context|
           Frame.new(self, child_context)
+        end
+      end
+
+      # Wait for navigation to complete
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')
+      # @yield Optional block to execute that triggers navigation
+      # @return [HTTPResponse, nil] Main response (nil for fragment navigation or history API)
+      def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
+        assert_not_detached
+
+        # Determine which event to wait for
+        load_event = case wait_until
+                     when 'load'
+                       :load
+                     when 'domcontentloaded'
+                       :dom_content_loaded
+                     else
+                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
+                     end
+
+        # Use Async::Promise for signaling (Fiber-based, not Thread-based)
+        # This avoids race conditions and follows Puppeteer's Promise-based pattern
+        promise = Async::Promise.new
+
+        # Track navigation type for response creation
+        navigation_type = nil  # :full_page, :fragment, or :history
+        navigation_obj = nil  # The navigation object we're waiting for
+
+        # Helper to set up navigation listeners
+        setup_navigation_listeners = proc do |navigation|
+          navigation_obj = navigation
+          navigation_type = :full_page
+
+          # Set up listeners for navigation completion
+          # Listen for fragment, failed, aborted events
+          navigation.once(:fragment) do
+            promise.resolve(nil) unless promise.resolved?
+          end
+
+          navigation.once(:failed) do
+            promise.resolve(nil) unless promise.resolved?
+          end
+
+          navigation.once(:aborted) do
+            next if detached?
+            promise.resolve(nil) unless promise.resolved?
+          end
+
+          # Also listen for load/domcontentloaded events to complete navigation
+          @browsing_context.once(load_event) do
+            promise.resolve(:full_page) unless promise.resolved?
+          end
+        end
+
+        # Listen for navigation events from BrowsingContext
+        # This follows Puppeteer's pattern: race between 'navigation', 'historyUpdated', and 'fragmentNavigated'
+        navigation_listener = proc do |data|
+          # Only handle if we haven't already attached to a navigation
+          next if navigation_obj
+
+          navigation = data[:navigation]
+          setup_navigation_listeners.call(navigation)
+        end
+
+        history_listener = proc do
+          # History API navigations (without Navigation object)
+          # Only resolve if we haven't attached to a navigation
+          promise.resolve(nil) unless navigation_obj || promise.resolved?
+        end
+
+        fragment_listener = proc do
+          # Fragment navigations (anchor links, hash changes)
+          # Only resolve if we haven't attached to a navigation
+          promise.resolve(nil) unless navigation_obj || promise.resolved?
+        end
+
+        closed_listener = proc do
+          # Handle frame detachment by rejecting the promise
+          promise.reject(FrameDetachedError.new('Navigating frame was detached')) unless promise.resolved?
+        end
+
+        @browsing_context.on(:navigation, &navigation_listener)
+        @browsing_context.on(:history_updated, &history_listener)
+        @browsing_context.on(:fragment_navigated, &fragment_listener)
+        @browsing_context.once(:closed, &closed_listener)
+
+        begin
+          # CRITICAL: Check for existing navigation BEFORE executing block
+          # This follows Puppeteer's pattern where waitForNavigation can attach to
+          # an already-started navigation (e.g., when called after goto)
+          existing_nav = @browsing_context.navigation
+          if existing_nav && !existing_nav.disposed?
+            # Attach to the existing navigation
+            setup_navigation_listeners.call(existing_nav)
+          end
+
+          # Execute the block if provided (this may trigger navigation)
+          # Block executes in the same Fiber context for cooperative multitasking
+          block.call if block
+
+          # Wait for navigation with timeout using Async (Fiber-based)
+          result = AsyncUtils.async_timeout(timeout, promise).wait
+
+          # Return HTTPResponse for full page navigation, nil for fragment/history
+          if result == :full_page
+            HTTPResponse.new(url: @browsing_context.url, status: 200)
+          else
+            nil
+          end
+        rescue Async::TimeoutError
+          raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
+        ensure
+          # Clean up listeners
+          @browsing_context.off(:navigation, &navigation_listener)
+          @browsing_context.off(:history_updated, &history_listener)
+          @browsing_context.off(:fragment_navigated, &fragment_listener)
+          @browsing_context.off(:closed, &closed_listener)
         end
       end
 

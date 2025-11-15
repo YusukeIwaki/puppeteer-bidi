@@ -1,22 +1,25 @@
 # frozen_string_literal: true
 
-require_relative "bidi/version"
+require "puppeteer/bidi/version"
+require "puppeteer/bidi/errors"
 
-module Puppeteer
-  module Bidi
-    class Error < StandardError; end
-  end
-end
-
-require_relative "bidi/errors"
-require_relative "bidi/transport"
-require_relative "bidi/connection"
-require_relative "bidi/browser_launcher"
-require_relative "bidi/core"
-require_relative "bidi/browser_context"
-require_relative "bidi/frame"
-require_relative "bidi/page"
-require_relative "bidi/browser"
+require "puppeteer/bidi/async_utils"
+require "puppeteer/bidi/serializer"
+require "puppeteer/bidi/deserializer"
+require "puppeteer/bidi/js_handle"
+require "puppeteer/bidi/keyboard"
+require "puppeteer/bidi/mouse"
+require "puppeteer/bidi/http_response"
+require "puppeteer/bidi/element_handle"
+require "puppeteer/bidi/frame"
+require "puppeteer/bidi/page"
+require "puppeteer/bidi/target"
+require "puppeteer/bidi/browser_context"
+require "puppeteer/bidi/transport"
+require "puppeteer/bidi/connection"
+require "puppeteer/bidi/browser_launcher"
+require "puppeteer/bidi/core"
+require "puppeteer/bidi/browser"
 
 module Puppeteer
   module Bidi
