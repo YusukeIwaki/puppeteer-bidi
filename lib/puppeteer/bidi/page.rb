@@ -340,6 +340,17 @@ module Puppeteer
         @keyboard ||= Keyboard.new(self, @browsing_context)
       end
 
+      # Wait for a function to return a truthy value
+      # @param page_function [String] JavaScript function to evaluate
+      # @param options [Hash] Options for waiting
+      # @option options [String, Numeric] :polling Polling strategy ('raf', 'mutation', or interval in ms)
+      # @option options [Numeric] :timeout Timeout in milliseconds (default: 30000)
+      # @param args [Array] Arguments to pass to the function
+      # @return [JSHandle] Handle to the function's return value
+      def wait_for_function(page_function, options = {}, *args)
+        main_frame.wait_for_function(page_function, options, *args)
+      end
+
       # Wait for navigation to complete
       # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
       # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')

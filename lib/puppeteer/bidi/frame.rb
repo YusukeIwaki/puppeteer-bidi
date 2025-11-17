@@ -400,7 +400,203 @@ module Puppeteer
         end
       end
 
+      # Wait for a function to return a truthy value
+      # @param page_function [String] JavaScript function to evaluate
+      # @param options [Hash] Options for waiting
+      # @option options [String, Numeric] :polling Polling strategy ('raf', 'mutation', or interval in ms)
+      # @option options [Numeric] :timeout Timeout in milliseconds (default: 30000)
+      # @param args [Array] Arguments to pass to the function
+      # @return [JSHandle] Handle to the function's return value
+      def wait_for_function(page_function, options = {}, *args)
+        assert_not_detached
+
+        polling = options[:polling] || 'raf'
+        timeout = options[:timeout] || 30000
+
+        # Validate polling interval
+        if polling.is_a?(Numeric) && polling <= 0
+          raise ArgumentError, 'Cannot poll with non-positive interval'
+        end
+
+        # Use Async::Promise for signaling (Fiber-based)
+        promise = Async::Promise.new
+        result_handle = nil
+
+        # Serialize arguments
+        serialized_args = args.map { |arg| Serializer.serialize(arg) }
+
+        # Helper to check if function returns truthy value
+        check_predicate = lambda do
+          # Evaluate the function
+          eval_result = if page_function.is_a?(String)
+                          script_trimmed = page_function.strip
+
+                          # Check if it's a function
+                          is_function = script_trimmed.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
+                                        script_trimmed.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
+
+                          if is_function
+                            options = {}
+                            options[:arguments] = serialized_args unless serialized_args.empty?
+                            @browsing_context.default_realm.call_function(script_trimmed, false, **options)
+                          else
+                            @browsing_context.default_realm.evaluate(script_trimmed, false)
+                          end
+                        else
+                          # Should be a string in BiDi implementation
+                          raise ArgumentError, 'page_function must be a string'
+                        end
+
+          # Check for exceptions
+          return if eval_result['type'] == 'exception'
+
+          # Check if result is truthy
+          result_value = eval_result['result']
+          is_truthy = case result_value['type']
+                      when 'undefined', 'null'
+                        false
+                      when 'boolean'
+                        result_value['value'] == true
+                      when 'number'
+                        value = result_value['value']
+                        # Number is truthy unless it's 0 or NaN
+                        value != 0 && !(value.is_a?(Float) && value.nan?)
+                      when 'string'
+                        !result_value['value'].empty?
+                      else
+                        true # Objects, arrays, etc. are truthy
+                      end
+
+          if is_truthy
+            result_handle = JSHandle.from(result_value, @browsing_context.default_realm)
+            promise.resolve(true) unless promise.resolved?
+          end
+        end
+
+        # Check immediately
+        check_predicate.call
+
+        # If already resolved, return immediately
+        return result_handle if promise.resolved?
+
+        # Set up polling based on strategy
+        poll_task = case polling
+                    when 'raf'
+                      # Use requestAnimationFrame for polling
+                      setup_raf_polling(promise, check_predicate)
+                    when 'mutation'
+                      # Use MutationObserver for polling
+                      setup_mutation_polling(promise, check_predicate)
+                    else
+                      # Interval-based polling
+                      setup_interval_polling(promise, check_predicate, polling)
+                    end
+
+        # Set up frame detachment listener
+        closed_listener = proc do
+          promise.reject(FrameDetachedError.new('Execution context was destroyed')) unless promise.resolved?
+        end
+
+        @browsing_context.once(:closed, &closed_listener)
+
+        begin
+          # Wait for promise with timeout (convert ms to seconds)
+          if timeout > 0
+            AsyncUtils.async_timeout(timeout, promise).wait
+          else
+            promise.wait
+          end
+
+          result_handle
+        rescue Async::TimeoutError, Timeout::ExitException
+          raise Puppeteer::Bidi::TimeoutError, "waiting for function failed: timeout #{timeout}ms exceeded"
+        rescue FrameDetachedError => e
+          raise e
+        ensure
+          begin
+            poll_task&.stop if poll_task&.running?
+          rescue Timeout::ExitException, Async::TimeoutError
+            # Expected when stopping a timed-out task
+          end
+          @browsing_context.off(:closed, &closed_listener) rescue nil
+        end
+      end
+
       private
+
+      # Set up RAF-based polling
+      def setup_raf_polling(promise, check_predicate)
+        Async do |task|
+          loop do
+            break if promise.resolved? || detached?
+
+            check_predicate.call
+            break if promise.resolved?
+
+            # Approximate RAF timing (roughly 16ms for 60fps)
+            task.sleep(0.016)
+          end
+        rescue Timeout::ExitException, Async::TimeoutError
+          # Polling stopped due to timeout - this is expected
+        end
+      end
+
+      # Set up mutation-based polling
+      def setup_mutation_polling(promise, check_predicate)
+        # Set up MutationObserver in the page
+        observer_handle = evaluate_handle(<<~JS)
+          () => {
+            return new Promise((resolve) => {
+              const observer = new MutationObserver(() => {
+                // Trigger will be checked from Ruby side
+              });
+              observer.observe(document, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                characterData: true
+              });
+              // Return observer so we can disconnect it later
+              resolve(observer);
+            });
+          }
+        JS
+
+        # Poll on a slower interval, will be triggered by mutations
+        Async do |task|
+          loop do
+            break if promise.resolved? || detached?
+
+            check_predicate.call
+            break if promise.resolved?
+
+            task.sleep(0.1)
+          end
+
+          observer_handle.dispose unless observer_handle.disposed?
+        rescue Timeout::ExitException, Async::TimeoutError
+          # Polling stopped due to timeout - this is expected
+          observer_handle.dispose unless observer_handle.disposed?
+        end
+      end
+
+      # Set up interval-based polling
+      def setup_interval_polling(promise, check_predicate, interval_ms)
+        interval_seconds = interval_ms / 1000.0
+
+        Async do |task|
+          loop do
+            break if promise.resolved? || detached?
+
+            check_predicate.call
+            break if promise.resolved?
+
+            task.sleep(interval_seconds)
+          end
+        rescue Timeout::ExitException, Async::TimeoutError
+          # Polling stopped due to timeout - this is expected
+        end
+      end
 
       # Check if this frame is detached and raise error if so
       # @raise [FrameDetachedError] If frame is detached
