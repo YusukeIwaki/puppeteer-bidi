@@ -7,16 +7,23 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      watchdog = Thread.new do
-        page.wait_for_function("() => window.__FOO === 1")
+      Sync do
+        watchdog = Async do
+          page.wait_for_function("() => window.__FOO === 1")
+        end
+        page.evaluate("() => window.__FOO = 1")
+        watchdog.wait
       end
+    end
+  end
 
-      sleep 0.1
-      page.evaluate("() => window.__FOO = 1")
+  it 'should accept a string with block' do
+    with_test_state do |page:, server:, **|
+      page.goto(server.empty_page)
 
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
+      page.wait_for_function("() => window.__FOO === 1") do
+        page.evaluate("() => window.__FOO = 1")
+      end
     end
   end
 
@@ -24,7 +31,7 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      result = page.wait_for_function(<<~JS)
+      page.wait_for_function(<<~JS)
         () => {
           if (!window.__RELOADED) {
             window.__RELOADED = true;
@@ -34,9 +41,6 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
           return true;
         }
       JS
-
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
@@ -44,84 +48,88 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
+      Sync do
+        start_time = Time.now
+
+        watchdog = Async do
+          page.wait_for_function("() => window.__FOO === 'hit'", polling: 200)
+        end
+        Async do
+          page.evaluate("() => setTimeout(() => { window.__FOO = 'hit' }, 50)")
+        end
+
+        watchdog.wait
+        elapsed = ((Time.now - start_time) * 1000).to_i
+
+        expect(elapsed).to be >= 150
+      end
+    end
+  end
+
+  it 'should poll on interval with block' do
+    with_test_state do |page:, server:, **|
+      page.goto(server.empty_page)
+
       start_time = Time.now
 
-      watchdog = Thread.new do
-        page.wait_for_function("() => window.__FOO === 'hit'", polling: 100)
+      page.wait_for_function("() => window.__FOO === 'hit'", polling: 200) do
+        page.evaluate("() => setTimeout(() => { window.__FOO = 'hit' }, 50)")
       end
 
-      sleep 0.05
-      page.evaluate("() => window.__FOO = 'hit'")
-
-      result = watchdog.value
       elapsed = ((Time.now - start_time) * 1000).to_i
 
-      # Should wait at least one polling interval
-      expect(elapsed).to be >= 100
-
-      result.dispose
+      expect(elapsed).to be >= 150
     end
   end
 
-  # TODO: Requires JavaScript-side MutationObserver polling
-  # Currently Ruby-side polling triggers on any check, not just DOM mutations
-  xit 'should poll on mutation' do
+  it 'should poll on mutation' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      success = false
+      Sync do
+        success = false
 
-      watchdog = Thread.new do
-        page.wait_for_function(
-          "() => window.__FOO === 'hit'",
-          polling: 'mutation'
-        ).tap { success = true }
+        watchdog = Async do
+          page.wait_for_function(
+            "() => window.__FOO === 'hit'",
+            polling: 'mutation'
+          ).tap { success = true }
+        end
+
+        page.evaluate("() => window.__FOO = 'hit'")
+        expect(success).to be false
+
+        page.evaluate("() => document.body.appendChild(document.createElement('div'))")
+
+        watchdog.wait
+        expect(success).to be true
       end
-
-      sleep 0.1
-
-      # Set property without DOM mutation - should not resolve
-      page.evaluate("() => window.__FOO = 'hit'")
-      sleep 0.1
-      expect(success).to be false
-
-      # Trigger DOM mutation
-      page.evaluate("() => document.body.appendChild(document.createElement('div'))")
-
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
-  # TODO: Requires JavaScript-side MutationObserver polling
-  # Currently Ruby-side polling triggers on any check, not just DOM mutations
-  xit 'should poll on mutation async' do
+  it 'should poll on mutation async' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      success = false
+      Sync do
+        success = false
 
-      watchdog = Thread.new do
-        page.wait_for_function(
-          "async () => window.__FOO === 'hit'",
-          polling: 'mutation'
-        ).tap { success = true }
+        watchdog = Async do
+          page.wait_for_function(
+            "async () => window.__FOO === 'hit'",
+            polling: 'mutation'
+          ).tap { success = true }
+        end
+
+        page.evaluate("async () => window.__FOO = 'hit'")
+        expect(success).to be false
+
+        page.evaluate("async () => document.body.appendChild(document.createElement('div'))")
+
+        handle = watchdog.wait
+        expect(success).to be true
+        handle.dispose
       end
-
-      sleep 0.1
-
-      # Set property without DOM mutation
-      page.evaluate("() => window.__FOO = 'hit'")
-      sleep 0.1
-      expect(success).to be false
-
-      # Trigger DOM mutation
-      page.evaluate("() => document.body.appendChild(document.createElement('div'))")
-
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
@@ -129,16 +137,14 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      watchdog = Thread.new do
-        page.wait_for_function("() => window.__FOO === 'hit'", polling: 'raf')
+      Sync do
+        watchdog = Async do
+          page.wait_for_function("async () => window.__FOO === 'hit'", polling: 'raf')
+        end
+        page.evaluate("async () => window.__FOO = 'hit'")
+
+        watchdog.wait
       end
-
-      sleep 0.05
-      page.evaluate("() => window.__FOO = 'hit'")
-
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
@@ -146,39 +152,39 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      watchdog = Thread.new do
-        page.wait_for_function("async () => window.__FOO === 'hit'", polling: 'raf')
+      Sync do
+        watchdog = Async do
+          page.wait_for_function("async () => window.__FOO === 'hit'", polling: 'raf')
+        end
+
+        page.evaluate("() => window.__FOO = 'hit'")
+
+        handle = watchdog.wait
+        expect(handle).not_to be_nil
+        handle.dispose
       end
-
-      sleep 0.05
-      page.evaluate("() => window.__FOO = 'hit'")
-
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
   it 'should work with strict CSP policy' do
     with_test_state do |page:, server:, **|
-      server.set_route('/empty.html') do |req, res|
+      server.set_route('/csp.html') do |_req, res|
         res.status = 200
-        res['Content-Security-Policy'] = "script-src 'unsafe-eval'"
-        res.body = '<html></html>'
+        res.add_header('Content-Security-Policy', "script-src #{server.prefix}")
+        res.write('<html></html>')
+        res.finish
       end
 
-      page.goto("#{server.prefix}/empty.html")
+      page.goto("#{server.prefix}/csp.html")
 
-      watchdog = Thread.new do
-        page.wait_for_function("() => window.__FOO === 'hit'", polling: 'raf')
+      Sync do
+        watchdog = Async do
+          page.wait_for_function("() => window.__FOO === 'hit'", polling: 'raf')
+        end
+        page.evaluate("() => window.__FOO = 'hit'")
+
+        watchdog.wait
       end
-
-      sleep 0.05
-      page.evaluate("() => window.__FOO = 'hit'")
-
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
@@ -218,17 +224,32 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
       page.set_content('<div></div>')
 
       div = page.query_selector('div')
-      result = page.wait_for_function("element => element.localName === 'div'", {}, div)
 
-      expect(result).not_to be_nil
-      result.dispose
+      Sync do
+        resolved = false
+
+        watchdog = Async do
+          page.wait_for_function(
+            "element => element.localName === 'div' && !element.parentElement",
+            {},
+            div
+          ).tap { resolved = true }
+        end
+
+        expect(resolved).to be false
+
+        page.evaluate('element => element.remove()', div)
+
+        handle = watchdog.wait
+        expect(resolved).to be true
+        handle.dispose
+      end
+
       div.dispose
     end
   end
 
-  # TODO: Timeout::ExitException escapes rescue clauses in Ruby-based polling
-  # Needs investigation or refactor to JavaScript-side polling
-  xit 'should respect timeout' do
+  it 'should respect timeout' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
@@ -238,15 +259,14 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     end
   end
 
-  # TODO: Timeout::ExitException escapes rescue clauses in Ruby-based polling
-  # Needs investigation or refactor to JavaScript-side polling
-  xit 'should respect default timeout' do
+  it 'should respect default timeout' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      # Set very short timeout
+      page.set_default_timeout(1)
+
       expect {
-        page.wait_for_function("() => false", timeout: 1)
+        page.wait_for_function("() => false")
       }.to raise_error(Puppeteer::Bidi::TimeoutError, /1ms exceeded/)
     end
   end
@@ -255,71 +275,87 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      watchdog = Thread.new do
-        page.wait_for_function(
-          "() => window.__FOO === 'hit'",
-          timeout: 0
-        )
+      Sync do
+        watchdog = Async do
+          page.wait_for_function(
+            <<~JS,
+              () => {
+                window.__counter = (window.__counter || 0) + 1;
+                return window.__injected;
+              }
+            JS
+            timeout: 0,
+            polling: 10
+          )
+        end
+
+        page.wait_for_function("() => window.__counter > 10")
+        page.evaluate("() => window.__injected = true")
+
+        watchdog.wait
       end
-
-      sleep 0.1
-      page.evaluate("() => window.__FOO = 'hit'")
-
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
   it 'should survive cross-process navigation' do
     with_test_state do |page:, server:, **|
-      page.goto(server.empty_page)
+      Sync do
+        foo_found = false
 
-      watchdog = Thread.new do
-        page.wait_for_function("() => window.__FOO === 'hit'")
+        watchdog = Async do
+          page.wait_for_function("() => window.__FOO === 1").tap { foo_found = true }
+        end
+
+        page.goto(server.empty_page)
+        expect(foo_found).to be false
+
+        # page.reload
+        page.goto(server.empty_page)
+        expect(foo_found).to be false
+
+        page.goto("#{server.cross_process_prefix}/grid.html")
+        expect(foo_found).to be false
+
+        page.evaluate("() => window.__FOO = 1")
+
+        watchdog.wait
+        expect(foo_found).to be true
       end
-
-      sleep 0.1
-      page.goto("#{server.prefix}/grid.html")
-      page.evaluate("() => window.__FOO = 'hit'")
-
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
   it 'should survive navigations' do
     with_test_state do |page:, server:, **|
-      page.goto(server.empty_page)
+      Sync do
+        done = false
 
-      watchdog = Thread.new do
-        page.wait_for_function("() => window.__FOO === 'hit'")
+        watchdog = Async do
+          page.wait_for_function("() => window.__DONE === true").tap { done = true }
+        end
+
+        page.goto(server.empty_page)
+        expect(done).to be false
+
+        page.goto("#{server.prefix}/grid.html")
+        expect(done).to be false
+
+        page.evaluate("() => window.__DONE = true")
+
+        watchdog.wait
+        expect(done).to be true
       end
-
-      sleep 0.1
-      page.goto(server.empty_page)
-      page.evaluate("() => window.__FOO = 'hit'")
-
-      result = watchdog.value
-      expect(result).not_to be_nil
-      result.dispose
     end
   end
 
-  # TODO: AbortController/signal support not implemented yet
-  xit 'should be cancellable with an abort signal' do
-    with_test_state do |page:, server:, **|
-      page.goto(server.empty_page)
-      # Requires AbortController implementation
-    end
+  it 'should be cancellable with an abort signal' do
+    skip 'Requires JS-specific AbortController/signal support.'
   end
 
-  # TODO: AbortController/signal support not implemented yet
-  xit 'should not cause a unhandled promise rejection when aborted' do
-    with_test_state do |page:, server:, **|
-      page.goto(server.empty_page)
-      # Requires AbortController implementation
-    end
+  it 'should not cause an unhandled error when aborted' do
+    skip 'Requires JS-specific AbortController/signal support.'
+  end
+
+  it 'can start multiple tasks without warnings when aborted' do
+    skip 'Requires JS-specific AbortController/signal support.'
   end
 end

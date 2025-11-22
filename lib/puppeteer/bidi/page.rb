@@ -8,11 +8,14 @@ module Puppeteer
     # Page represents a single page/tab in the browser
     # This is a high-level wrapper around Core::BrowsingContext
     class Page
+      DEFAULT_TIMEOUT = 30_000
+
       attr_reader :browsing_context, :browser_context
 
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
         @browsing_context = browsing_context
+        @default_timeout = DEFAULT_TIMEOUT
       end
 
       # Navigate to a URL
@@ -347,8 +350,22 @@ module Puppeteer
       # @option options [Numeric] :timeout Timeout in milliseconds (default: 30000)
       # @param args [Array] Arguments to pass to the function
       # @return [JSHandle] Handle to the function's return value
-      def wait_for_function(page_function, options = {}, *args)
-        main_frame.wait_for_function(page_function, options, *args)
+      def wait_for_function(page_function, options = {}, *args, &block)
+        main_frame.wait_for_function(page_function, options, *args, &block)
+      end
+
+      # Set the default timeout for waiting operations (e.g., waitForFunction).
+      # @param timeout [Numeric] Timeout in milliseconds (0 disables the timeout)
+      def set_default_timeout(timeout)
+        raise ArgumentError, 'timeout must be a non-negative number' unless timeout.is_a?(Numeric) && timeout >= 0
+
+        @default_timeout = timeout
+      end
+
+      # Get the current default timeout in milliseconds.
+      # @return [Numeric]
+      def default_timeout
+        @default_timeout
       end
 
       # Wait for navigation to complete
