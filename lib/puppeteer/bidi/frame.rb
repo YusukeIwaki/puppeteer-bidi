@@ -5,16 +5,24 @@ module Puppeteer
     # Frame represents a frame (main frame or iframe) in the page
     # This is a high-level wrapper around Core::BrowsingContext
     class Frame
-      attr_reader :browsing_context
+      attr_reader :browsing_context, :task_manager
 
       def initialize(parent, browsing_context)
         @parent = parent
         @browsing_context = browsing_context
+        @puppeteer_util_handle = nil
+        @task_manager = TaskManager.new
 
         # Set this frame as the environment for the realm
         # Following Puppeteer's design where realm.environment returns the frame
         realm = @browsing_context.default_realm
         realm.environment = self if realm.respond_to?(:environment=)
+
+        # Re-inject puppeteerUtil when realm is updated
+        realm.on(:updated) do
+          @puppeteer_util_handle&.dispose
+          @puppeteer_util_handle = nil
+        end
       end
 
       # Get the page that owns this frame
@@ -97,9 +105,11 @@ module Puppeteer
 
           options = {}
           options[:arguments] = serialized_args unless serialized_args.empty?
-          result = @browsing_context.default_realm.call_function(script_trimmed, false, **options)
+          # Puppeteer passes awaitPromise: true to wait for promises to resolve
+          result = @browsing_context.default_realm.call_function(script_trimmed, true, **options)
         else
-          result = @browsing_context.default_realm.evaluate(script_trimmed, false)
+          # Puppeteer passes awaitPromise: true to wait for promises to resolve
+          result = @browsing_context.default_realm.evaluate(script_trimmed, true)
         end
 
         # Check for exceptions
@@ -410,9 +420,30 @@ module Puppeteer
       def wait_for_function(page_function, options = {}, *args, &block)
         assert_not_detached
 
-        block.call if block
+        Sync do |task|
+          result = WaitTask.new(self, options, page_function, *args).result
 
-        WaitTask.new(self, page_function, options, args).await
+          if block
+            task.async do
+              block.call
+            end
+          end
+
+          result.wait
+        end
+      end
+
+      # Get Puppeteer utilities (Poller classes, createFunction, etc.)
+      # This is injected into the browser and cached
+      # @return [JSHandle] Handle to puppeteerUtil object
+      def puppeteer_util
+        return @puppeteer_util_handle if @puppeteer_util_handle
+
+        # Wrap the injected source in an IIFE that returns the utilities
+        # We need to mock 'module' and 'exports' for CommonJS compatibility
+        script = "(function() { const module = { exports: {} }; #{PUPPETEER_INJECTED_SOURCE}; return module.exports.default; })()"
+
+        @puppeteer_util_handle = evaluate_handle(script)
       end
 
       private

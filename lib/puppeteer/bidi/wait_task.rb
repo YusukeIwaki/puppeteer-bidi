@@ -1,523 +1,282 @@
 # frozen_string_literal: true
 
-require 'securerandom'
-
 module Puppeteer
   module Bidi
-    # WaitTask orchestrates polling for a predicate in the page context.
-    # It mirrors Puppeteer's WaitTask by delegating the polling mechanics to
-    # requestAnimationFrame, MutationObserver, or interval timers inside the
-    # browser, avoiding Ruby-side busy waiting.
+    # WaitTask orchestrates polling for a predicate using Puppeteer's Poller classes.
+    # This is a faithful port of Puppeteer's WaitTask implementation:
+    # https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/common/WaitTask.ts
+    #
+    # Note: signal and AbortSignal are not implemented as they are JavaScript-specific
     class WaitTask
-      class RecoverableError < StandardError; end
+      # Corresponds to Puppeteer's WaitTask constructor
+      # @param world [Frame] The frame to execute in (corresponds to Realm/World)
+      # @param options [Hash] Options for waiting
+      # @option options [String, Numeric] :polling Polling strategy ('raf', 'mutation', or interval in ms)
+      # @option options [Numeric] :timeout Timeout in milliseconds
+      # @option options [ElementHandle] :root Root element for mutation polling
+      # @param fn [String] JavaScript function to evaluate
+      # @param args [Array] Arguments to pass to the function
+      def initialize(world, options, fn, *args)
+        @world = world
+        @polling = options[:polling]
+        @root = options[:root]
 
-      RECOVERABLE_ERROR_PATTERNS = [
-        'Execution context was destroyed',
-        'Cannot find context with specified id',
-        'DiscardedBrowsingContextError'
-      ].freeze
-
-      FRAME_DETACHED_PATTERN = 'Execution context is not available in detached frame'
-      ABORT_ERROR_MESSAGE = 'WaitTask aborted'
-
-      WAIT_TASK_ABORT = <<~JAVASCRIPT
-        (taskId, message) => {
-          const registry = globalThis.__puppeteerWaitTasks;
-          if (!registry) {
-            return false;
-          }
-          const entry = registry.get(taskId);
-          if (!entry) {
-            return false;
-          }
-          entry.abort(message || '#{ABORT_ERROR_MESSAGE}');
-          return true;
-        }
-      JAVASCRIPT
-
-      def initialize(frame, page_function, options, args)
-        @frame = frame
-        unless page_function.is_a?(String)
-          raise ArgumentError, 'page_function must be a string'
+        # Convert function to string format
+        # Corresponds to Puppeteer's switch (typeof fn)
+        if fn.is_a?(String)
+          # Check if the string is already a function (starts with "function ", "(", or "async ")
+          # If so, use it as-is. Otherwise, wrap it as an expression.
+          if fn.strip.match?(/\A(?:function\s|\(|async\s)/)
+            @fn = fn
+          else
+            @fn = "() => {return (#{fn});}"
+          end
+        else
+          raise ArgumentError, 'fn must be a string'
         end
-
-        @page_function = page_function
         @args = args
 
-        @polling = options.fetch(:polling, 'raf')
-        @signal = options[:signal]
-        @timeout = if options.key?(:timeout)
-                     options[:timeout]
-                   else
-                     frame.page.default_timeout
-                   end
+        # Corresponds to Puppeteer's #timeout and #timeoutError
+        @timeout_task = nil
+        @generic_error = StandardError.new('Waiting failed')
+        @timeout_error = nil
 
-        validate_timeout!
-        validate_polling!
-        validate_signal!
+        # Corresponds to Puppeteer's #result = Deferred.create<HandleFor<T>>()
+        @result = Async::Promise.new
 
-        setup_abort_listener
+        # Corresponds to Puppeteer's #poller?: JSHandle<Poller<T>>
+        @poller = nil
 
-        @serialized_args = @args.map { |arg| Serializer.serialize(arg) }
-        @task_started = false
-        @pending_abort_message = nil
-      end
+        # Corresponds to Puppeteer's #reruns: AbortController[]
+        # We use a simpler approach without AbortController
+        @rerun_id = 0
 
-      # Execute the wait task synchronously and return a JSHandle for the success value.
-      # @return [JSHandle]
-      def await
-        ensure_frame_attached!
-        raise_if_aborted
+        # Validate polling interval
+        if @polling.is_a?(Numeric) && @polling < 0
+          raise ArgumentError, "Cannot poll with non-positive interval: #{@polling}"
+        end
 
-        deadline = compute_deadline
+        # Corresponds to Puppeteer's this.#world.taskManager.add(this)
+        @world.task_manager.add(self)
 
-        loop do
-          raise_if_aborted
-          ensure_frame_attached!
-          raise_deadline_if_needed(deadline)
-
-          timeout_for_attempt = remaining_timeout(deadline)
-
-          begin
-            return run_wait_task(timeout_for_attempt)
-          rescue RecoverableError => error
-            warn "[WaitTask] Recoverable error: #{error.message}" if ENV['WAITTASK_DEBUG']
-            sleep recoverable_delay
-            next
+        # Store timeout value and start timeout task
+        # Corresponds to Puppeteer's setTimeout(() => { void this.terminate(this.#timeoutError); }, options.timeout)
+        @timeout_ms = options[:timeout] || @world.page.default_timeout
+        if @timeout_ms && @timeout_ms > 0
+          @timeout_error = Puppeteer::Bidi::TimeoutError.new(
+            "Waiting failed: #{@timeout_ms}ms exceeded"
+          )
+          # Start timeout task in background
+          @timeout_task = Async do |task|
+            task.sleep(@timeout_ms / 1000.0)
+            terminate(@timeout_error)
           end
         end
-      ensure
-        cleanup_abort_listener
+
+        # Start polling
+        # Corresponds to Puppeteer's void this.rerun()
+        Async do
+          rerun
+        end
+      end
+
+      # Get the result as a promise
+      # Corresponds to Puppeteer's get result(): Promise<HandleFor<T>>
+      # @return [Async::Promise] Promise that resolves to JSHandle
+      def result
+        @result
+      end
+
+      # Rerun the polling task
+      # Corresponds to Puppeteer's async rerun(): Promise<void>
+      def rerun
+        # Cancel previous reruns
+        # Corresponds to Puppeteer's for (const prev of this.#reruns) { prev.abort(); }
+        # We use a simpler rerun_id approach
+        current_rerun_id = (@rerun_id += 1)
+
+        begin
+          # Create Poller instance based on polling mode
+          # Corresponds to Puppeteer's switch (this.#polling)
+          case @polling
+          when 'raf'
+            @poller = create_raf_poller
+          when 'mutation'
+            @poller = create_mutation_poller
+          else
+            @poller = create_interval_poller
+          end
+
+          # Check if we were cancelled
+          return if current_rerun_id != @rerun_id
+
+          # Start the poller
+          # Corresponds to Puppeteer's await this.#poller.evaluate(poller => { void poller.start(); });
+          @poller.evaluate('poller => { void poller.start(); }')
+
+          # Check if we were cancelled
+          return if current_rerun_id != @rerun_id
+
+          # Get the result
+          # Corresponds to Puppeteer's const result = await this.#poller.evaluateHandle(poller => { return poller.result(); });
+          # Note: poller.result() returns a Promise, so we need to await it
+          # evaluateHandle with awaitPromise: true will wait for the Promise to resolve
+          result_handle = @poller.evaluate_handle('poller => { return poller.result(); }')
+
+          # Check if we were cancelled
+          return if current_rerun_id != @rerun_id
+
+          # Resolve the result
+          # Corresponds to Puppeteer's this.#result.resolve(result);
+          @result.resolve(result_handle)
+
+          # Terminate cleanly
+          # Corresponds to Puppeteer's await this.terminate();
+          terminate
+        rescue => error
+          # Check if we were cancelled
+          # Corresponds to Puppeteer's if (controller.signal.aborted) { return; }
+          return if current_rerun_id != @rerun_id
+
+          # Check if this is a bad error
+          # Corresponds to Puppeteer's const badError = this.getBadError(error);
+          bad_error = get_bad_error(error)
+          if bad_error
+            # Corresponds to Puppeteer's this.#genericError.cause = badError;
+            @generic_error = StandardError.new(@generic_error.message)
+            @generic_error.set_backtrace([bad_error.message] + bad_error.backtrace)
+            # Corresponds to Puppeteer's await this.terminate(this.#genericError);
+            terminate(@generic_error)
+          end
+          # If badError is nil, it's a recoverable error and we don't terminate
+          # Puppeteer would rerun automatically via realm 'updated' event
+        end
+      end
+
+      # Terminate the task
+      # Corresponds to Puppeteer's async terminate(error?: Error): Promise<void>
+      # @param error [Exception, nil] Error to reject with
+      def terminate(error = nil)
+        # Corresponds to Puppeteer's this.#world.taskManager.delete(this)
+        @world.task_manager.delete(self)
+
+        # Note: this.#signal?.removeEventListener('abort', this.#onAbortSignal) is skipped
+        # AbortSignal is not implemented
+
+        # Clear timeout task
+        # Corresponds to Puppeteer's clearTimeout(this.#timeout)
+        if @timeout_task
+          @timeout_task.stop
+          @timeout_task = nil
+        end
+
+        # Reject result if not finished
+        # Corresponds to Puppeteer's if (error && !this.#result.finished()) { this.#result.reject(error); }
+        if error && !@result.resolved?
+          @result.reject(error)
+        end
+
+        # Stop and dispose poller
+        # Corresponds to Puppeteer's if (this.#poller) { ... }
+        if @poller
+          begin
+            # Corresponds to Puppeteer's await this.#poller.evaluate(async poller => { await poller.stop(); });
+            @poller.evaluate('async poller => { await poller.stop(); }')
+            # Corresponds to Puppeteer's await this.#poller.dispose();
+            @poller.dispose
+            @poller = nil
+          rescue
+            # Corresponds to Puppeteer's catch { }
+            # Ignore errors since they most likely come from low-level cleanup.
+          end
+        end
       end
 
       private
 
-      def ensure_frame_attached!
-        raise FrameDetachedError if @frame.detached?
-      end
+      # Create RAFPoller instance
+      # Corresponds to Puppeteer's evaluateHandle call for RAFPoller
+      def create_raf_poller
+        util_handle = @world.puppeteer_util
 
-      def compute_deadline
-        return nil unless @timeout && @timeout.positive?
-
-        monotonic_now + (@timeout / 1000.0)
-      end
-
-      def remaining_timeout(deadline)
-        return @timeout unless deadline
-
-        remaining_ms = ((deadline - monotonic_now) * 1000).ceil
-        raise_timeout if remaining_ms <= 0
-
-        remaining_ms
-      end
-
-      def raise_deadline_if_needed(deadline)
-        return unless deadline
-        raise_timeout if monotonic_now >= deadline
-      end
-
-      def raise_timeout
-        raise Puppeteer::Bidi::TimeoutError, "Waiting failed: #{@timeout}ms exceeded"
-      end
-
-      def recoverable_delay
-        0.05
-      end
-
-      def validate_polling!
-        return unless @polling.is_a?(Numeric)
-        return if @polling.positive?
-
-        raise ArgumentError, 'Cannot poll with non-positive interval'
-      end
-
-      def validate_timeout!
-        return if @timeout.nil?
-        unless @timeout.is_a?(Numeric) && @timeout >= 0
-          raise ArgumentError, 'Timeout must be a non-negative number'
-        end
-      end
-
-      def validate_signal!
-        return unless @signal
-        unless @signal.is_a?(AbortSignal)
-          raise ArgumentError, 'signal must be a Puppeteer::Bidi::AbortSignal'
-        end
-      end
-
-      def setup_abort_listener
-        return unless @signal
-
-        @abort_listener = proc do |reason|
-          message = abort_message(reason)
-          @pending_abort_message = message unless @task_started
-          dispatch_abort(message) if @task_started
-        end
-
-        @signal.add_abort_listener(&@abort_listener)
-      end
-
-      def cleanup_abort_listener
-        return unless @signal && @abort_listener
-
-        @signal.remove_abort_listener(@abort_listener)
-        @abort_listener = nil
-      end
-
-      def abort_message(reason)
-        return ABORT_ERROR_MESSAGE unless reason
-
-        message = if reason.respond_to?(:message)
-                    reason.message
-                  else
-                    reason.to_s
-                  end
-
-        message = message.to_s.strip
-        message.empty? ? ABORT_ERROR_MESSAGE : "#{ABORT_ERROR_MESSAGE}: #{message}"
-      end
-
-      def dispatch_abort(message)
-        return unless @task_started && @current_task_id
-
-        realm = @frame.browsing_context.default_realm
-        arguments = [
-          Serializer.serialize(@current_task_id),
-          Serializer.serialize(message)
-        ]
-
-        realm.call_function(WAIT_TASK_ABORT, false, arguments: arguments)
-      rescue Connection::ProtocolError
-        # If the task already settled we can safely ignore abort signalling errors.
-        nil
-      end
-
-      def raise_if_aborted
-        return unless @signal&.aborted?
-
-        message = abort_message(@signal.reason)
-        raise AbortError.new(message)
-      end
-
-      def run_wait_task(timeout_ms)
-        realm = @frame.browsing_context.default_realm
-        predicate_source = build_predicate_source
-        task_script = build_task_script(predicate_source)
-
-        arguments = build_arguments(timeout_ms)
-
-        @current_task_id = SecureRandom.uuid
-        arguments.unshift(Serializer.serialize(@current_task_id))
-
-        warn "[WaitTask] Starting attempt task_id=#{@current_task_id} timeout=#{timeout_ms.inspect}" if ENV['WAITTASK_DEBUG']
-        @task_started = true
-        if @pending_abort_message
-          dispatch_abort(@pending_abort_message)
-          @pending_abort_message = nil
-        end
-
-        result = realm.call_function(task_script, true, arguments: arguments)
-
-        if result['type'] == 'exception'
-          handle_wait_task_exception(result)
-        end
-
-        remote_value = result['result'] || result
-        warn "[WaitTask] Resolved task_id=#{@current_task_id}" if ENV['WAITTASK_DEBUG']
-        JSHandle.from(remote_value, realm)
-      rescue Core::RealmDestroyedError => e
-        warn "[WaitTask] Realm destroyed: #{e.message}" if ENV['WAITTASK_DEBUG']
-        raise FrameDetachedError, 'Frame detached during waitForFunction' if @frame.detached?
-        raise RecoverableError, e.message
-      rescue Connection::ProtocolError => e
-        warn "[WaitTask] Protocol error: #{e.message}" if ENV['WAITTASK_DEBUG']
-        if recoverable_message?(e.message)
-          raise RecoverableError, e.message
-        end
-        raise
-      ensure
-        warn "[WaitTask] Finished attempt task_id=#{@current_task_id}" if ENV['WAITTASK_DEBUG']
-        @task_started = false
-        @current_task_id = nil
-      end
-
-      def build_arguments(timeout_ms)
-        args = []
-        args << Serializer.serialize(@polling)
-        args << Serializer.serialize(timeout_ms)
-        args.concat(@serialized_args)
-        args
-      end
-
-      def build_predicate_source
-        script = @page_function.strip
-
-        if function_source?(script)
-          script
-        else
-          "() => (#{script})"
-        end
-      end
-
-      def build_task_script(predicate_source)
-        <<~JAVASCRIPT
-          async function (taskId, polling, timeout, ...args) {
-            const predicate = #{predicate_source};
-
-            const cleanupCallbacks = [];
-            let cleanedUp = false;
-
-            const addCleanup = callback => {
-              cleanupCallbacks.push(callback);
-            };
-
-            const cleanup = () => {
-              if (cleanedUp) {
-                return;
-              }
-              cleanedUp = true;
-              while (cleanupCallbacks.length) {
-                const cb = cleanupCallbacks.pop();
-                try {
-                  cb();
-                } catch (error) {
-                  // Ignore cleanup errors.
-                }
-              }
-              const registry = globalThis.__puppeteerWaitTasks;
-              if (registry) {
-                registry.delete(taskId);
-              }
-            };
-
-            const registry = (globalThis.__puppeteerWaitTasks ||= new Map());
-
-            let settled = false;
-
-            const pollPromise = new Promise((resolve, reject) => {
-              const finish = value => {
-                if (settled) {
-                  return;
-                }
-                settled = true;
-                cleanup();
-                resolve(value);
-              };
-
-              const fail = error => {
-                if (settled) {
-                  return;
-                }
-                settled = true;
-                cleanup();
-                reject(error);
-              };
-
-              registry.set(taskId, {
-                abort(message) {
-                  const err = message instanceof Error ? message : new Error(message || '#{ABORT_ERROR_MESSAGE}');
-                  fail(err);
-                }
-              });
-
-              addCleanup(() => {
-                if (registry.get(taskId)) {
-                  registry.delete(taskId);
-                }
-              });
-
-              const check = async () => {
-                const result = await predicate(...args);
-                if (result) {
-                  finish(result);
-                  return true;
-                }
-                return false;
-              };
-
-              const startRaf = () => {
-                let rafId = null;
-                const schedule = () => {
-                  rafId = requestAnimationFrame(async () => {
-                    if (settled) {
-                      return;
-                    }
-                    try {
-                      if (await check()) {
-                        return;
-                      }
-                      schedule();
-                    } catch (error) {
-                      fail(error);
-                    }
-                  });
-                };
-                schedule();
-                addCleanup(() => {
-                  if (rafId !== null) {
-                    cancelAnimationFrame(rafId);
-                  }
-                });
-              };
-
-              const startInterval = interval => {
-                let timerId = null;
-                const schedule = () => {
-                  timerId = setTimeout(async () => {
-                    if (settled) {
-                      return;
-                    }
-                    try {
-                      if (await check()) {
-                        return;
-                      }
-                      schedule();
-                    } catch (error) {
-                      fail(error);
-                    }
-                  }, interval);
-                };
-                schedule();
-                addCleanup(() => {
-                  if (timerId !== null) {
-                    clearTimeout(timerId);
-                  }
-                });
-              };
-
-              const startMutation = () => {
-                try {
-                  const observer = new MutationObserver(() => {
-                    if (settled) {
-                      return;
-                    }
-                    (async () => {
-                      try {
-                        await check();
-                      } catch (error) {
-                        fail(error);
-                      }
-                    })();
-                  });
-                  observer.observe(document, {
-                    childList: true,
-                    subtree: true,
-                    attributes: true,
-                    characterData: true
-                  });
-                  addCleanup(() => observer.disconnect());
-                  return true;
-                } catch (error) {
-                  return false;
-                }
-              };
-
-              (async () => {
-                try {
-                  if (await check()) {
-                    return;
-                  }
-                } catch (error) {
-                  fail(error);
-                  return;
-                }
-
-                if (polling === 'raf') {
-                  startRaf();
-                } else if (polling === 'mutation') {
-                  if (!startMutation()) {
-                    startInterval(100);
-                  }
-                } else {
-                  const interval = typeof polling === 'number' ? polling : 100;
-                  startInterval(interval);
-                }
-              })();
+        # Corresponds to Puppeteer's evaluateHandle with LazyArg
+        script = <<~JAVASCRIPT
+          ({RAFPoller, createFunction}, fn, ...args) => {
+            const fun = createFunction(fn);
+            return new RAFPoller(() => {
+              return fun(...args);
             });
-
-            const timeoutPromise = timeout && timeout > 0 ? new Promise((_, reject) => {
-              const timeoutId = setTimeout(() => {
-                reject(new Error(`Waiting failed: ${timeout}ms exceeded`));
-              }, timeout);
-              addCleanup(() => clearTimeout(timeoutId));
-            }) : null;
-
-            try {
-              if (timeoutPromise) {
-                return await Promise.race([pollPromise, timeoutPromise]);
-              }
-              return await pollPromise;
-            } finally {
-              cleanup();
-            }
           }
         JAVASCRIPT
+
+        @world.evaluate_handle(script, util_handle, @fn, *@args)
       end
 
-      def recoverable_message?(message)
-        return false unless message
+      # Create MutationPoller instance
+      # Corresponds to Puppeteer's evaluateHandle call for MutationPoller
+      def create_mutation_poller
+        util_handle = @world.puppeteer_util
 
-        RECOVERABLE_ERROR_PATTERNS.any? { |pattern| message.include?(pattern) }
+        # Corresponds to Puppeteer's evaluateHandle with LazyArg
+        script = <<~JAVASCRIPT
+          ({MutationPoller, createFunction}, root, fn, ...args) => {
+            const fun = createFunction(fn);
+            return new MutationPoller(() => {
+              return fun(...args);
+            }, root || document);
+          }
+        JAVASCRIPT
+
+        @world.evaluate_handle(script, util_handle, @root, @fn, *@args)
       end
 
-      def function_source?(script)
-        return false if iife?(script)
-        script.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
-          script.match?(/\A\s*(?:async\s+)?function\b/)
+      # Create IntervalPoller instance
+      # Corresponds to Puppeteer's evaluateHandle call for IntervalPoller
+      def create_interval_poller
+        util_handle = @world.puppeteer_util
+        interval = @polling.is_a?(Numeric) ? @polling : 100
+
+        # Corresponds to Puppeteer's evaluateHandle with LazyArg
+        script = <<~JAVASCRIPT
+          ({IntervalPoller, createFunction}, ms, fn, ...args) => {
+            const fun = createFunction(fn);
+            return new IntervalPoller(() => {
+              return fun(...args);
+            }, ms);
+          }
+        JAVASCRIPT
+
+        @world.evaluate_handle(script, util_handle, interval, @fn, *@args)
       end
 
-      def iife?(script)
-        script.match?(/\)\s*\(\s*\)\s*\z/)
-      end
+      # Check if error should terminate task
+      # Corresponds to Puppeteer's getBadError(error: unknown): Error | undefined
+      # @param error [Exception] Error to check
+      # @return [Exception, nil] Error if it should terminate, nil if recoverable
+      def get_bad_error(error)
+        return nil unless error
 
-      def monotonic_now
-        Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      end
+        error_message = error.message
 
-      def handle_wait_task_exception(result)
-        details = result['exceptionDetails']
-        message = exception_message(details)
-
-        normalized = message&.sub(/\AError:\s*/, '')
-
-        if normalized&.include?(FRAME_DETACHED_PATTERN)
-          raise FrameDetachedError, 'Frame detached during waitForFunction'
+        # Frame detachment is fatal
+        # Corresponds to Puppeteer's error.message.includes('Execution context is not available in detached frame')
+        if error_message.include?('Execution context is not available in detached frame')
+          return StandardError.new('Waiting failed: Frame detached')
         end
 
-        if normalized&.start_with?('Waiting failed:')
-          warn "[WaitTask] Timeout error: #{normalized}" if ENV['WAITTASK_DEBUG']
-          raise Puppeteer::Bidi::TimeoutError, normalized
-        end
+        # These are recoverable (realm was destroyed/recreated)
+        # Corresponds to Puppeteer's error.message.includes('Execution context was destroyed')
+        return nil if error_message.include?('Execution context was destroyed')
 
-        if normalized&.start_with?(ABORT_ERROR_MESSAGE)
-          warn "[WaitTask] Abort error: #{normalized}" if ENV['WAITTASK_DEBUG']
-          raise AbortError.new(normalized)
-        end
+        # Corresponds to Puppeteer's error.message.includes('Cannot find context with specified id')
+        return nil if error_message.include?('Cannot find context with specified id')
 
-        if recoverable_message?(normalized)
-          warn "[WaitTask] Recoverable exception: #{normalized}" if ENV['WAITTASK_DEBUG']
-          raise RecoverableError, normalized
-        end
+        # Corresponds to Puppeteer's error.message.includes('DiscardedBrowsingContextError')
+        return nil if error_message.include?('DiscardedBrowsingContextError')
 
-        warn "[WaitTask] Delegating exception: #{normalized}" if ENV['WAITTASK_DEBUG']
-        @frame.send(:handle_evaluation_exception, result)
-      end
-
-      def exception_message(details)
-        return unless details
-
-        text = details['text'] || 'Evaluation failed'
-        exception = details['exception']
-
-        if exception && exception['type'] != 'error'
-          thrown_value = Deserializer.deserialize(exception)
-          "Evaluation failed: #{thrown_value}"
-        else
-          if exception && exception['description']
-            return exception['description']
-          end
-          text
-        end
+        # All other errors are fatal
+        # Corresponds to Puppeteer's return error;
+        error
       end
     end
   end
