@@ -263,11 +263,11 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      page.set_default_timeout(1)
+      page.set_default_timeout(10)
 
       expect {
         page.wait_for_function("() => false")
-      }.to raise_error(Puppeteer::Bidi::TimeoutError, /1ms exceeded/)
+      }.to raise_error(Puppeteer::Bidi::TimeoutError, /10ms exceeded/)
     end
   end
 

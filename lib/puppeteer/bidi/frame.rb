@@ -420,8 +420,18 @@ module Puppeteer
       def wait_for_function(page_function, options = {}, *args, &block)
         assert_not_detached
 
+        # Extract timeout with default from timeoutSettings (like Puppeteer's Realm.ts:65-67)
+        # Corresponds to: const { timeout = this.timeoutSettings.timeout(), ... } = options;
+        polling = options[:polling] || 'raf'
+        timeout = options[:timeout] || page.default_timeout
+        wait_task_options = {
+          polling: polling,
+          timeout: timeout,
+          root: options[:root],
+        }
+
         Sync do |task|
-          result = WaitTask.new(self, options, page_function, *args).result
+          result = WaitTask.new(self, wait_task_options, page_function, *args).result
 
           if block
             task.async do

@@ -69,6 +69,7 @@ module Puppeteer
           # Start timeout task in background
           @timeout_task = Async do |task|
             task.sleep(@timeout_ms / 1000.0)
+            @timeout_task = nil # prevent stopping in terminate
             terminate(@timeout_error)
           end
         end
