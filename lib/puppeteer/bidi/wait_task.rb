@@ -9,7 +9,7 @@ module Puppeteer
     # Note: signal and AbortSignal are not implemented as they are JavaScript-specific
     class WaitTask
       # Corresponds to Puppeteer's WaitTask constructor
-      # @param world [Frame] The frame to execute in (corresponds to Realm/World)
+      # @param world [Realm] The realm to execute in (matches Puppeteer's World abstraction)
       # @param options [Hash] Options for waiting
       # @option options [String, Numeric] :polling Polling strategy ('raf', 'mutation', or interval in ms)
       # @option options [Numeric] :timeout Timeout in milliseconds
@@ -47,9 +47,8 @@ module Puppeteer
         # Corresponds to Puppeteer's #poller?: JSHandle<Poller<T>>
         @poller = nil
 
-        # Corresponds to Puppeteer's #reruns: AbortController[]
-        # We use a simpler approach without AbortController
-        @rerun_id = 0
+        # Track the active rerun Async task so we can cancel it when rerunning
+        @rerun_task = nil
 
         # Validate polling interval
         if @polling.is_a?(Numeric) && @polling < 0
@@ -61,7 +60,12 @@ module Puppeteer
 
         # Store timeout value and start timeout task
         # Corresponds to Puppeteer's setTimeout(() => { void this.terminate(this.#timeoutError); }, options.timeout)
-        @timeout_ms = options[:timeout] || @world.page.default_timeout
+        default_timeout = if @world.respond_to?(:default_timeout)
+                            @world.default_timeout
+                          elsif @world.respond_to?(:page)
+                            @world.page.default_timeout
+                          end
+        @timeout_ms = options.key?(:timeout) ? options[:timeout] : default_timeout
         if @timeout_ms && @timeout_ms > 0
           @timeout_error = Puppeteer::Bidi::TimeoutError.new(
             "Waiting failed: #{@timeout_ms}ms exceeded"
@@ -76,9 +80,7 @@ module Puppeteer
 
         # Start polling
         # Corresponds to Puppeteer's void this.rerun()
-        Async do
-          rerun
-        end
+        rerun
       end
 
       # Get the result as a promise
@@ -91,66 +93,21 @@ module Puppeteer
       # Rerun the polling task
       # Corresponds to Puppeteer's async rerun(): Promise<void>
       def rerun
-        # Cancel previous reruns
-        # Corresponds to Puppeteer's for (const prev of this.#reruns) { prev.abort(); }
-        # We use a simpler rerun_id approach
-        current_rerun_id = (@rerun_id += 1)
+        # Cancel previous rerun task if one is active
+        if (previous_task = @rerun_task)
+          @rerun_task = nil if @rerun_task.equal?(previous_task)
+          previous_task.stop
+        end
 
-        begin
-          # Create Poller instance based on polling mode
-          # Corresponds to Puppeteer's switch (this.#polling)
-          case @polling
-          when 'raf'
-            @poller = create_raf_poller
-          when 'mutation'
-            @poller = create_mutation_poller
-          else
-            @poller = create_interval_poller
+        # Launch the rerun asynchronously so it can be cancelled like Puppeteer's AbortController
+        @rerun_task = Async do |task|
+          begin
+            perform_rerun
+          rescue Async::Stop
+            # Rerun was cancelled; poller cleanup happens in ensure block
+          ensure
+            @rerun_task = nil if @rerun_task.equal?(task)
           end
-
-          # Check if we were cancelled
-          return if current_rerun_id != @rerun_id
-
-          # Start the poller
-          # Corresponds to Puppeteer's await this.#poller.evaluate(poller => { void poller.start(); });
-          @poller.evaluate('poller => { void poller.start(); }')
-
-          # Check if we were cancelled
-          return if current_rerun_id != @rerun_id
-
-          # Get the result
-          # Corresponds to Puppeteer's const result = await this.#poller.evaluateHandle(poller => { return poller.result(); });
-          # Note: poller.result() returns a Promise, so we need to await it
-          # evaluateHandle with awaitPromise: true will wait for the Promise to resolve
-          result_handle = @poller.evaluate_handle('poller => { return poller.result(); }')
-
-          # Check if we were cancelled
-          return if current_rerun_id != @rerun_id
-
-          # Resolve the result
-          # Corresponds to Puppeteer's this.#result.resolve(result);
-          @result.resolve(result_handle)
-
-          # Terminate cleanly
-          # Corresponds to Puppeteer's await this.terminate();
-          terminate
-        rescue => error
-          # Check if we were cancelled
-          # Corresponds to Puppeteer's if (controller.signal.aborted) { return; }
-          return if current_rerun_id != @rerun_id
-
-          # Check if this is a bad error
-          # Corresponds to Puppeteer's const badError = this.getBadError(error);
-          bad_error = get_bad_error(error)
-          if bad_error
-            # Corresponds to Puppeteer's this.#genericError.cause = badError;
-            @generic_error = StandardError.new(@generic_error.message)
-            @generic_error.set_backtrace([bad_error.message] + bad_error.backtrace)
-            # Corresponds to Puppeteer's await this.terminate(this.#genericError);
-            terminate(@generic_error)
-          end
-          # If badError is nil, it's a recoverable error and we don't terminate
-          # Puppeteer would rerun automatically via realm 'updated' event
         end
       end
 
@@ -180,20 +137,76 @@ module Puppeteer
         # Stop and dispose poller
         # Corresponds to Puppeteer's if (this.#poller) { ... }
         if @poller
-          begin
-            # Corresponds to Puppeteer's await this.#poller.evaluate(async poller => { await poller.stop(); });
-            @poller.evaluate('async poller => { await poller.stop(); }')
-            # Corresponds to Puppeteer's await this.#poller.dispose();
-            @poller.dispose
-            @poller = nil
-          rescue
-            # Corresponds to Puppeteer's catch { }
-            # Ignore errors since they most likely come from low-level cleanup.
-          end
+          stop_and_dispose_poller(@poller)
+          @poller = nil
         end
       end
 
       private
+
+      # Run a single rerun cycle. Mirrors the async rerun logic from Puppeteer.
+      def perform_rerun
+        poller = nil
+        schedule_rerun = false
+
+        begin
+          # Create Poller instance based on polling mode
+          # Corresponds to Puppeteer's switch (this.#polling)
+          poller = case @polling
+                   when 'raf'
+                     create_raf_poller
+                   when 'mutation'
+                     create_mutation_poller
+                   else
+                     create_interval_poller
+                   end
+
+          @poller = poller
+
+          # Start the poller
+          # Corresponds to Puppeteer's await this.#poller.evaluate(poller => { void poller.start(); });
+          poller.evaluate('poller => { void poller.start(); }')
+
+          # Get the result
+          # Corresponds to Puppeteer's const result = await this.#poller.evaluateHandle(poller => { return poller.result(); });
+          # Note: poller.result() returns a Promise, so we need to await it
+          # evaluateHandle with awaitPromise: true will wait for the Promise to resolve
+          result_handle = poller.evaluate_handle('poller => { return poller.result(); }')
+
+          # Resolve the result
+          # Corresponds to Puppeteer's this.#result.resolve(result);
+          @result.resolve(result_handle)
+
+          # Terminate cleanly
+          # Corresponds to Puppeteer's await this.terminate();
+          terminate
+        rescue Async::Stop
+          # Propagate cancellation so caller can distinguish from regular errors
+          raise
+        rescue => error
+          # Check if this is a bad error
+          # Corresponds to Puppeteer's const badError = this.getBadError(error);
+          bad_error = get_bad_error(error)
+          if bad_error
+            # Corresponds to Puppeteer's this.#genericError.cause = badError;
+            @generic_error = StandardError.new(@generic_error.message)
+            @generic_error.set_backtrace([bad_error.message] + bad_error.backtrace)
+            # Corresponds to Puppeteer's await this.terminate(this.#genericError);
+            terminate(@generic_error)
+          else
+            schedule_rerun = true
+          end
+          # If badError is nil, it's a recoverable error and we don't terminate
+          # Puppeteer would rerun automatically via realm 'updated' event
+        ensure
+          if poller && @poller.equal?(poller)
+            stop_and_dispose_poller(poller)
+            @poller = nil
+          end
+        end
+
+        rerun if schedule_rerun && !@result.resolved?
+      end
 
       # Create RAFPoller instance
       # Corresponds to Puppeteer's evaluateHandle call for RAFPoller
@@ -210,7 +223,8 @@ module Puppeteer
           }
         JAVASCRIPT
 
-        @world.evaluate_handle(script, util_handle, @fn, *@args)
+        handle = @world.evaluate_handle(script, util_handle, @fn, *@args)
+        handle
       end
 
       # Create MutationPoller instance
@@ -275,9 +289,33 @@ module Puppeteer
         # Corresponds to Puppeteer's error.message.includes('DiscardedBrowsingContextError')
         return nil if error_message.include?('DiscardedBrowsingContextError')
 
+        # Recoverable when the browsing context is torn down during navigation.
+        return nil if error_message.include?('Browsing Context with id')
+        return nil if error_message.include?('no such frame')
+
+        # Happens when handles become invalid after realm/navigation changes.
+        return nil if error_message.include?('Unable to find an object reference for "handle"')
+
         # All other errors are fatal
         # Corresponds to Puppeteer's return error;
         error
+      end
+
+      # Safely stop and dispose a poller handle, ignoring cleanup errors
+      def stop_and_dispose_poller(poller)
+        return unless poller
+
+        begin
+          poller.evaluate('async poller => { await poller.stop(); }')
+        rescue StandardError
+          # Ignore errors from stopping the poller
+        end
+
+        begin
+          poller.dispose
+        rescue StandardError
+          # Ignore dispose errors as they are low-level cleanup
+        end
       end
     end
   end

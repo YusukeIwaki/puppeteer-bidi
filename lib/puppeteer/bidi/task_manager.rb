@@ -37,15 +37,7 @@ module Puppeteer
       # Rerun all tasks in parallel
       # Corresponds to Puppeteer's async rerunAll(): Promise<void>
       def rerun_all
-        # Run all tasks in parallel using Async
-        Async do |parent_task|
-          tasks = @tasks.to_a.map do |task|
-            parent_task.async { task.rerun }
-          end
-
-          # Wait for all tasks to complete
-          tasks.each(&:wait)
-        end.wait
+        @tasks.each(&:rerun)
       end
     end
   end

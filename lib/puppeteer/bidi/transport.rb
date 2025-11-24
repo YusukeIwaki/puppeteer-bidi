@@ -121,13 +121,13 @@ module Puppeteer
       end
 
       def debug_print_send(message)
-        if ENV['DEBUG_PROTOCOL']
+        if %w[1 true].include?(ENV['DEBUG_PROTOCOL'])
           puts "SEND >> #{JSON.generate(message)}"
         end
       end
 
       def debug_print_receive(message)
-        if ENV['DEBUG_PROTOCOL']
+        if %w[1 true].include?(ENV['DEBUG_PROTOCOL'])
           puts "RECV << #{JSON.generate(message)}"
         end
       end

@@ -10,12 +10,12 @@ module Puppeteer
     class Page
       DEFAULT_TIMEOUT = 30_000
 
-      attr_reader :browsing_context, :browser_context
+      attr_reader :browsing_context, :browser_context, :timeout_settings
 
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
         @browsing_context = browsing_context
-        @default_timeout = DEFAULT_TIMEOUT
+        @timeout_settings = TimeoutSettings.new(DEFAULT_TIMEOUT)
       end
 
       # Navigate to a URL
@@ -359,13 +359,13 @@ module Puppeteer
       def set_default_timeout(timeout)
         raise ArgumentError, 'timeout must be a non-negative number' unless timeout.is_a?(Numeric) && timeout >= 0
 
-        @default_timeout = timeout
+        @timeout_settings.set_default_timeout(timeout)
       end
 
       # Get the current default timeout in milliseconds.
       # @return [Numeric]
       def default_timeout
-        @default_timeout
+        @timeout_settings.timeout
       end
 
       # Wait for navigation to complete
