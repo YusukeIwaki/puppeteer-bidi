@@ -3,7 +3,6 @@
 require "puppeteer/bidi/version"
 require "puppeteer/bidi/errors"
 
-require "puppeteer/bidi/abort_controller"
 require "puppeteer/bidi/async_utils"
 require "puppeteer/bidi/timeout_settings"
 require "puppeteer/bidi/task_manager"
