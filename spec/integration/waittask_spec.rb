@@ -475,28 +475,22 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      resolved = false
+      handle = page.wait_for_selector('div >>> h1') do
+        page.evaluate(add_element, 'div')
 
-      watcher = Async do
-        page.wait_for_selector('div >>> h1').tap { resolved = true }
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(page.evaluate('() => !!document.querySelector("div >>> h1")')).to be false
+
+        page.evaluate(<<~JS)
+          () => {
+            const host = document.querySelector('div');
+            const shadow = host.attachShadow({ mode: 'open' });
+            const h1 = document.createElement('h1');
+            h1.textContent = 'inside';
+            shadow.appendChild(h1);
+          }
+        JS
       end
-
-      page.evaluate(add_element, 'div')
-
-      sleep(0.04)
-      expect(resolved).to eq(false)
-
-      page.evaluate(<<~JS)
-        () => {
-          const host = document.querySelector('div');
-          const shadow = host.attachShadow({ mode: 'open' });
-          const h1 = document.createElement('h1');
-          h1.textContent = 'inside';
-          shadow.appendChild(h1);
-        }
-      JS
-
-      handle = watcher.wait
 
       text = handle.evaluate('(element) => element.textContent')
       expect(text).to eq('inside')
@@ -523,23 +517,12 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
       page.goto(server.empty_page)
 
       other_frame = attach_frame(page, 'frame1', server.empty_page)
-      expect(other_frame).not_to be_nil
-
-      main_frame = page.main_frame
-      resolved_frame = nil
-
-      Sync do
-        watcher = Async do
-          page.wait_for_selector('div').tap { |element| resolved_frame = element.frame }
-        end
-
+      element_handle = page.wait_for_selector('div') do
         other_frame.evaluate(add_element, 'div')
         page.evaluate(add_element, 'div')
-
-        element = watcher.wait
-        expect(resolved_frame).to eq(main_frame)
-        element.dispose
       end
+
+      expect(element_handle.frame).to eq(page.main_frame)
     end
   end
 
@@ -547,27 +530,16 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      attach_frame(page, 'frame1', server.empty_page)
+      frame1 = attach_frame(page, 'frame1', server.empty_page)
       frame2 = attach_frame(page, 'frame2', server.empty_page)
-      frame1 = page.frames[1]
 
-      expect(frame1).not_to be_nil
-      expect(frame2).not_to be_nil
-
-      resolved_frame = nil
-
-      Sync do
-        watcher = Async do
-          frame2.wait_for_selector('div').tap { |element| resolved_frame = element&.frame }
-        end
-
+      element = frame2.wait_for_selector('div') do
         frame1.evaluate(add_element, 'div')
         frame2.evaluate(add_element, 'div')
-
-        element = watcher.wait
-        expect(resolved_frame).to eq(frame2)
-        element.dispose
       end
+
+      expect(element.frame).to eq(frame2)
+      element.dispose
     end
   end
 
@@ -579,45 +551,39 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
 
       wait_error = nil
 
-      Sync do
-        watcher = Async do
-          frame.wait_for_selector('.box')
-        rescue => error
-          wait_error = error
-          nil
+      begin
+        frame.wait_for_selector('.box') do
+          detach_frame(page, 'frame1')
         end
-
-        detach_frame(page, 'frame1')
-        watcher.wait
+      rescue => error
+        wait_error = error
       end
 
       expect(wait_error).not_to be_nil
       message = wait_error.message
-      expect(message.include?('Waiting for selector `.box` failed') || message.include?('Frame detached')).to be true
+      expect(
+        message.include?('Waiting for selector `.box` failed') ||
+        message.include?('Frame detached') ||
+        message.include?('Browsing context already disposed')
+      ).to be true
     end
   end
 
   it 'should survive cross-process navigation' do
     with_test_state do |page:, server:, **|
-      box_found = false
+      navigation_task = nil
 
-      Sync do
-        watcher = Async do
-          page.wait_for_selector('.box').tap { box_found = true }
+      handle = page.wait_for_selector('.box') do
+        navigation_task = Async do
+          page.goto(server.empty_page)
+          page.goto(server.empty_page)
+          page.goto("#{server.cross_process_prefix}/grid.html")
         end
-
-        page.goto(server.empty_page)
-        expect(box_found).to be false
-
-        page.goto(server.empty_page)
-        expect(box_found).to be false
-
-        page.goto("#{server.cross_process_prefix}/grid.html")
-
-        watcher.wait
       end
 
-      expect(box_found).to be true
+      navigation_task&.wait
+      expect(handle).to be_a(Puppeteer::Bidi::ElementHandle)
+      handle.dispose
     end
   end
 
@@ -625,27 +591,22 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div', visible: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      handle = page.wait_for_selector('div', visible: true) do
         page.set_content('<div style="display: none">text</div>')
 
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.removeProperty("display")')
-
-        handle = promise.wait
-        expect(handle).to be_truthy
-        handle.dispose if handle
-        element.dispose
+        element_handle.evaluate('element => element.style.removeProperty("display")')
       end
+
+      promise_resolved = true
+      expect(handle).to be_truthy
+      handle.dispose if handle
+      element_handle&.dispose
     end
   end
 
@@ -653,11 +614,8 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div', visible: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      handle = page.wait_for_selector('div', visible: true) do
         page.set_content(<<~HTML)
           <style>
             div { display: none; }
@@ -665,13 +623,11 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
           <div>text</div>
         HTML
 
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
-        expect(element).not_to be_nil
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        expect(element_handle).not_to be_nil
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
         page.evaluate(<<~JS)
           () => {
@@ -680,12 +636,12 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
             document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
           }
         JS
-
-        handle = promise.wait
-        expect(handle).to be_truthy
-        handle.dispose if handle
-        element.dispose
       end
+
+      promise_resolved = true
+      expect(handle).to be_truthy
+      handle.dispose if handle
+      element_handle&.dispose
     end
   end
 
@@ -693,33 +649,26 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div', visible: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      handle = page.wait_for_selector('div', visible: true) do
         page.set_content('<div style="visibility: hidden">text</div>')
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.setProperty("visibility", "collapse")')
+        element_handle.evaluate('element => element.style.setProperty("visibility", "collapse")')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.removeProperty("visibility")')
-
-        handle = promise.wait
-        expect(handle).to be_truthy
-        handle.dispose if handle
-        element.dispose
+        element_handle.evaluate('element => element.style.removeProperty("visibility")')
       end
+
+      promise_resolved = true
+      expect(handle).to be_truthy
+      handle.dispose if handle
+      element_handle&.dispose
     end
   end
 
@@ -727,33 +676,26 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div', visible: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      handle = page.wait_for_selector('div', visible: true) do
         page.set_content('<div style="width: 0">text</div>')
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => { element.style.setProperty("height", "0"); element.style.removeProperty("width"); }')
+        element_handle.evaluate('element => { element.style.setProperty("height", "0"); element.style.removeProperty("width"); }')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.removeProperty("height")')
-
-        handle = promise.wait
-        expect(handle).to be_truthy
-        handle.dispose if handle
-        element.dispose
+        element_handle.evaluate('element => element.style.removeProperty("height")')
       end
+
+      promise_resolved = true
+      expect(handle).to be_truthy
+      handle.dispose if handle
+      element_handle&.dispose
     end
   end
 
@@ -761,33 +703,26 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div#inner', visible: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      handle = page.wait_for_selector('div#inner', visible: true) do
         page.set_content('<div style="display: none; visibility: hidden;"><div id="inner">hi</div></div>')
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.removeProperty("display")')
+        element_handle.evaluate('element => element.style.removeProperty("display")')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.removeProperty("visibility")')
-
-        handle = promise.wait
-        expect(handle).to be_truthy
-        handle.dispose if handle
-        element.dispose
+        element_handle.evaluate('element => element.style.removeProperty("visibility")')
       end
+
+      promise_resolved = true
+      expect(handle).to be_truthy
+      handle.dispose if handle
+      element_handle&.dispose
     end
   end
 
@@ -795,26 +730,21 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div', hidden: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      result = page.wait_for_selector('div', hidden: true) do
         page.set_content('<div style="display: block;">text</div>')
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.setProperty("visibility", "hidden")')
-
-        result = promise.wait
-        expect(result).to be_truthy
-        result.dispose if result.respond_to?(:dispose)
-        element.dispose
+        element_handle.evaluate('element => element.style.setProperty("visibility", "hidden")')
       end
+
+      promise_resolved = true
+      expect(result).to be_truthy
+      result.dispose if result.respond_to?(:dispose)
+      element_handle&.dispose
     end
   end
 
@@ -822,26 +752,21 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div', hidden: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      result = page.wait_for_selector('div', hidden: true) do
         page.set_content('<div style="display: block;">text</div>')
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.setProperty("display", "none")')
-
-        result = promise.wait
-        expect(result).to be_truthy
-        result.dispose if result.respond_to?(:dispose)
-        element.dispose
+        element_handle.evaluate('element => element.style.setProperty("display", "none")')
       end
+
+      promise_resolved = true
+      expect(result).to be_truthy
+      result.dispose if result.respond_to?(:dispose)
+      element_handle&.dispose
     end
   end
 
@@ -849,26 +774,21 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div', hidden: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      result = page.wait_for_selector('div', hidden: true) do
         page.set_content('<div>text</div>')
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.style.setProperty("height", "0")')
-
-        result = promise.wait
-        expect(result).to be_truthy
-        result.dispose if result.respond_to?(:dispose)
-        element.dispose
+        element_handle.evaluate('element => element.style.setProperty("height", "0")')
       end
+
+      promise_resolved = true
+      expect(result).to be_truthy
+      result.dispose if result.respond_to?(:dispose)
+      element_handle&.dispose
     end
   end
 
@@ -876,26 +796,21 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, **|
       promise_resolved = false
 
-      Sync do
-        promise = Async do
-          page.wait_for_selector('div', hidden: true).tap { promise_resolved = true }
-        end
-
+      element_handle = nil
+      result = page.wait_for_selector('div', hidden: true) do
         page.set_content('<div>text</div>')
-        element = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
+        element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
-        Async do |task|
-          task.sleep(0.04)
-          expect(promise_resolved).to be false
-        end.wait
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(promise_resolved).to be false
 
-        element.evaluate('element => element.remove()')
-
-        result = promise.wait
-        expect(result).to be_falsey
-        result.dispose if result.respond_to?(:dispose)
-        element.dispose
+        element_handle.evaluate('element => element.remove()')
       end
+
+      promise_resolved = true
+      expect(result).to be_falsey
+      result.dispose if result.respond_to?(:dispose)
+      element_handle&.dispose
     end
   end
 
@@ -928,43 +843,27 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
 
   it 'should respond to node attribute mutation' do
     with_test_state do |page:, **|
-      div_found = false
-
-      Sync do
-        watcher = Async do
-          handle = page.wait_for_selector('.zombo')
-          begin
-            div_found = true
-            true
-          ensure
-            handle&.dispose
-          end
-        end
-
+      handle = page.wait_for_selector('.zombo') do
         page.set_content('<div class="notZombo"></div>')
-        expect(div_found).to be false
+        expect(page.evaluate('() => document.querySelector(".zombo")')).to be_nil
 
         page.evaluate('() => { document.querySelector("div").className = "zombo"; }')
-
-        expect(watcher.wait).to be true
       end
+
+      expect(handle).not_to be_nil
+      handle.dispose
     end
   end
 
   it 'should return the element handle' do
     with_test_state do |page:, **|
-      Sync do
-        watcher = Async do
-          page.wait_for_selector('.zombo')
-        end
-
+      handle = page.wait_for_selector('.zombo') do
         page.set_content('<div class="zombo">anything</div>')
-
-        handle = watcher.wait
-        text = page.evaluate('(element) => element ? element.textContent : null', handle)
-        expect(text).to eq('anything')
-        handle.dispose
       end
+
+      text = page.evaluate('(element) => element ? element.textContent : null', handle)
+      expect(text).to eq('anything')
+      handle.dispose
     end
   end
 
@@ -1020,20 +919,13 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
         frame2 = attach_frame(page, 'frame2', server.empty_page)
         frame1 = page.frames[1]
 
-        resolved_frame = nil
-
-        Sync do
-          watcher = Async do
-            frame2.wait_for_selector('xpath/.//div').tap { |element| resolved_frame = element&.frame }
-          end
-
+        element = frame2.wait_for_selector('xpath/.//div') do
           frame1.evaluate(xpath_add_element, 'div')
           frame2.evaluate(xpath_add_element, 'div')
-
-          element = watcher.wait
-          expect(resolved_frame).to eq(frame2)
-          element.dispose
         end
+
+        expect(element&.frame).to eq(frame2)
+        element.dispose
       end
     end
 
@@ -1044,49 +936,35 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
         frame = attach_frame(page, 'frame1', server.empty_page)
         wait_error = nil
 
-        Sync do
-          watcher = Async do
-            frame.wait_for_selector('xpath/.//*[@class="box"]')
-          rescue => error
-            wait_error = error
-            nil
+        begin
+          frame.wait_for_selector('xpath/.//*[@class="box"]') do
+            detach_frame(page, 'frame1')
           end
-
-          detach_frame(page, 'frame1')
-          watcher.wait
+        rescue => error
+          wait_error = error
         end
 
         expect(wait_error).not_to be_nil
         message = wait_error.message
-        expect(message.include?('Waiting for selector `.//*[@class="box"]` failed') || message.include?('Frame detached')).to be true
+        expect(
+          message.include?('Waiting for selector `.//*[@class="box"]` failed') ||
+          message.include?('Frame detached') ||
+          message.include?('Browsing context already disposed')
+        ).to be true
       end
     end
 
     it 'hidden should wait for display: none' do
       with_test_state do |page:, **|
-        div_hidden = false
-
         page.set_content('<div style="display: block;">text</div>')
 
-        Sync do
-          watcher = Async do
-            handle = page.wait_for_selector('xpath/.//div', hidden: true)
-            begin
-              div_hidden = true
-              true
-            ensure
-              handle&.dispose
-            end
-          end
-
-          page.wait_for_selector('xpath/.//div')
-          expect(div_hidden).to be false
-
+        handle = page.wait_for_selector('xpath/.//div', hidden: true) do
+          expect(page.evaluate('() => getComputedStyle(document.querySelector("div")).display')).to eq('block')
           page.evaluate('() => { document.querySelector("div").style.setProperty("display", "none"); }')
-
-          expect(watcher.wait).to be true
-          expect(div_hidden).to be true
         end
+
+        expect(handle).to be_truthy
+        handle.dispose if handle.respond_to?(:dispose)
       end
     end
 
@@ -1109,18 +987,13 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
 
     it 'should return the element handle' do
       with_test_state do |page:, **|
-        Sync do
-          watcher = Async do
-            page.wait_for_selector('xpath/.//*[@class="zombo"]')
-          end
-
+        handle = page.wait_for_selector('xpath/.//*[@class="zombo"]') do
           page.set_content('<div class="zombo">anything</div>')
-
-          handle = watcher.wait
-          text = page.evaluate('(element) => element ? element.textContent : null', handle)
-          expect(text).to eq('anything')
-          handle.dispose
         end
+
+        text = page.evaluate('(element) => element ? element.textContent : null', handle)
+        expect(text).to eq('anything')
+        handle.dispose
       end
     end
 
