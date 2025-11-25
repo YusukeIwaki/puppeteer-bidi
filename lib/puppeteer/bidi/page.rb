@@ -347,8 +347,8 @@ module Puppeteer
       # @param hidden [Boolean] Wait for element to be hidden or not found
       # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
       # @return [ElementHandle, nil] Element handle if found, nil if hidden option was used and element disappeared
-      def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil)
-        main_frame.wait_for_selector(selector, visible: visible, hidden: hidden, timeout: timeout)
+      def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
+        main_frame.wait_for_selector(selector, visible: visible, hidden: hidden, timeout: timeout, &block)
       end
 
       # Set the default timeout for waiting operations (e.g., waitForFunction).

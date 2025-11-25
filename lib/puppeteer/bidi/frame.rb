@@ -417,7 +417,7 @@ module Puppeteer
       # @param hidden [Boolean] Wait for element to be hidden or not found
       # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
       # @return [ElementHandle, nil] Element handle if found, nil if hidden option was used and element disappeared
-      def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil)
+      def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
         assert_not_detached
 
         # Determine visibility parameter for checkVisibility
@@ -445,19 +445,22 @@ module Puppeteer
             options,
             isolated_realm.puppeteer_util,
             selector,
-            visibility
-          )
+            visibility,
+            &block)
 
-          # Convert to ElementHandle if we got a result
-          element = handle&.as_element
+          return nil unless handle
 
-          # If we got an element, transfer it to main realm
-          # For now, return the handle from isolated realm
-          # (Puppeteer does realm transfer, but it's not strictly necessary for basic usage)
-          element
+          unless handle.is_a?(ElementHandle)
+            begin
+              handle.dispose
+            rescue StandardError
+              # Ignored: primitive handles may not support dispose.
+            end
+            return nil
+          end
+
+          main_realm.transfer_handle(handle)
         rescue Puppeteer::Bidi::TimeoutError => e
-          # Re-raise with more descriptive message
-          visibility_desc = visible ? 'visible' : (hidden ? 'hidden' : 'located')
           raise Puppeteer::Bidi::TimeoutError,
                 "Waiting for selector `#{selector}` failed: Waiting failed: #{e.message.split(': ').last}"
         end

@@ -96,10 +96,10 @@ module Puppeteer
           remote_value = handle.remote_value
 
           # Prefer handle over sharedId
-          if remote_value['handle']
-            { handle: remote_value['handle'] }
-          elsif remote_value['sharedId']
+          if remote_value['sharedId']
             { sharedId: remote_value['sharedId'] }
+          elsif remote_value['handle']
+            { handle: remote_value['handle'] }
           else
             # Fallback: return the full remote value
             remote_value
