@@ -12,14 +12,17 @@ module Puppeteer
         # @param connection [Puppeteer::Bidi::Connection] The BiDi connection
         # @param capabilities [Hash] Session capabilities
         # @return [Session] New session instance
-        def self.from(connection, capabilities)
-          result = connection.send_command('session.new', { capabilities: capabilities })
-          session = new(connection, result)
-          session.send(:initialize_session)
-          session
+        def self.from(connection:, capabilities:)
+          Async do
+            result = connection.async_send_command('session.new', { capabilities: capabilities }).wait
+            session = new(connection, result)
+            session.send(:initialize_session).wait
+            session
+          end
         end
 
         attr_reader :connection, :id, :capabilities
+        attr_accessor :browser
 
         def initialize(connection, info)
           super()
@@ -29,7 +32,6 @@ module Puppeteer
           @capabilities = info['capabilities']
           @reason = nil
           @disposables = Disposable::DisposableStack.new
-          @browser = nil
 
           # Forward BiDi events from connection to session
           setup_event_forwarding
@@ -46,10 +48,9 @@ module Puppeteer
         # @param method [String] BiDi method name
         # @param params [Hash] Command parameters
         # @return [Hash] Command result
-        def send_command(method, params = {})
+        def async_send_command(method, params = {})
           raise SessionEndedError, @reason if ended?
-          result = @connection.send_command(method, params)
-          result
+          @connection.async_send_command(method, params)
         end
 
         # Subscribe to BiDi events
@@ -59,7 +60,7 @@ module Puppeteer
           raise SessionEndedError, @reason if ended?
           params = { events: events }
           params[:contexts] = contexts if contexts
-          send_command('session.subscribe', params)
+          async_send_command('session.subscribe', params)
         end
 
         # Add intercepts (same as subscribe but for interception events)
@@ -78,18 +79,6 @@ module Puppeteer
           ensure
             dispose_session('Session ended')
           end
-        end
-
-        # Get the browser instance associated with this session
-        # @return [Browser] Browser instance
-        def browser
-          @browser
-        end
-
-        # Internal: Set the browser instance
-        # @param browser [Browser] Browser instance
-        def browser=(browser)
-          @browser = browser
         end
 
         protected

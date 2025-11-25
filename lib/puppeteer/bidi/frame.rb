@@ -11,10 +11,24 @@ module Puppeteer
         @parent = parent
         @browsing_context = browsing_context
 
-        # Set this frame as the environment for the realm
-        # Following Puppeteer's design where realm.environment returns the frame
-        realm = @browsing_context.default_realm
-        realm.environment = self if realm.respond_to?(:environment=)
+        default_core_realm = @browsing_context.default_realm
+        internal_core_realm = @browsing_context.create_window_realm("__puppeteer_internal_#{rand(1..10_000)}")
+
+        @main_realm = FrameRealm.new(self, default_core_realm)
+        @isolated_realm = FrameRealm.new(self, internal_core_realm)
+      end
+
+      def main_realm
+        @main_realm
+      end
+
+      def isolated_realm
+        @isolated_realm
+      end
+
+      # Backwards compatibility for call sites that previously accessed Frame#realm.
+      def realm
+        main_realm
       end
 
       # Get the page that owns this frame
@@ -36,41 +50,7 @@ module Puppeteer
       # @return [Object] Result of evaluation
       def evaluate(script, *args)
         assert_not_detached
-
-        # Detect if the script is a function (arrow function or regular function)
-        # but not an IIFE (immediately invoked function expression)
-        script_trimmed = script.strip
-
-        # Check if it's an IIFE - ends with () after the function body
-        is_iife = script_trimmed.match?(/\)\s*\(\s*\)\s*\z/)
-
-        # Check if it's a function declaration/expression
-        is_function = !is_iife && (
-          script_trimmed.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
-          script_trimmed.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
-        )
-
-        if is_function
-          # Serialize arguments using Serializer
-          serialized_args = args.map { |arg| Serializer.serialize(arg) }
-
-          # Use callFunction for function declarations
-          options = {}
-          options[:arguments] = serialized_args unless serialized_args.empty?
-          result = @browsing_context.default_realm.call_function(script_trimmed, true, **options)
-        else
-          # Use evaluate for expressions
-          result = @browsing_context.default_realm.evaluate(script_trimmed, true)
-        end
-
-        # Check for exceptions
-        if result['type'] == 'exception'
-          handle_evaluation_exception(result)
-        end
-
-        # Deserialize using Deserializer
-        actual_result = result['result'] || result
-        Deserializer.deserialize(actual_result)
+        main_realm.evaluate(script, *args)
       end
 
       # Evaluate JavaScript and return a handle to the result
@@ -79,65 +59,43 @@ module Puppeteer
       # @return [JSHandle] Handle to the result
       def evaluate_handle(script, *args)
         assert_not_detached
-
-        script_trimmed = script.strip
-
-        # Check if it's an IIFE
-        is_iife = script_trimmed.match?(/\)\s*\(\s*\)\s*\z/)
-
-        # Check if it's a function
-        is_function = !is_iife && (
-          script_trimmed.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
-          script_trimmed.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
-        )
-
-        if is_function
-          # Serialize arguments using Serializer
-          serialized_args = args.map { |arg| Serializer.serialize(arg) }
-
-          options = {}
-          options[:arguments] = serialized_args unless serialized_args.empty?
-          result = @browsing_context.default_realm.call_function(script_trimmed, false, **options)
-        else
-          result = @browsing_context.default_realm.evaluate(script_trimmed, false)
-        end
-
-        # Check for exceptions
-        if result['type'] == 'exception'
-          handle_evaluation_exception(result)
-        end
-
-        # Create handle using factory method
-        JSHandle.from(result['result'], @browsing_context.default_realm)
+        main_realm.evaluate_handle(script, *args)
       end
 
       # Get the document element handle
       # @return [ElementHandle] Document element handle
       def document
         assert_not_detached
-
-        # Get document object
-        result = @browsing_context.default_realm.evaluate('document', false)
-
-        if result['type'] == 'exception'
+        handle = main_realm.evaluate_handle('document')
+        unless handle.is_a?(ElementHandle)
+          handle.dispose
           raise 'Failed to get document'
         end
-
-        ElementHandle.new(@browsing_context.default_realm, result['result'])
+        handle
       end
 
       # Query for an element matching the selector
       # @param selector [String] CSS selector
       # @return [ElementHandle, nil] Element handle if found, nil otherwise
       def query_selector(selector)
-        document.query_selector(selector)
+        doc = document
+        begin
+          doc.query_selector(selector)
+        ensure
+          doc.dispose
+        end
       end
 
       # Query for all elements matching the selector
       # @param selector [String] CSS selector
       # @return [Array<ElementHandle>] Array of element handles
       def query_selector_all(selector)
-        document.query_selector_all(selector)
+        doc = document
+        begin
+          doc.query_selector_all(selector)
+        ensure
+          doc.dispose
+        end
       end
 
       # Evaluate a function on the first element matching the selector
@@ -146,7 +104,12 @@ module Puppeteer
       # @param *args [Array] Arguments to pass to the function
       # @return [Object] Result of evaluation
       def eval_on_selector(selector, page_function, *args)
-        document.eval_on_selector(selector, page_function, *args)
+        doc = document
+        begin
+          doc.eval_on_selector(selector, page_function, *args)
+        ensure
+          doc.dispose
+        end
       end
 
       # Evaluate a function on all elements matching the selector
@@ -155,7 +118,12 @@ module Puppeteer
       # @param *args [Array] Arguments to pass to the function
       # @return [Object] Result of evaluation
       def eval_on_selector_all(selector, page_function, *args)
-        document.eval_on_selector_all(selector, page_function, *args)
+        doc = document
+        begin
+          doc.eval_on_selector_all(selector, page_function, *args)
+        ensure
+          doc.dispose
+        end
       end
 
       # Click an element matching the selector
@@ -198,6 +166,16 @@ module Puppeteer
       # @return [String] Current URL
       def url
         @browsing_context.url
+      end
+
+      def goto(url, wait_until: 'load', timeout: 30000)
+        response = wait_for_navigation(timeout: timeout, wait_until: wait_until) do
+          @browsing_context.navigate(url, wait: 'interactive').wait
+        end
+        # Return HTTPResponse with the final URL
+        # Note: Currently we don't track HTTP status codes from BiDi protocol
+        # Assuming successful navigation (200 OK)
+        HTTPResponse.new(url: @browsing_context.url, status: 200)
       end
 
       # Set frame content
@@ -264,12 +242,6 @@ module Puppeteer
         @browsing_context.closed?
       end
 
-      # Get the isolated realm (default realm) for this frame
-      # @return [Core::WindowRealm] The default realm
-      def isolated_realm
-        @browsing_context.default_realm
-      end
-
       # Get child frames
       # @return [Array<Frame>] Child frames
       def child_frames
@@ -284,20 +256,31 @@ module Puppeteer
 
       # Wait for navigation to complete
       # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
-      # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')
+      # @param wait_until [String, Array<String>] When to consider navigation succeeded
+      #   ('load', 'domcontentloaded', 'networkidle0', 'networkidle2', or array of these)
       # @yield Optional block to execute that triggers navigation
       # @return [HTTPResponse, nil] Main response (nil for fragment navigation or history API)
       def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
         assert_not_detached
 
-        # Determine which event to wait for
-        load_event = case wait_until
+        # Normalize wait_until to array
+        wait_until_array = wait_until.is_a?(Array) ? wait_until : [wait_until]
+
+        # Separate lifecycle events from network idle events
+        lifecycle_events = wait_until_array.select { |e| ['load', 'domcontentloaded'].include?(e) }
+        network_idle_events = wait_until_array.select { |e| ['networkidle0', 'networkidle2'].include?(e) }
+
+        # Default to 'load' if no lifecycle event specified
+        lifecycle_events = ['load'] if lifecycle_events.empty? && network_idle_events.any?
+
+        # Determine which load event to wait for (use the first one)
+        load_event = case lifecycle_events.first
                      when 'load'
                        :load
                      when 'domcontentloaded'
                        :dom_content_loaded
                      else
-                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
+                       :load  # Default
                      end
 
         # Use Async::Promise for signaling (Fiber-based, not Thread-based)
@@ -378,10 +361,27 @@ module Puppeteer
 
           # Execute the block if provided (this may trigger navigation)
           # Block executes in the same Fiber context for cooperative multitasking
-          block.call if block
+          Async(&block).wait if block
 
           # Wait for navigation with timeout using Async (Fiber-based)
-          result = AsyncUtils.async_timeout(timeout, promise).wait
+          if network_idle_events.any?
+            # Puppeteer's pattern: wait for both navigation completion AND network idle
+            # Determine concurrency based on network idle event
+            concurrency = network_idle_events.include?('networkidle0') ? 0 : 2
+
+            # Wait for both navigation and network idle in parallel using promise_all
+            navigation_result, _ = AsyncUtils.async_timeout(timeout, -> do
+              AsyncUtils.await_promise_all(
+                promise,
+                -> { page.wait_for_network_idle(idle_time: 500, timeout: timeout, concurrency: concurrency) }
+              )
+            end).wait
+
+            result = navigation_result
+          else
+            # Only wait for navigation
+            result = AsyncUtils.async_timeout(timeout, promise).wait
+          end
 
           # Return HTTPResponse for full page navigation, nil for fragment/history
           if result == :full_page
@@ -400,6 +400,17 @@ module Puppeteer
         end
       end
 
+      # Wait for a function to return a truthy value
+      # @param page_function [String] JavaScript function to evaluate
+      # @param options [Hash] Options for waiting
+      # @option options [String, Numeric] :polling Polling strategy ('raf', 'mutation', or interval in ms)
+      # @option options [Numeric] :timeout Timeout in milliseconds (default: 30000)
+      # @param args [Array] Arguments to pass to the function
+      # @return [JSHandle] Handle to the function's return value
+      def wait_for_function(page_function, options = {}, *args, &block)
+        main_realm.wait_for_function(page_function, options, *args, &block)
+      end
+
       private
 
       # Check if this frame is detached and raise error if so
@@ -408,26 +419,6 @@ module Puppeteer
         raise FrameDetachedError if @browsing_context.closed?
       end
 
-      # Handle evaluation exceptions
-      # @param result [Hash] BiDi result with exception
-      def handle_evaluation_exception(result)
-        exception_details = result['exceptionDetails']
-        return unless exception_details
-
-        text = exception_details['text'] || 'Evaluation failed'
-        exception = exception_details['exception']
-
-        # Create a descriptive error message
-        error_message = text
-
-        # For thrown values, use the exception value if available
-        if exception && exception['type'] != 'error'
-          thrown_value = Deserializer.deserialize(exception)
-          error_message = "Evaluation failed: #{thrown_value}"
-        end
-
-        raise error_message
-      end
     end
   end
 end

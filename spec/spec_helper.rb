@@ -23,6 +23,17 @@ RSpec.configure do |config|
     metadata[:type] = :integration
   end
 
+  # https://github.com/rspec/rspec-core/blob/v3.13.2/lib/rspec/core/configuration.rb#L2091-L2103
+  rspec_around_suite_patch = Module.new do
+    def with_suite_hooks(...)
+      puts "\n[Test Suite] Starting..."
+      Sync do
+        super(...)
+      end
+    end
+  end
+  RSpec::Core::Configuration.prepend(rspec_around_suite_patch)
+
   # Shared browser instance for integration tests
   # This is created once per test suite and reused across all tests
   config.before(:suite) do

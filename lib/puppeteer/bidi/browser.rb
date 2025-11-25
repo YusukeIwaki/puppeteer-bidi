@@ -9,26 +9,17 @@ module Puppeteer
     class Browser
       attr_reader :connection, :process, :default_browser_context
 
-      def initialize(connection:, launcher: nil, connection_task: nil)
-        @connection = connection
-        @launcher = launcher
-        @connection_task = connection_task
-        @closed = false
-        @core_browser = nil
-        @default_browser_context = nil
-
+      def self.create(connection:, launcher: nil)
         # Create a new BiDi session
-        session_info = @connection.send_command('session.new', {
+        session = Core::Session.from(
+          connection: connection,
           capabilities: {
             alwaysMatch: {
               acceptInsecureCerts: false,
               webSocketUrl: true,
             },
           },
-        })
-
-        # Initialize the Core layer
-        @session = Core::Session.new(@connection, session_info)
+        ).wait
 
         # Subscribe to BiDi modules before creating browser
         subscribe_modules = %w[
@@ -38,10 +29,25 @@ module Puppeteer
           script
           input
         ]
-        @session.subscribe(subscribe_modules)
+        session.subscribe(subscribe_modules).wait
 
-        @core_browser = Core::Browser.from(@session)
-        @session.browser = @core_browser
+        core_browser = Core::Browser.from(session).wait
+        session.browser = core_browser
+
+        new(
+          connection: connection,
+          launcher: launcher,
+          core_browser: core_browser,
+          session: session,
+        )
+      end
+
+      def initialize(connection:, launcher:, core_browser:, session:)
+        @connection = connection
+        @launcher = launcher
+        @closed = false
+        @core_browser = core_browser
+        @session = session
 
         # Create default browser context
         default_user_context = @core_browser.default_user_context
@@ -73,39 +79,13 @@ module Puppeteer
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
-        connection_task = Thread.new do
-          Sync do
-            transport.connect
-          end
-        end
-
-        # Wait for connection to be established
-        transport.wait_for_connection(timeout: options.fetch(:timeout, 30))
+        AsyncUtils.async_timeout(options.fetch(:timeout, 30) * 1000, transport.connect).wait
 
         connection = Connection.new(transport)
 
-        browser = new(connection: connection, launcher: launcher, connection_task: connection_task)
+        browser = create(connection: connection, launcher: launcher)
         target = browser.wait_for_target { |target| target.type == 'page' }
         browser
-      end
-
-      # Connect to an existing browser instance
-      # @param ws_endpoint [String] WebSocket endpoint URL
-      # @return [Browser] Browser instance
-      def self.connect(ws_endpoint, **options)
-        transport = Transport.new(ws_endpoint)
-
-        connection_task = Thread.new do
-          Sync do
-            transport.connect
-          end
-        end
-
-        transport.wait_for_connection(timeout: options.fetch(:timeout, 30))
-
-        connection = Connection.new(transport)
-
-        new(connection: connection, connection_task: connection_task)
       end
 
       # Get BiDi session status
@@ -123,52 +103,6 @@ module Puppeteer
       # @return [Array<Page>] All pages
       def pages
         @default_browser_context.pages
-      end
-
-      # Create a new browsing context (similar to opening a new tab)
-      # @param type [String] Context type ('tab' or 'window')
-      # @return [Hash] Context info with 'context' id
-      def new_context(type: 'tab')
-        @connection.send_command('browsingContext.create', {
-          type: type
-        })
-      end
-
-      # Get all browsing contexts
-      # @return [Hash] Contexts tree
-      def contexts
-        @connection.send_command('browsingContext.getTree', {})
-      end
-
-      # Navigate a browsing context to URL
-      # @param context [String] Context ID
-      # @param url [String] URL to navigate to
-      # @param wait [String] Wait condition ('none', 'interactive', 'complete')
-      # @return [Hash] Navigation result
-      def navigate(context:, url:, wait: 'complete')
-        @connection.send_command('browsingContext.navigate', {
-          context: context,
-          url: url,
-          wait: wait
-        })
-      end
-
-      # Close a browsing context
-      # @param context [String] Context ID
-      def close_context(context)
-        @connection.send_command('browsingContext.close', {
-          context: context
-        })
-      end
-
-      # Subscribe to BiDi events
-      # @param events [Array<String>] Event names to subscribe to
-      # @param contexts [Array<String>] Context IDs (optional)
-      def subscribe(events, contexts: nil)
-        params = { events: events }
-        params[:contexts] = contexts if contexts
-
-        @connection.send_command('session.subscribe', params)
       end
 
       # Register event handler
@@ -190,9 +124,6 @@ module Puppeteer
           warn "Error closing connection: #{e.message}"
         end
 
-        # Wait for connection task to finish
-        @connection_task&.join(2)
-
         @launcher&.kill
       end
 
@@ -208,7 +139,7 @@ module Puppeteer
       # @raise [Core::BrowserDisconnectedError] When browser disconnects before match.
       def wait_for_target(timeout: nil, &predicate)
         predicate ||= ->(_target) { true }
-        timeout_ms = timeout.nil? ? 30_000 : timeout
+        timeout_ms = timeout || 30_000
         raise ArgumentError, 'timeout must be >= 0' if timeout_ms && timeout_ms.negative?
 
         if (target = find_target(predicate))

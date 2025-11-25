@@ -8,11 +8,14 @@ module Puppeteer
     # Page represents a single page/tab in the browser
     # This is a high-level wrapper around Core::BrowsingContext
     class Page
-      attr_reader :browsing_context, :browser_context
+      DEFAULT_TIMEOUT = 30_000
+
+      attr_reader :browsing_context, :browser_context, :timeout_settings
 
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
         @browsing_context = browsing_context
+        @timeout_settings = TimeoutSettings.new(DEFAULT_TIMEOUT)
       end
 
       # Navigate to a URL
@@ -22,20 +25,7 @@ module Puppeteer
       def goto(url, wait_until: 'load')
         assert_not_closed
 
-        wait = case wait_until
-               when 'load'
-                 'complete'
-               when 'domcontentloaded'
-                 'interactive'
-               else
-                 'none'
-               end
-
-        @browsing_context.navigate(url, wait: wait)
-        # Return HTTPResponse with the final URL
-        # Note: Currently we don't track HTTP status codes from BiDi protocol
-        # Assuming successful navigation (200 OK)
-        HTTPResponse.new(url: @browsing_context.url, status: 200)
+        main_frame.goto(url, wait_until: wait_until)
       end
 
       # Set page content
@@ -95,7 +85,7 @@ module Puppeteer
             begin
               # Capture screenshot with viewport origin
               options[:origin] = 'viewport'
-              data = @browsing_context.capture_screenshot(**options)
+              data = @browsing_context.capture_screenshot(**options).wait
             ensure
               # Restore original viewport
               if original_viewport
@@ -158,7 +148,7 @@ module Puppeteer
         end
 
         # Get screenshot data from browsing context
-        data = @browsing_context.capture_screenshot(**options)
+        data = @browsing_context.capture_screenshot(**options).wait
 
         # Save to file if path is provided
         if path
@@ -268,7 +258,7 @@ module Puppeteer
       def close
         return if closed?
 
-        @browsing_context.close
+        @browsing_context.close.wait
       end
 
       # Check if page is closed
@@ -340,6 +330,31 @@ module Puppeteer
         @keyboard ||= Keyboard.new(self, @browsing_context)
       end
 
+      # Wait for a function to return a truthy value
+      # @param page_function [String] JavaScript function to evaluate
+      # @param options [Hash] Options for waiting
+      # @option options [String, Numeric] :polling Polling strategy ('raf', 'mutation', or interval in ms)
+      # @option options [Numeric] :timeout Timeout in milliseconds (default: 30000)
+      # @param args [Array] Arguments to pass to the function
+      # @return [JSHandle] Handle to the function's return value
+      def wait_for_function(page_function, options = {}, *args, &block)
+        main_frame.wait_for_function(page_function, options, *args, &block)
+      end
+
+      # Set the default timeout for waiting operations (e.g., waitForFunction).
+      # @param timeout [Numeric] Timeout in milliseconds (0 disables the timeout)
+      def set_default_timeout(timeout)
+        raise ArgumentError, 'timeout must be a non-negative number' unless timeout.is_a?(Numeric) && timeout >= 0
+
+        @timeout_settings.set_default_timeout(timeout)
+      end
+
+      # Get the current default timeout in milliseconds.
+      # @return [Numeric]
+      def default_timeout
+        @timeout_settings.timeout
+      end
+
       # Wait for navigation to complete
       # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
       # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')
@@ -347,6 +362,76 @@ module Puppeteer
       # @return [HTTPResponse, nil] Main response (nil for fragment navigation or history API)
       def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
         main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
+      end
+
+      # Wait for network to be idle (no more than concurrency connections for idle_time)
+      # Based on Puppeteer's waitForNetworkIdle implementation
+      # @param idle_time [Numeric] Time in milliseconds to wait for network to be idle (default: 500)
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @param concurrency [Integer] Maximum number of inflight network connections (0 or 2, default: 0)
+      # @return [void]
+      def wait_for_network_idle(idle_time: 500, timeout: 30000, concurrency: 0)
+        assert_not_closed
+
+        promise = Async::Promise.new
+        idle_timer = nil
+        idle_timer_mutex = Thread::Mutex.new
+
+        # Listener for inflight changes
+        inflight_listener = lambda do |data|
+          inflight = data[:inflight]
+
+          idle_timer_mutex.synchronize do
+            # Cancel existing timer if any
+            idle_timer&.stop
+
+            # If inflight requests exceed concurrency, don't start timer
+            if inflight > concurrency
+              idle_timer = nil
+              return
+            end
+
+            # Start idle timer
+            idle_timer = Async do |task|
+              task.sleep(idle_time / 1000.0)
+              promise.resolve(nil)
+            end
+          end
+        end
+
+        # Close listener
+        close_listener = lambda do |_data|
+          promise.reject(PageClosedError.new)
+        end
+
+        begin
+          # Register listeners
+          @browsing_context.on(:inflight_changed, &inflight_listener)
+          @browsing_context.on(:closed, &close_listener)
+
+          # Check initial state - if already idle, start timer immediately
+          current_inflight = @browsing_context.inflight_requests
+          if current_inflight <= concurrency
+            idle_timer_mutex.synchronize do
+              idle_timer = Async do |task|
+                task.sleep(idle_time / 1000.0)
+                promise.resolve(nil)
+              end
+            end
+          end
+
+          # Wait with timeout
+          AsyncUtils.async_timeout(timeout, promise).wait
+        ensure
+          # Clean up
+          idle_timer_mutex.synchronize do
+            idle_timer&.stop
+          end
+          @browsing_context.off(:inflight_changed, &inflight_listener)
+          @browsing_context.off(:closed, &close_listener)
+        end
+
+        nil
       end
 
       # Set viewport size
@@ -359,7 +444,7 @@ module Puppeteer
             width: width,
             height: height
           }
-        )
+        ).wait
       end
 
       # Get current viewport size
@@ -375,7 +460,7 @@ module Puppeteer
       # @note Changes take effect on next navigation
       def set_javascript_enabled(enabled)
         assert_not_closed
-        @browsing_context.set_javascript_enabled(enabled)
+        @browsing_context.set_javascript_enabled(enabled).wait
       end
 
       # Check if JavaScript is enabled

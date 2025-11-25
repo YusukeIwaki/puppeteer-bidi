@@ -58,7 +58,7 @@ module Puppeteer
           params[:referenceContext] = options[:reference_context].id if options[:reference_context]
           params.merge!(options.except(:reference_context))
 
-          result = session.send_command('browsingContext.create', params)
+          result = session.async_send_command('browsingContext.create', params).wait
           context_id = result['context']
 
           # Since event handling might be async or not working properly,
@@ -89,7 +89,7 @@ module Puppeteer
           return if closed?
 
           begin
-            session.send_command('browser.removeUserContext', { userContext: @id })
+            session.async_send_command('browser.removeUserContext', { userContext: @id })
           ensure
             dispose_context('User context removed')
           end
@@ -110,7 +110,7 @@ module Puppeteer
           }
           params[:partition][:sourceOrigin] = source_origin if source_origin
 
-          result = session.send_command('storage.getCookies', params)
+          result = session.async_send_command('storage.getCookies', params)
           result['cookies']
         end
 
@@ -130,7 +130,7 @@ module Puppeteer
           }
           params[:partition][:sourceOrigin] = source_origin if source_origin
 
-          session.send_command('storage.setCookie', params)
+          session.async_send_command('storage.setCookie', params)
         end
 
         # Set permissions for an origin
@@ -140,7 +140,7 @@ module Puppeteer
         def set_permissions(origin, descriptor, state)
           raise UserContextClosedError, @reason if closed?
 
-          session.send_command('permissions.setPermission', {
+          session.async_send_command('permissions.setPermission', {
             origin: origin,
             descriptor: descriptor,
             state: state,

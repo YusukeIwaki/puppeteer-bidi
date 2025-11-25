@@ -28,7 +28,7 @@ module Puppeteer
             @remote_value,
             Serializer.serialize(selector)
           ]
-        )
+        ).wait
 
         # Check for exceptions
         if result['type'] == 'exception'
@@ -59,7 +59,7 @@ module Puppeteer
             @remote_value,
             Serializer.serialize(selector)
           ]
-        )
+        ).wait
 
         # Check for exceptions
         if result['type'] == 'exception'
@@ -114,7 +114,7 @@ module Puppeteer
             '(...elements) => elements',
             false,
             arguments: element_handles.map(&:remote_value)
-          )
+          ).wait
 
           # Create a JSHandle for the array
           array_js_handle = JSHandle.from(array_handle['result'], @realm)

@@ -51,7 +51,7 @@ module Puppeteer
 
         # Release the remote reference if it has a handle
         handle_id = id
-        @realm.disown([handle_id]) if handle_id
+        @realm.disown([handle_id]).wait if handle_id
       end
 
       # Get the handle ID (handle or sharedId)
@@ -70,7 +70,7 @@ module Puppeteer
         # Prepend this handle as first argument
         all_args = [@remote_value] + args.map { |arg| Serializer.serialize(arg) }
 
-        result = @realm.call_function(script, true, arguments: all_args)
+        result = @realm.call_function(script, true, arguments: all_args).wait
 
         # Check for exceptions
         if result['type'] == 'exception'
@@ -91,7 +91,8 @@ module Puppeteer
         # Prepend this handle as first argument
         all_args = [@remote_value] + args.map { |arg| Serializer.serialize(arg) }
 
-        result = @realm.call_function(script, false, arguments: all_args)
+        # Puppeteer passes awaitPromise: true to wait for promises to resolve
+        result = @realm.call_function(script, true, arguments: all_args).wait
 
         # Check for exceptions
         if result['type'] == 'exception'
@@ -115,7 +116,7 @@ module Puppeteer
             @remote_value,
             Serializer.serialize(property_name)
           ]
-        )
+        ).wait
 
         if result['type'] == 'exception'
           exception_details = result['exceptionDetails']
@@ -158,7 +159,7 @@ module Puppeteer
           JS
           false,
           arguments: [@remote_value]
-        )
+        ).wait
 
         if result['type'] == 'exception'
           return {}
@@ -181,7 +182,7 @@ module Puppeteer
           JS
           false,
           arguments: [properties_object]
-        )
+        ).wait
 
         if props_result['type'] == 'exception'
           return {}
@@ -225,7 +226,7 @@ module Puppeteer
           '(node) => node.nodeType',
           false,
           arguments: [@remote_value]
-        )
+        ).wait
 
         return nil if result['type'] == 'exception'
 

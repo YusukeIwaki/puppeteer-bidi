@@ -335,6 +335,12 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
   - Handles full page navigation, fragment navigation (#hash), and History API (pushState/replaceState)
   - Block-based API to hide Async complexity from users
   - Event-driven pattern with proper listener cleanup
+  - Supports networkidle0 and networkidle2 wait conditions
+- [x] **Page.waitForNetworkIdle** - Network idle detection
+  - Tracks inflight network requests via BiDi network events
+  - Configurable idle time (default: 500ms) and concurrency threshold (0 or 2)
+  - Callback-based implementation using EventEmitter pattern
+  - Integrated into wait_for_navigation for networkidle conditions
 - [x] JavaScript execution (`script.evaluate`, `script.callFunction`)
 - [x] **Page.evaluate and Frame.evaluate** - Full JavaScript evaluation with argument serialization
 - [x] Event handling system (EventEmitter)
@@ -348,6 +354,10 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 ### Phase 3: Advanced Features 🚧 IN PROGRESS
 
 - [x] Network request management (Request class)
+- [x] **Network request tracking** (BrowsingContext inflight counter)
+  - Tracks inflight requests via network.beforeRequestSent/responseCompleted/fetchError
+  - Emits :inflight_changed events for network idle detection
+  - Thread-safe counter with mutex protection
 - [ ] NetworkManager implementation - **TODO**
 - [ ] Network interception (partial support in Request)
 - [x] Screenshot/PDF generation (BrowsingContext methods)
@@ -580,6 +590,50 @@ This ensures:
 - Main thread remains responsive
 - Proper cleanup on browser close
 
+### WebSocket Message Handling Pattern
+
+**CRITICAL**: BiDi message handling must use `Async do` to process messages asynchronously:
+
+```ruby
+# lib/puppeteer/bidi/transport.rb
+while (message = connection.read)
+  next if message.nil?
+
+  # ✅ DO: Use Async do for non-blocking message processing
+  Async do
+    data = JSON.parse(message)
+    debug_print_receive(data)
+    @on_message&.call(data)
+  rescue StandardError => e
+    # Handle errors
+  end
+end
+```
+
+**Why this matters:**
+
+- ❌ **Without `Async do`**: Message processing blocks the message loop, preventing other messages from being read
+- ✅ **With `Async do`**: Each message is processed in a separate fiber, allowing concurrent message handling
+- **Prevents deadlocks**: When multiple operations are waiting for responses, they can all be processed concurrently
+
+**Example of the problem this solves:**
+
+```ruby
+# Without Async do:
+# 1. Message A arrives and starts processing
+# 2. Processing A calls wait_for_navigation which waits for Message B
+# 3. Message B arrives but can't be read because Message A is still being processed
+# 4. DEADLOCK
+
+# With Async do:
+# 1. Message A arrives and starts processing in Fiber 1
+# 2. Fiber 1 yields when calling wait (cooperative multitasking)
+# 3. Message B can now be read and processed in Fiber 2
+# 4. Both messages complete successfully
+```
+
+This pattern is essential for the BiDi protocol's bidirectional communication model.
+
 ### Navigation Implementation Example
 
 The `Frame#wait_for_navigation` demonstrates proper Async/Fiber-based patterns:
@@ -651,6 +705,235 @@ end
 - [Async Best Practices](https://socketry.github.io/async/guides/best-practices/)
 - [Async Documentation](https://socketry.github.io/async/)
 - [Async::Barrier Guide](https://socketry.github.io/async/guides/tasks/index.html)
+
+## Two-Layer Async Architecture
+
+This codebase implements a two-layer architecture to separate async complexity from user-facing APIs.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Upper Layer (Puppeteer::Bidi)                          │
+│  - User-facing, synchronous API                         │
+│  - Calls .wait internally on Core layer methods         │
+│  - Examples: Page, Frame, JSHandle, ElementHandle       │
+├─────────────────────────────────────────────────────────┤
+│  Core Layer (Puppeteer::Bidi::Core)                     │
+│  - Returns Async::Task for all async operations         │
+│  - Uses async_send_command internally                   │
+│  - Examples: Session, BrowsingContext, Realm            │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Design Principles
+
+1. **Core Layer (Puppeteer::Bidi::Core)**:
+   - All methods that communicate with BiDi protocol return `Async::Task`
+   - Uses `session.async_send_command` (not `send_command`)
+   - Methods are explicitly async and composable
+   - Examples: `BrowsingContext#navigate`, `Realm#call_function`
+
+2. **Upper Layer (Puppeteer::Bidi)**:
+   - All methods call `.wait` on Core layer async operations
+   - Provides synchronous, blocking API for users
+   - Users never see `Async::Task` directly
+   - Examples: `Page#goto`, `Frame#evaluate`, `JSHandle#get_property`
+
+### Implementation Patterns
+
+#### Core Layer Pattern
+
+```ruby
+# lib/puppeteer/bidi/core/browsing_context.rb
+def navigate(url, wait: nil)
+  Async do
+    raise BrowsingContextClosedError, @reason if closed?
+    params = { context: @id, url: url }
+    params[:wait] = wait if wait
+    result = session.async_send_command('browsingContext.navigate', params).wait
+    result
+  end
+end
+
+def perform_actions(actions)
+  raise BrowsingContextClosedError, @reason if closed?
+  session.async_send_command('input.performActions', {
+    context: @id,
+    actions: actions
+  })
+end
+```
+
+**Key points:**
+- Returns `Async::Task` (implicitly from `Async do` block or explicitly from `async_send_command`)
+- Users of Core layer must call `.wait` to get results
+
+#### Upper Layer Pattern
+
+```ruby
+# lib/puppeteer/bidi/frame.rb
+def goto(url, wait_until: 'load', timeout: 30000)
+  response = wait_for_navigation(timeout: timeout, wait_until: wait_until) do
+    @browsing_context.navigate(url, wait: 'interactive').wait  # ← .wait call
+  end
+  HTTPResponse.new(url: @browsing_context.url, status: 200)
+end
+
+# lib/puppeteer/bidi/keyboard.rb
+def perform_actions(action_list)
+  @browsing_context.perform_actions([
+    {
+      type: 'key',
+      id: 'default keyboard',
+      actions: action_list
+    }
+  ]).wait  # ← .wait call
+end
+
+# lib/puppeteer/bidi/js_handle.rb
+def get_property(property_name)
+  assert_not_disposed
+
+  result = @realm.call_function(
+    '(object, property) => object[property]',
+    false,
+    arguments: [
+      @remote_value,
+      Serializer.serialize(property_name)
+    ]
+  ).wait  # ← .wait call
+
+  if result['type'] == 'exception'
+    exception_details = result['exceptionDetails']
+    text = exception_details['text'] || 'Evaluation failed'
+    raise text
+  end
+
+  JSHandle.from(result['result'], @realm)
+end
+```
+
+**Key points:**
+- Always calls `.wait` on Core layer methods
+- Returns plain Ruby objects (String, Hash, etc.), not Async::Task
+- User-facing API is synchronous
+
+### Common Mistakes and How to Fix Them
+
+#### Mistake 1: Forgetting .wait on Core Layer Methods
+
+```ruby
+# ❌ WRONG: Missing .wait
+def query_selector(selector)
+  result = @realm.call_function(
+    '(element, selector) => element.querySelector(selector)',
+    false,
+    arguments: [@remote_value, Serializer.serialize(selector)]
+  )
+
+  if result['type'] == 'exception'  # ← Error: undefined method '[]' for Async::Task
+    # ...
+  end
+end
+
+# ✅ CORRECT: Add .wait
+def query_selector(selector)
+  result = @realm.call_function(
+    '(element, selector) => element.querySelector(selector)',
+    false,
+    arguments: [@remote_value, Serializer.serialize(selector)]
+  ).wait  # ← Add .wait here
+
+  if result['type'] == 'exception'
+    # ...
+  end
+end
+```
+
+#### Mistake 2: Using send_command Instead of async_send_command in Core Layer
+
+```ruby
+# ❌ WRONG: Using send_command (doesn't exist)
+def perform_actions(actions)
+  session.send_command('input.performActions', {  # ← Error: undefined method
+    context: @id,
+    actions: actions
+  })
+end
+
+# ✅ CORRECT: Use async_send_command
+def perform_actions(actions)
+  session.async_send_command('input.performActions', {
+    context: @id,
+    actions: actions
+  })
+end
+```
+
+#### Mistake 3: Not Calling .wait on All Core Methods
+
+```ruby
+# ❌ WRONG: Multiple Core calls, only one .wait
+def get_properties
+  result = @realm.call_function(...).wait  # ← OK
+
+  properties_object = result['result']
+
+  props_result = @realm.call_function(...)  # ← Missing .wait!
+
+  if props_result['type'] == 'exception'  # ← Error
+    # ...
+  end
+end
+
+# ✅ CORRECT: Add .wait to all Core calls
+def get_properties
+  result = @realm.call_function(...).wait
+
+  properties_object = result['result']
+
+  props_result = @realm.call_function(...).wait  # ← Add .wait
+
+  if props_result['type'] == 'exception'
+    # ...
+  end
+end
+```
+
+### Checklist for Adding New Methods
+
+When adding new methods to the Upper Layer:
+
+1. ✅ Identify all calls to Core layer methods
+2. ✅ Add `.wait` to each Core layer method call
+3. ✅ Verify the method returns plain Ruby objects, not Async::Task
+4. ✅ Test with integration specs (keyboard_spec, jshandle_spec, etc.)
+
+When adding new methods to the Core Layer:
+
+1. ✅ Use `session.async_send_command` (not `send_command`)
+2. ✅ Wrap in `Async do ... end` if needed
+3. ✅ Return `Async::Task` (don't call .wait)
+4. ✅ Document that callers must call .wait
+
+### Files Modified for Async Architecture
+
+The following files were updated to implement the two-layer async architecture:
+
+**Core Layer:**
+- `lib/puppeteer/bidi/core/session.rb` - Changed `send_command` → `async_send_command`
+- `lib/puppeteer/bidi/core/browsing_context.rb` - All methods use `async_send_command`
+- `lib/puppeteer/bidi/core/realm.rb` - Methods return `Async::Task`
+
+**Upper Layer:**
+- `lib/puppeteer/bidi/realm.rb` - Added `.wait` to `execute_with_core`, `call_function`
+- `lib/puppeteer/bidi/frame.rb` - Added `.wait` to `goto`
+- `lib/puppeteer/bidi/js_handle.rb` - Added `.wait` to `dispose`, `get_property`, `get_properties`, `as_element`
+- `lib/puppeteer/bidi/element_handle.rb` - Added `.wait` to `query_selector_all`, `eval_on_selector_all`
+- `lib/puppeteer/bidi/keyboard.rb` - Added `.wait` to `perform_actions`
+- `lib/puppeteer/bidi/mouse.rb` - Added `.wait` to `perform_actions`
+- `lib/puppeteer/bidi/page.rb` - Added `.wait` to `capture_screenshot`, `close`, `set_viewport`, `set_javascript_enabled`
 
 ## Implementation Best Practices
 

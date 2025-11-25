@@ -28,7 +28,7 @@ module Puppeteer
         # @param handles [Array<String>] Handle IDs to disown
         def disown(handles)
           raise RealmDestroyedError, @reason if disposed?
-          session.send_command('script.disown', {
+          session.async_send_command('script.disown', {
             target: target,
             handles: handles
           })
@@ -54,7 +54,7 @@ module Puppeteer
             **options
           }
 
-          session.send_command('script.callFunction', params)
+          session.async_send_command('script.callFunction', params)
         end
 
         # Evaluate an expression in the realm
@@ -74,7 +74,7 @@ module Puppeteer
             **options
           }
 
-          session.send_command('script.evaluate', params)
+          session.async_send_command('script.evaluate', params)
         end
 
         # Resolve the CDP execution context ID for this realm
