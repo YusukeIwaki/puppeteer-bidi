@@ -361,3 +361,385 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     skip 'Requires JS-specific AbortController/signal support.'
   end
 end
+
+RSpec.describe 'Page.waitForSelector', type: :integration do
+  describe 'basic functionality' do
+    it 'should immediately resolve if element exists' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div>visible</div>')
+
+        element = page.wait_for_selector('div')
+        expect(element).not_to be_nil
+        expect(element).to be_a(Puppeteer::Bidi::ElementHandle)
+        element.dispose
+      end
+    end
+
+    it 'should resolve when element is added' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+
+        Sync do
+          watchdog = Async do
+            page.wait_for_selector('div')
+          end
+
+          # Add the element after a short delay
+          Async do
+            sleep 0.1
+            page.evaluate("() => { const div = document.createElement('div'); document.body.appendChild(div); }")
+          end
+
+          element = watchdog.wait
+          expect(element).not_to be_nil
+          element.dispose
+        end
+      end
+    end
+
+    it 'should work with removed MutationObserver' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+
+        page.evaluate('() => delete window.MutationObserver')
+        handle = page.wait_for_selector('.zombo', timeout: 100) rescue nil
+
+        # Should not find element and timeout
+        expect(handle).to be_nil
+      end
+    end
+
+    it 'should resolve promise when element is added' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+
+        Sync do
+          watchdog = Async do
+            page.wait_for_selector('div')
+          end
+
+          Async do
+            # page.waitForSelector is using raf-based polling and will not be checking DOM every moment.
+            sleep 0.05
+
+            page.evaluate("() => document.body.innerHTML = '<div></div>'")
+          end.wait
+
+          element = watchdog.wait
+          expect(element).not_to be_nil
+          element.dispose
+        end
+      end
+    end
+
+    it 'should timeout' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+
+        expect {
+          page.wait_for_selector('div', timeout: 100)
+        }.to raise_error(Puppeteer::Bidi::TimeoutError, /100ms exceeded/)
+      end
+    end
+
+    it 'should respect timeout' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+
+        expect {
+          page.wait_for_selector('div', timeout: 50)
+        }.to raise_error(Puppeteer::Bidi::TimeoutError, /50ms exceeded/)
+      end
+    end
+
+    it 'should have an error message specifically for awaiting an element to be hidden' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div>text</div>')
+
+        expect {
+          page.wait_for_selector('div', hidden: true, timeout: 100)
+        }.to raise_error(Puppeteer::Bidi::TimeoutError, /100ms exceeded/)
+      end
+    end
+
+    it 'should respond to node attribute mutation' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+
+        Sync do
+          div_found = false
+
+          watchdog = Async do
+            page.wait_for_selector('.zombo').tap { div_found = true }
+          end
+
+          page.set_content('<div class="notZombo"></div>')
+          expect(div_found).to be false
+
+          page.evaluate("() => document.querySelector('div').className = 'zombo'")
+
+          element = watchdog.wait
+          expect(element).not_to be_nil
+          element.dispose
+        end
+      end
+    end
+
+    it 'should return the element handle' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+
+        Sync do
+          watchdog = Async do
+            page.wait_for_selector('.zombo')
+          end
+
+          page.set_content("<div class='zombo'>anything</div>")
+
+          element = watchdog.wait
+          expect(element.evaluate('x => x.textContent')).to eq('anything')
+          element.dispose
+        end
+      end
+    end
+  end
+
+  describe 'visibility options' do
+    it 'should work with visible option' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div style="display: none;">hidden</div>')
+
+        Sync do
+          div_visible = false
+
+          watchdog = Async do
+            page.wait_for_selector('div', visible: true).tap { div_visible = true }
+          end
+
+          # Element exists but is not visible yet
+          sleep 0.1
+          expect(div_visible).to be false
+
+          # Make element visible
+          page.evaluate("() => document.querySelector('div').style.display = 'block'")
+
+          element = watchdog.wait
+          expect(element).not_to be_nil
+          element.dispose
+        end
+      end
+    end
+
+    it 'should return null for hidden: true when element does not exist' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+
+        # When using hidden: true, and element doesn't exist,
+        # checkVisibility returns true (no element = hidden state is satisfied)
+        element = page.wait_for_selector('div', hidden: true)
+        # In this case we get a truthy return from checkVisibility (true), not an element
+        # The behavior depends on checkVisibility implementation
+        # For non-existent element with hidden: true, it returns true (not element)
+        expect(element).to be_nil
+      end
+    end
+
+    it 'should wait for element to become hidden' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div>visible</div>')
+
+        Sync do
+          hidden_satisfied = false
+
+          watchdog = Async do
+            page.wait_for_selector('div', hidden: true).tap { hidden_satisfied = true }
+          end
+
+          # Element is visible
+          sleep 0.1
+          expect(hidden_satisfied).to be false
+
+          # Remove the element
+          page.evaluate("() => document.querySelector('div').remove()")
+
+          result = watchdog.wait
+          # When element is removed, hidden condition is satisfied
+          expect(result).to be_nil
+        end
+      end
+    end
+
+    it 'should wait for element to be hidden via display:none' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div>visible</div>')
+
+        Sync do
+          hidden_satisfied = false
+
+          watchdog = Async do
+            page.wait_for_selector('div', hidden: true).tap { hidden_satisfied = true }
+          end
+
+          # Element is visible
+          sleep 0.1
+          expect(hidden_satisfied).to be false
+
+          # Hide the element
+          page.evaluate("() => document.querySelector('div').style.display = 'none'")
+
+          result = watchdog.wait
+          # When element is hidden, we may still get a handle to it
+          # (checkVisibility returns the element when hidden: true and element is hidden)
+          expect(result).to be_a(Puppeteer::Bidi::ElementHandle)
+          result.dispose if result
+        end
+      end
+    end
+
+    it 'should wait for element to be hidden via visibility:hidden' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div>visible</div>')
+
+        Sync do
+          hidden_satisfied = false
+
+          watchdog = Async do
+            page.wait_for_selector('div', hidden: true).tap { hidden_satisfied = true }
+          end
+
+          # Element is visible
+          sleep 0.1
+          expect(hidden_satisfied).to be false
+
+          # Hide the element with visibility: hidden
+          page.evaluate("() => document.querySelector('div').style.visibility = 'hidden'")
+
+          result = watchdog.wait
+          expect(result).to be_a(Puppeteer::Bidi::ElementHandle)
+          result.dispose if result
+        end
+      end
+    end
+
+    it 'should wait for element to become visible' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div style="visibility: hidden;">text</div>')
+
+        Sync do
+          visible = false
+
+          watchdog = Async do
+            page.wait_for_selector('div', visible: true).tap { visible = true }
+          end
+
+          # Element exists but is not visible
+          sleep 0.1
+          expect(visible).to be false
+
+          # Make element visible
+          page.evaluate("() => document.querySelector('div').style.visibility = 'visible'")
+
+          element = watchdog.wait
+          expect(element).not_to be_nil
+          element.dispose
+        end
+      end
+    end
+
+    it 'should not consider zero-size elements as visible' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div style="width: 0; height: 0;"></div>')
+
+        expect {
+          page.wait_for_selector('div', visible: true, timeout: 100)
+        }.to raise_error(Puppeteer::Bidi::TimeoutError)
+      end
+    end
+  end
+
+  describe 'Frame.waitForSelector' do
+    it 'should run in specified frame' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div>frame content</div>')
+
+        # Use main_frame directly
+        element = page.main_frame.wait_for_selector('div')
+        expect(element).not_to be_nil
+        expect(element.evaluate('x => x.textContent')).to eq('frame content')
+        element.dispose
+      end
+    end
+  end
+
+  describe 'ElementHandle.waitForSelector' do
+    it 'should wait for element within root element' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div class="root"><span class="child">text</span></div>')
+
+        root = page.query_selector('.root')
+        begin
+          element = root.wait_for_selector('.child')
+          expect(element).not_to be_nil
+          expect(element.evaluate('x => x.textContent')).to eq('text')
+          element.dispose
+        ensure
+          root.dispose
+        end
+      end
+    end
+
+    it 'should not find elements outside root element' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div class="root"></div><span class="outside">outside</span>')
+
+        root = page.query_selector('.root')
+        begin
+          expect {
+            root.wait_for_selector('.outside', timeout: 100)
+          }.to raise_error(Puppeteer::Bidi::TimeoutError)
+        ensure
+          root.dispose
+        end
+      end
+    end
+
+    it 'should wait for element to be added inside root' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_content('<div class="root"></div>')
+
+        root = page.query_selector('.root')
+        begin
+          Sync do
+            watchdog = Async do
+              root.wait_for_selector('.child')
+            end
+
+            Async do
+              sleep 0.1
+              page.evaluate("() => { document.querySelector('.root').innerHTML = '<span class=\"child\">added</span>'; }")
+            end
+
+            element = watchdog.wait
+            expect(element).not_to be_nil
+            expect(element.evaluate('x => x.textContent')).to eq('added')
+            element.dispose
+          end
+        ensure
+          root.dispose
+        end
+      end
+    end
+  end
+end

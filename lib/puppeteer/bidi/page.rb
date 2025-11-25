@@ -341,6 +341,16 @@ module Puppeteer
         main_frame.wait_for_function(page_function, options, *args, &block)
       end
 
+      # Wait for an element matching the selector to appear in the page
+      # @param selector [String] CSS selector
+      # @param visible [Boolean] Wait for element to be visible
+      # @param hidden [Boolean] Wait for element to be hidden or not found
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @return [ElementHandle, nil] Element handle if found, nil if hidden option was used and element disappeared
+      def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil)
+        main_frame.wait_for_selector(selector, visible: visible, hidden: hidden, timeout: timeout)
+      end
+
       # Set the default timeout for waiting operations (e.g., waitForFunction).
       # @param timeout [Numeric] Timeout in milliseconds (0 disables the timeout)
       def set_default_timeout(timeout)

@@ -131,6 +131,63 @@ module Puppeteer
         end
       end
 
+      # Wait for an element matching the selector to appear as a descendant of this element
+      # @param selector [String] CSS selector
+      # @param visible [Boolean] Wait for element to be visible
+      # @param hidden [Boolean] Wait for element to be hidden or not found
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @return [ElementHandle, nil] Element handle if found, nil if hidden option was used and element disappeared
+      def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil)
+        assert_not_disposed
+
+        # Get the frame this element belongs to
+        element_frame = frame
+
+        # Determine visibility parameter for checkVisibility
+        visibility = if visible
+                       true
+                     elsif hidden
+                       false
+                     end
+
+        options = {}
+        options[:polling] = 'mutation'
+        options[:timeout] = timeout if timeout
+
+        # Wait for element using main_realm, since this element (root) was created there.
+        # Using isolated_realm would fail with "Unable to find an object reference"
+        # because BiDi handles are realm-specific and cannot be shared across realms.
+        begin
+          handle = element_frame.main_realm.wait_for_function(
+            WAIT_FOR_SELECTOR_SCRIPT,
+            options,
+            element_frame.main_realm.puppeteer_util,
+            self,  # Pass this element as the root
+            selector,
+            visibility
+          )
+
+          # Convert to ElementHandle if we got a result
+          handle&.as_element
+        rescue Puppeteer::Bidi::TimeoutError => e
+          raise Puppeteer::Bidi::TimeoutError,
+                "Waiting for selector `#{selector}` failed: Waiting failed: #{e.message.split(': ').last}"
+        end
+      end
+
+      # JavaScript function for waitForSelector polling on an element
+      # Uses Puppeteer's checkVisibility from injected utilities
+      # Note: visibility parameter is converted from null to undefined because
+      # BiDi serializes Ruby nil as null, but checkVisibility expects undefined
+      WAIT_FOR_SELECTOR_SCRIPT = <<~JS
+        (PuppeteerUtil, root, selector, visibility) => {
+          const element = root.querySelector(selector);
+          // Convert null to undefined for checkVisibility
+          return PuppeteerUtil.checkVisibility(element, visibility === null ? undefined : visibility);
+        }
+      JS
+      private_constant :WAIT_FOR_SELECTOR_SCRIPT
+
       # Click the element
       # @param button [String] Mouse button
       # @param count [Integer] Number of clicks
