@@ -352,7 +352,7 @@ module Puppeteer
             session.async_send_command('emulation.setScriptingEnabled', {
               enabled: enabled ? nil : false,
               contexts: [@id]
-            })
+            }).wait
             @emulation_state[:javascript_enabled] = enabled
           end
         end
