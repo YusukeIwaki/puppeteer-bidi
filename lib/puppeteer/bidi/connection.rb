@@ -76,11 +76,6 @@ module Puppeteer
           rescue Async::TimeoutError
             @pending_commands.delete(id)
             raise TimeoutError, "Timeout waiting for #{method} (#{timeout}ms)"
-          rescue Bidi::Connection::ProtocolError => err
-            # suppress close on protocol error
-            if ENV['DEBUG_BIDI_COMMAND']
-              puts "[BiDi] Protocol error for #{method}(#{params}), err: #{err.message}"
-            end
           end
         end
       end

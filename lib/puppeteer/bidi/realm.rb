@@ -46,7 +46,7 @@ module Puppeteer
 
         result = WaitTask.new(self, wait_task_options, page_function, *args).result
 
-        Async(&block) if block
+        Async(&block).wait if block
 
         result.wait
       end
