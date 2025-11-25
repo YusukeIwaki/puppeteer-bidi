@@ -134,7 +134,7 @@ module Puppeteer
             id: 'default mouse',
             actions: action_list
           }
-        ])
+        ]).wait
       end
     end
   end

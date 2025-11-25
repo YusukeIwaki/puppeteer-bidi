@@ -29,6 +29,7 @@ module Puppeteer
 
       # Connect to WebSocket and start receiving messages
       def connect
+        connection_promise = Async::Promise.new
         @task = Async do |task|
           endpoint = Async::HTTP::Endpoint.parse(@url)
 
@@ -36,6 +37,7 @@ module Puppeteer
           Async::WebSocket::Client.connect(endpoint) do |connection|
             @connection = connection
             @connected = true
+            connection_promise.resolve(connection)
 
             # Start message receiving loop (this will block until connection closes)
             receive_loop(connection)
@@ -43,14 +45,16 @@ module Puppeteer
         rescue => e
           warn "Transport connect error: #{e.class} - #{e.message}"
           warn e.backtrace.join("\n")
+          connection_promise.reject(e)
           close
         ensure
           @connected = false
         end
+        connection_promise
       end
 
       # Send a message to BiDi server
-      def send_message(message)
+      def async_send_message(message)
         raise ClosedError, 'Transport is closed' if @closed
 
         debug_print_send(message)
@@ -58,7 +62,7 @@ module Puppeteer
         Async do
           @connection&.write(json)
           @connection&.flush
-        end.wait
+        end
       end
 
       # Register message handler
@@ -78,6 +82,7 @@ module Puppeteer
         @closed = true
         @connection&.close
         @on_close&.call
+        @task&.stop
       end
 
       def closed?
@@ -86,18 +91,6 @@ module Puppeteer
 
       def connected?
         @connected && !@closed
-      end
-
-      # Wait for connection to be established
-      def wait_for_connection(timeout: 10)
-        deadline = Time.now + timeout
-        until connected?
-          if Time.now > deadline
-            raise ClosedError, 'Timeout waiting for connection'
-          end
-          sleep(0.05)
-        end
-        true
       end
 
       private

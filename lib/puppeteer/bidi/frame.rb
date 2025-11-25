@@ -168,6 +168,16 @@ module Puppeteer
         @browsing_context.url
       end
 
+      def goto(url, wait_until: 'load', timeout: 30000)
+        response = wait_for_navigation(timeout: timeout, wait_until: wait_until) do
+          @browsing_context.navigate(url, wait: 'interactive').wait
+        end
+        # Return HTTPResponse with the final URL
+        # Note: Currently we don't track HTTP status codes from BiDi protocol
+        # Assuming successful navigation (200 OK)
+        HTTPResponse.new(url: @browsing_context.url, status: 200)
+      end
+
       # Set frame content
       # @param html [String] HTML content to set
       # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')

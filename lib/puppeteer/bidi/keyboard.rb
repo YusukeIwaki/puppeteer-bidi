@@ -258,7 +258,7 @@ module Puppeteer
             id: 'default keyboard',
             actions: action_list
           }
-        ])
+        ]).wait
       end
     end
   end

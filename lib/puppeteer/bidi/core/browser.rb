@@ -13,8 +13,10 @@ module Puppeteer
         # @return [Browser] Browser instance
         def self.from(session)
           browser = new(session)
-          browser.send(:initialize_browser)
-          browser
+          Async do
+            browser.send(:initialize_browser).wait
+            browser
+          end
         end
 
         attr_reader :session
@@ -55,12 +57,14 @@ module Puppeteer
 
         # Close the browser
         def close
-          return if @closed
+          Async do
+            return if @closed
 
-          begin
-            @session.send_command('browser.close', {})
-          ensure
-            dispose_browser('Browser closed', closed: true)
+            begin
+              @session.async_send_command('browser.close', {})
+            ensure
+              dispose_browser('Browser closed', closed: true)
+            end
           end
         end
 
@@ -133,50 +137,56 @@ module Puppeteer
         private
 
         def initialize_browser
-          # Listen for session end
-          @session.on(:ended) do |data|
-            dispose_browser(data[:reason])
-          end
+          Async do
+            # Listen for session end
+            @session.on(:ended) do |data|
+              dispose_browser(data[:reason])
+            end
 
-          # Listen for shared worker creation
-          @session.on('script.realmCreated') do |info|
-            next unless info['type'] == 'shared-worker'
-            # Create SharedWorkerRealm when implemented
-            # @shared_workers[info['realm']] = SharedWorkerRealm.from(self, info['realm'], info['origin'])
-          end
+            # Listen for shared worker creation
+            @session.on('script.realmCreated') do |info|
+              next unless info['type'] == 'shared-worker'
+              # Create SharedWorkerRealm when implemented
+              # @shared_workers[info['realm']] = SharedWorkerRealm.from(self, info['realm'], info['origin'])
+            end
 
-          # Sync existing user contexts and browsing contexts
-          sync_user_contexts
-          sync_browsing_contexts
+            # Sync existing user contexts and browsing contexts
+            sync_user_contexts.wait
+            sync_browsing_contexts.wait
+          end
         end
 
         def sync_user_contexts
-          result = @session.send_command('browser.getUserContexts', {})
-          user_contexts = result['userContexts']
+          Async do
+            result = @session.async_send_command('browser.getUserContexts', {}).wait
+            user_contexts = result['userContexts']
 
-          user_contexts.each do |context_info|
-            create_user_context_object(context_info['userContext'])
+            user_contexts.each do |context_info|
+              create_user_context_object(context_info['userContext'])
+            end
           end
         end
 
         def sync_browsing_contexts
-          # Get all browsing contexts
-          result = @session.send_command('browsingContext.getTree', {})
-          contexts = result['contexts']
+          Async do
+            # Get all browsing contexts
+            result = @session.async_send_command('browsingContext.getTree', {}).wait
+            contexts = result['contexts']
 
-          # Track context IDs for detecting created/destroyed contexts during sync
-          context_ids = []
+            # Track context IDs for detecting created/destroyed contexts during sync
+            context_ids = []
 
-          # Setup temporary listener for context creation during sync
-          temp_listener = @session.on('browsingContext.contextCreated') do |info|
-            context_ids << info['context']
+            # Setup temporary listener for context creation during sync
+            temp_listener = @session.on('browsingContext.contextCreated') do |info|
+              context_ids << info['context']
+            end
+
+            # Process all contexts (including nested ones)
+            process_contexts(contexts, context_ids)
+
+            # Remove temporary listener
+            # @session.off('browsingContext.contextCreated', &temp_listener)
           end
-
-          # Process all contexts (including nested ones)
-          process_contexts(contexts, context_ids)
-
-          # Remove temporary listener
-          # @session.off('browsingContext.contextCreated', &temp_listener)
         end
 
         def process_contexts(contexts, context_ids)

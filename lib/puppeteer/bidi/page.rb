@@ -25,20 +25,7 @@ module Puppeteer
       def goto(url, wait_until: 'load')
         assert_not_closed
 
-        wait = case wait_until
-               when 'load'
-                 'complete'
-               when 'domcontentloaded'
-                 'interactive'
-               else
-                 'none'
-               end
-
-        @browsing_context.navigate(url, wait: wait)
-        # Return HTTPResponse with the final URL
-        # Note: Currently we don't track HTTP status codes from BiDi protocol
-        # Assuming successful navigation (200 OK)
-        HTTPResponse.new(url: @browsing_context.url, status: 200)
+        main_frame.goto(url, wait_until: wait_until)
       end
 
       # Set page content
@@ -98,7 +85,7 @@ module Puppeteer
             begin
               # Capture screenshot with viewport origin
               options[:origin] = 'viewport'
-              data = @browsing_context.capture_screenshot(**options)
+              data = @browsing_context.capture_screenshot(**options).wait
             ensure
               # Restore original viewport
               if original_viewport
@@ -161,7 +148,7 @@ module Puppeteer
         end
 
         # Get screenshot data from browsing context
-        data = @browsing_context.capture_screenshot(**options)
+        data = @browsing_context.capture_screenshot(**options).wait
 
         # Save to file if path is provided
         if path
@@ -271,7 +258,7 @@ module Puppeteer
       def close
         return if closed?
 
-        @browsing_context.close
+        @browsing_context.close.wait
       end
 
       # Check if page is closed
@@ -387,7 +374,7 @@ module Puppeteer
             width: width,
             height: height
           }
-        )
+        ).wait
       end
 
       # Get current viewport size
@@ -403,7 +390,7 @@ module Puppeteer
       # @note Changes take effect on next navigation
       def set_javascript_enabled(enabled)
         assert_not_closed
-        @browsing_context.set_javascript_enabled(enabled)
+        @browsing_context.set_javascript_enabled(enabled).wait
       end
 
       # Check if JavaScript is enabled

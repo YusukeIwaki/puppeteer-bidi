@@ -78,26 +78,28 @@ module Puppeteer
         # Activate this browsing context
         def activate
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('browsingContext.activate', { context: @id })
+          session.async_send_command('browsingContext.activate', { context: @id })
         end
 
         # Navigate to a URL
         # @param url [String] URL to navigate to
         # @param wait [String, nil] Wait condition ('none', 'interactive', 'complete')
         def navigate(url, wait: nil)
-          raise BrowsingContextClosedError, @reason if closed?
-          params = { context: @id, url: url }
-          params[:wait] = wait if wait
-          result = session.send_command('browsingContext.navigate', params)
-          # URL will be updated via browsingContext.load event
-          result
+          Async do
+            raise BrowsingContextClosedError, @reason if closed?
+            params = { context: @id, url: url }
+            params[:wait] = wait if wait
+            result = session.async_send_command('browsingContext.navigate', params).wait
+            # URL will be updated via browsingContext.load event
+            result
+          end
         end
 
         # Reload the page
         # @param options [Hash] Reload options
         def reload(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('browsingContext.reload', options.merge(context: @id))
+          session.async_send_command('browsingContext.reload', options.merge(context: @id))
         end
 
         # Capture a screenshot
@@ -105,7 +107,7 @@ module Puppeteer
         # @return [String] Base64-encoded image data
         def capture_screenshot(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          result = session.send_command('browsingContext.captureScreenshot', options.merge(context: @id))
+          result = session.async_send_command('browsingContext.captureScreenshot', options.merge(context: @id))
           result['data']
         end
 
@@ -114,7 +116,7 @@ module Puppeteer
         # @return [String] Base64-encoded PDF data
         def print(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          result = session.send_command('browsingContext.print', options.merge(context: @id))
+          result = session.async_send_command('browsingContext.print', options.merge(context: @id))
           result['data']
         end
 
@@ -123,28 +125,30 @@ module Puppeteer
         def close(prompt_unload: false)
           raise BrowsingContextClosedError, @reason if closed?
 
-          # Close all children first
-          children.each do |child|
-            child.close(prompt_unload: prompt_unload)
-          end
-
-          # Send close command
-          # Note: For non-top-level contexts (iframes), this may fail with
-          # "Browsing context ... is not top-level" error, which is expected
-          # because parent closure automatically closes children in BiDi protocol
-          begin
-            session.send_command('browsingContext.close', {
-              context: @id,
-              promptUnload: prompt_unload
-            })
-          rescue Connection::ProtocolError => e
-            # Ignore "not top-level" errors for iframe contexts
-            # This happens when parent context closes and BiDi auto-closes children
-            # The error message is in format: "BiDi error (browsingContext.close): Browsing context with id ... is not top-level"
-            if ENV['DEBUG_BIDI_COMMAND']
-              puts "[BiDi] Close error for context #{@id}: #{e.message.inspect}"
+          Async do
+            # Close all children first
+            children.each do |child|
+              child.close(prompt_unload: prompt_unload).wait
             end
-            raise unless e.message.include?('is not top-level')
+
+            # Send close command
+            # Note: For non-top-level contexts (iframes), this may fail with
+            # "Browsing context ... is not top-level" error, which is expected
+            # because parent closure automatically closes children in BiDi protocol
+            begin
+              session.async_send_command('browsingContext.close', {
+                context: @id,
+                promptUnload: prompt_unload
+              })
+            rescue Connection::ProtocolError => e
+              # Ignore "not top-level" errors for iframe contexts
+              # This happens when parent context closes and BiDi auto-closes children
+              # The error message is in format: "BiDi error (browsingContext.close): Browsing context with id ... is not top-level"
+              if ENV['DEBUG_BIDI_COMMAND']
+                puts "[BiDi] Close error for context #{@id}: #{e.message.inspect}"
+              end
+              raise unless e.message.include?('is not top-level')
+            end
           end
         end
 
@@ -152,7 +156,7 @@ module Puppeteer
         # @param delta [Integer] Number of steps to go back (negative) or forward (positive)
         def traverse_history(delta)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('browsingContext.traverseHistory', {
+          session.async_send_command('browsingContext.traverseHistory', {
             context: @id,
             delta: delta
           })
@@ -162,21 +166,21 @@ module Puppeteer
         # @param options [Hash] Prompt handling options
         def handle_user_prompt(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('browsingContext.handleUserPrompt', options.merge(context: @id))
+          session.async_send_command('browsingContext.handleUserPrompt', options.merge(context: @id))
         end
 
         # Set viewport
         # @param options [Hash] Viewport options
         def set_viewport(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('browsingContext.setViewport', options.merge(context: @id))
+          session.async_send_command('browsingContext.setViewport', options.merge(context: @id))
         end
 
         # Perform input actions
         # @param actions [Array<Hash>] Input actions
         def perform_actions(actions)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('input.performActions', {
+          session.async_send_command('input.performActions', {
             context: @id,
             actions: actions
           })
@@ -185,14 +189,14 @@ module Puppeteer
         # Release input actions
         def release_actions
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('input.releaseActions', { context: @id })
+          session.async_send_command('input.releaseActions', { context: @id })
         end
 
         # Set cache behavior
         # @param cache_behavior [String] 'default' or 'bypass'
         def set_cache_behavior(cache_behavior)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('network.setCacheBehavior', {
+          session.async_send_command('network.setCacheBehavior', {
             contexts: [@id],
             cacheBehavior: cache_behavior
           })
@@ -234,7 +238,7 @@ module Puppeteer
         # @return [String] Intercept ID
         def add_intercept(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          result = session.send_command('network.addIntercept', options.merge(contexts: [@id]))
+          result = session.async_send_command('network.addIntercept', options.merge(contexts: [@id]))
           result['intercept']
         end
 
@@ -248,7 +252,7 @@ module Puppeteer
             type: 'context',
             context: @id
           }
-          result = session.send_command('storage.getCookies', params)
+          result = session.async_send_command('storage.getCookies', params)
           result['cookies']
         end
 
@@ -256,7 +260,7 @@ module Puppeteer
         # @param cookie [Hash] Cookie data
         def set_cookie(cookie)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('storage.setCookie', {
+          session.async_send_command('storage.setCookie', {
             cookie: cookie,
             partition: {
               type: 'context',
@@ -270,7 +274,7 @@ module Puppeteer
         def delete_cookie(*cookie_filters)
           raise BrowsingContextClosedError, @reason if closed?
           cookie_filters.each do |filter|
-            session.send_command('storage.deleteCookies', {
+            session.async_send_command('storage.deleteCookies', {
               filter: filter,
               partition: {
                 type: 'context',
@@ -286,7 +290,7 @@ module Puppeteer
           raise BrowsingContextClosedError, @reason if closed?
           raise 'Missing coordinates' unless options[:coordinates]
 
-          session.send_command('emulation.setGeolocationOverride', {
+          session.async_send_command('emulation.setGeolocationOverride', {
             coordinates: options[:coordinates],
             contexts: [@id]
           })
@@ -300,7 +304,7 @@ module Puppeteer
           # Remove GMT prefix for interop between CDP and BiDi
           timezone_id = timezone_id&.sub(/^GMT/, '')
 
-          session.send_command('emulation.setTimezoneOverride', {
+          session.async_send_command('emulation.setTimezoneOverride', {
             timezone: timezone_id,
             contexts: [@id]
           })
@@ -311,7 +315,7 @@ module Puppeteer
         # @param files [Array<String>] File paths
         def set_files(element, files)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('input.setFiles', {
+          session.async_send_command('input.setFiles', {
             context: @id,
             element: element,
             files: files
@@ -330,7 +334,7 @@ module Puppeteer
           }
           params[:startNodes] = start_nodes unless start_nodes.empty?
 
-          result = session.send_command('browsingContext.locateNodes', params)
+          result = session.async_send_command('browsingContext.locateNodes', params)
           result['nodes']
         end
 
@@ -338,7 +342,7 @@ module Puppeteer
         # @param enabled [Boolean] Whether JavaScript is enabled
         def set_javascript_enabled(enabled)
           raise BrowsingContextClosedError, @reason if closed?
-          session.send_command('emulation.setScriptingEnabled', {
+          session.async_send_command('emulation.setScriptingEnabled', {
             enabled: enabled ? nil : false,
             contexts: [@id]
           })

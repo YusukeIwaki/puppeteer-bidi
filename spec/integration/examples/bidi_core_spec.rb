@@ -21,7 +21,7 @@ RSpec.describe 'Core BiDi implementation' do
       puts "✓ Session wrapper created"
 
       puts "\nStep 3: Creating core Browser..."
-      browser = Puppeteer::Bidi::Core::Browser.from(session)
+      browser = Puppeteer::Bidi::Core::Browser.from(session).wait
       session.browser = browser
       puts "✓ Core Browser created"
 
@@ -52,25 +52,25 @@ RSpec.describe 'Core BiDi implementation' do
       end
 
       puts "\nStep 7: Navigating to example.com..."
-      browsing_context.navigate('https://example.com', wait: 'complete')
+      browsing_context.navigate('https://example.com', wait: 'complete').wait
       puts "✓ Navigation completed"
 
       # Wait for load event
-  Puppeteer::Bidi::AsyncUtils.async_timeout(5000, load_promise).wait
+      Puppeteer::Bidi::AsyncUtils.async_timeout(5000, load_promise).wait
 
       puts "\nStep 8: Getting URL..."
       puts "✓ Current URL: #{browsing_context.url}"
 
       puts "\nStep 9: Evaluating JavaScript..."
-      result = browsing_context.default_realm.evaluate('document.title', true)
+      result = browsing_context.default_realm.evaluate('document.title', true).wait
       puts "✓ Page title: #{result['value']}"
 
       puts "\nStep 10: Closing browsing context..."
-      browsing_context.close
+      browsing_context.close.wait
       puts "✓ Context closed"
 
       puts "\nStep 11: Closing browser..."
-      browser.close
+      browser.close.wait
       puts "✓ Browser closed"
 
       puts "\n=== All core tests passed! ==="

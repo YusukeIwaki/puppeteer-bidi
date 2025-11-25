@@ -58,7 +58,7 @@ module Puppeteer
           params[:referenceContext] = options[:reference_context].id if options[:reference_context]
           params.merge!(options.except(:reference_context))
 
-          result = session.send_command('browsingContext.create', params)
+          result = session.async_send_command('browsingContext.create', params).wait
           context_id = result['context']
 
           # Since event handling might be async or not working properly,

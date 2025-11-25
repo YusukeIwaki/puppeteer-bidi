@@ -44,13 +44,11 @@ module Puppeteer
           root: options[:root]
         }
 
-        Sync do |task|
-          result = WaitTask.new(self, wait_task_options, page_function, *args).result
+        result = WaitTask.new(self, wait_task_options, page_function, *args).result
 
-          task.async(&block) if block
+        Async(&block) if block
 
-          result.wait
-        end
+        result.wait
       end
 
       def dispose
@@ -99,7 +97,7 @@ module Puppeteer
       def evaluate(script, *args)
         ensure_environment_active!
 
-        result = execute_with_core(script, args)
+        result = execute_with_core(script, args).wait
         handle_evaluation_exception(result) if result['type'] == 'exception'
 
         actual_result = result['result'] || result
@@ -109,7 +107,7 @@ module Puppeteer
       def evaluate_handle(script, *args)
         ensure_environment_active!
 
-        result = execute_with_core(script, args)
+        result = execute_with_core(script, args).wait
         handle_evaluation_exception(result) if result['type'] == 'exception'
 
         JSHandle.from(result['result'], @core_realm)
@@ -118,7 +116,7 @@ module Puppeteer
       def call_function(function_declaration, await_promise, **options)
         ensure_environment_active!
 
-        result = @core_realm.call_function(function_declaration, await_promise, **options)
+        result = @core_realm.call_function(function_declaration, await_promise, **options).wait
         handle_evaluation_exception(result) if result['type'] == 'exception'
 
         result

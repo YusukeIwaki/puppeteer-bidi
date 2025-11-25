@@ -28,7 +28,7 @@ module Puppeteer
       # @param params [Hash] Command parameters
       # @param timeout [Integer] Timeout in milliseconds
       # @return [Hash] Command result
-      def send_command(method, params = {}, timeout: DEFAULT_TIMEOUT)
+      def async_send_command(method, params = {}, timeout: DEFAULT_TIMEOUT)
         raise ProtocolError, 'Connection is closed' if @closed
 
         id = next_id
@@ -52,29 +52,31 @@ module Puppeteer
           puts "[BiDi] Request #{method}: #{command.inspect}"
         end
 
-        # Send command through transport
-        @transport.send_message(command)
+        Async do
+          # Send command through transport
+          @transport.async_send_message(command).wait
 
-        # Wait for response with timeout
-        begin
-          result = AsyncUtils.async_timeout(timeout, promise).wait
+          # Wait for response with timeout
+          begin
+            result = AsyncUtils.async_timeout(timeout, promise).wait
 
-          # Debug output
-          if ENV['DEBUG_BIDI_COMMAND']
-            puts "[BiDi] Response for #{method}: #{result.inspect}"
+            # Debug output
+            if ENV['DEBUG_BIDI_COMMAND']
+              puts "[BiDi] Response for #{method}: #{result.inspect}"
+            end
+
+            if result['error']
+              # BiDi error format: { "error": "error_type", "message": "detailed message", ... }
+              error_type = result['error']
+              error_message = result['message'] || error_type
+              raise ProtocolError, "BiDi error (#{method}): #{error_message}"
+            end
+
+            result['result']
+          rescue Async::TimeoutError
+            @pending_commands.delete(id)
+            raise TimeoutError, "Timeout waiting for #{method} (#{timeout}ms)"
           end
-
-          if result['error']
-            # BiDi error format: { "error": "error_type", "message": "detailed message", ... }
-            error_type = result['error']
-            error_message = result['message'] || error_type
-            raise ProtocolError, "BiDi error (#{method}): #{error_message}"
-          end
-
-          result['result']
-        rescue Async::TimeoutError
-          @pending_commands.delete(id)
-          raise TimeoutError, "Timeout waiting for #{method} (#{timeout}ms)"
         end
       end
 
