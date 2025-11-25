@@ -256,20 +256,31 @@ module Puppeteer
 
       # Wait for navigation to complete
       # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
-      # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')
+      # @param wait_until [String, Array<String>] When to consider navigation succeeded
+      #   ('load', 'domcontentloaded', 'networkidle0', 'networkidle2', or array of these)
       # @yield Optional block to execute that triggers navigation
       # @return [HTTPResponse, nil] Main response (nil for fragment navigation or history API)
       def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
         assert_not_detached
 
-        # Determine which event to wait for
-        load_event = case wait_until
+        # Normalize wait_until to array
+        wait_until_array = wait_until.is_a?(Array) ? wait_until : [wait_until]
+
+        # Separate lifecycle events from network idle events
+        lifecycle_events = wait_until_array.select { |e| ['load', 'domcontentloaded'].include?(e) }
+        network_idle_events = wait_until_array.select { |e| ['networkidle0', 'networkidle2'].include?(e) }
+
+        # Default to 'load' if no lifecycle event specified
+        lifecycle_events = ['load'] if lifecycle_events.empty? && network_idle_events.any?
+
+        # Determine which load event to wait for (use the first one)
+        load_event = case lifecycle_events.first
                      when 'load'
                        :load
                      when 'domcontentloaded'
                        :dom_content_loaded
                      else
-                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
+                       :load  # Default
                      end
 
         # Use Async::Promise for signaling (Fiber-based, not Thread-based)
@@ -350,10 +361,27 @@ module Puppeteer
 
           # Execute the block if provided (this may trigger navigation)
           # Block executes in the same Fiber context for cooperative multitasking
-          block.call if block
+          Async(&block).wait if block
 
           # Wait for navigation with timeout using Async (Fiber-based)
-          result = AsyncUtils.async_timeout(timeout, promise).wait
+          if network_idle_events.any?
+            # Puppeteer's pattern: wait for both navigation completion AND network idle
+            # Determine concurrency based on network idle event
+            concurrency = network_idle_events.include?('networkidle0') ? 0 : 2
+
+            # Wait for both navigation and network idle in parallel using promise_all
+            navigation_result, _ = AsyncUtils.async_timeout(timeout, -> do
+              AsyncUtils.await_promise_all(
+                promise,
+                -> { page.wait_for_network_idle(idle_time: 500, timeout: timeout, concurrency: concurrency) }
+              )
+            end).wait
+
+            result = navigation_result
+          else
+            # Only wait for navigation
+            result = AsyncUtils.async_timeout(timeout, promise).wait
+          end
 
           # Return HTTPResponse for full page navigation, nil for fragment/history
           if result == :full_page

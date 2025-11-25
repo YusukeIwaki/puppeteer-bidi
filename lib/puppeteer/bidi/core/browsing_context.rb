@@ -20,7 +20,7 @@ module Puppeteer
           context
         end
 
-        attr_reader :id, :user_context, :parent, :original_opener, :default_realm, :navigation
+        attr_reader :id, :user_context, :parent, :original_opener, :default_realm, :navigation, :inflight_requests
 
         def initialize(user_context, parent, id, url, original_opener)
           super()
@@ -36,6 +36,8 @@ module Puppeteer
           @requests = {}
           @navigation = nil
           @emulation_state = { javascript_enabled: true }
+          @inflight_requests = 0
+          @inflight_mutex = Thread::Mutex.new
 
           @default_realm = WindowRealm.from(self)
         end
@@ -496,11 +498,43 @@ module Puppeteer
           # Network events
           session.on('network.beforeRequestSent') do |event|
             next unless event['context'] == @id
-            next if @requests.key?(event['request']['request'])
 
-            # request = Request.from(self, event)
-            # @requests[request.id] = request
-            # emit(:request, { request: request })
+            request_id = event['request']['request']
+            next if @requests.key?(request_id)
+
+            @requests[request_id] = true
+
+            # Increment inflight requests counter
+            @inflight_mutex.synchronize do
+              @inflight_requests += 1
+              emit(:inflight_changed, { inflight: @inflight_requests })
+            end
+          end
+
+          session.on('network.responseCompleted') do |event|
+            next unless event['context'] == @id
+
+            request_id = event['request']['request']
+            next unless @requests.delete(request_id)
+
+            # Decrement inflight requests counter
+            @inflight_mutex.synchronize do
+              @inflight_requests -= 1
+              emit(:inflight_changed, { inflight: @inflight_requests })
+            end
+          end
+
+          session.on('network.fetchError') do |event|
+            next unless event['context'] == @id
+
+            request_id = event['request']['request']
+            next unless @requests.delete(request_id)
+
+            # Decrement inflight requests counter
+            @inflight_mutex.synchronize do
+              @inflight_requests -= 1
+              emit(:inflight_changed, { inflight: @inflight_requests })
+            end
           end
 
           # Log entries

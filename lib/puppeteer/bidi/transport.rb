@@ -99,7 +99,7 @@ module Puppeteer
         while (message = connection.read)
           next if message.nil?
 
-          begin
+          Async do
             data = JSON.parse(message)
             debug_print_receive(data)
             @on_message&.call(data)

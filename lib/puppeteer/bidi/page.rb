@@ -364,6 +364,76 @@ module Puppeteer
         main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
       end
 
+      # Wait for network to be idle (no more than concurrency connections for idle_time)
+      # Based on Puppeteer's waitForNetworkIdle implementation
+      # @param idle_time [Numeric] Time in milliseconds to wait for network to be idle (default: 500)
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @param concurrency [Integer] Maximum number of inflight network connections (0 or 2, default: 0)
+      # @return [void]
+      def wait_for_network_idle(idle_time: 500, timeout: 30000, concurrency: 0)
+        assert_not_closed
+
+        promise = Async::Promise.new
+        idle_timer = nil
+        idle_timer_mutex = Thread::Mutex.new
+
+        # Listener for inflight changes
+        inflight_listener = lambda do |data|
+          inflight = data[:inflight]
+
+          idle_timer_mutex.synchronize do
+            # Cancel existing timer if any
+            idle_timer&.stop
+
+            # If inflight requests exceed concurrency, don't start timer
+            if inflight > concurrency
+              idle_timer = nil
+              return
+            end
+
+            # Start idle timer
+            idle_timer = Async do |task|
+              task.sleep(idle_time / 1000.0)
+              promise.resolve(nil)
+            end
+          end
+        end
+
+        # Close listener
+        close_listener = lambda do |_data|
+          promise.reject(PageClosedError.new)
+        end
+
+        begin
+          # Register listeners
+          @browsing_context.on(:inflight_changed, &inflight_listener)
+          @browsing_context.on(:closed, &close_listener)
+
+          # Check initial state - if already idle, start timer immediately
+          current_inflight = @browsing_context.inflight_requests
+          if current_inflight <= concurrency
+            idle_timer_mutex.synchronize do
+              idle_timer = Async do |task|
+                task.sleep(idle_time / 1000.0)
+                promise.resolve(nil)
+              end
+            end
+          end
+
+          # Wait with timeout
+          AsyncUtils.async_timeout(timeout, promise).wait
+        ensure
+          # Clean up
+          idle_timer_mutex.synchronize do
+            idle_timer&.stop
+          end
+          @browsing_context.off(:inflight_changed, &inflight_listener)
+          @browsing_context.off(:closed, &close_listener)
+        end
+
+        nil
+      end
+
       # Set viewport size
       # @param width [Integer] Viewport width
       # @param height [Integer] Viewport height

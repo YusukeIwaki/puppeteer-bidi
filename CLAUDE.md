@@ -335,6 +335,12 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
   - Handles full page navigation, fragment navigation (#hash), and History API (pushState/replaceState)
   - Block-based API to hide Async complexity from users
   - Event-driven pattern with proper listener cleanup
+  - Supports networkidle0 and networkidle2 wait conditions
+- [x] **Page.waitForNetworkIdle** - Network idle detection
+  - Tracks inflight network requests via BiDi network events
+  - Configurable idle time (default: 500ms) and concurrency threshold (0 or 2)
+  - Callback-based implementation using EventEmitter pattern
+  - Integrated into wait_for_navigation for networkidle conditions
 - [x] JavaScript execution (`script.evaluate`, `script.callFunction`)
 - [x] **Page.evaluate and Frame.evaluate** - Full JavaScript evaluation with argument serialization
 - [x] Event handling system (EventEmitter)
@@ -348,6 +354,10 @@ For detailed documentation, see `lib/puppeteer/bidi/core/README.md`.
 ### Phase 3: Advanced Features 🚧 IN PROGRESS
 
 - [x] Network request management (Request class)
+- [x] **Network request tracking** (BrowsingContext inflight counter)
+  - Tracks inflight requests via network.beforeRequestSent/responseCompleted/fetchError
+  - Emits :inflight_changed events for network idle detection
+  - Thread-safe counter with mutex protection
 - [ ] NetworkManager implementation - **TODO**
 - [ ] Network interception (partial support in Request)
 - [x] Screenshot/PDF generation (BrowsingContext methods)
@@ -579,6 +589,50 @@ This ensures:
 - Async operations run efficiently in an event loop
 - Main thread remains responsive
 - Proper cleanup on browser close
+
+### WebSocket Message Handling Pattern
+
+**CRITICAL**: BiDi message handling must use `Async do` to process messages asynchronously:
+
+```ruby
+# lib/puppeteer/bidi/transport.rb
+while (message = connection.read)
+  next if message.nil?
+
+  # ✅ DO: Use Async do for non-blocking message processing
+  Async do
+    data = JSON.parse(message)
+    debug_print_receive(data)
+    @on_message&.call(data)
+  rescue StandardError => e
+    # Handle errors
+  end
+end
+```
+
+**Why this matters:**
+
+- ❌ **Without `Async do`**: Message processing blocks the message loop, preventing other messages from being read
+- ✅ **With `Async do`**: Each message is processed in a separate fiber, allowing concurrent message handling
+- **Prevents deadlocks**: When multiple operations are waiting for responses, they can all be processed concurrently
+
+**Example of the problem this solves:**
+
+```ruby
+# Without Async do:
+# 1. Message A arrives and starts processing
+# 2. Processing A calls wait_for_navigation which waits for Message B
+# 3. Message B arrives but can't be read because Message A is still being processed
+# 4. DEADLOCK
+
+# With Async do:
+# 1. Message A arrives and starts processing in Fiber 1
+# 2. Fiber 1 yields when calling wait (cooperative multitasking)
+# 3. Message B can now be read and processed in Fiber 2
+# 4. Both messages complete successfully
+```
+
+This pattern is essential for the BiDi protocol's bidirectional communication model.
 
 ### Navigation Implementation Example
 
