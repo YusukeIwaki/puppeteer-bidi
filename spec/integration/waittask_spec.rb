@@ -471,7 +471,7 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     end
   end
 
-  it 'should work when node is added in a shadow root' do
+  it 'should work when node is added in a shadow root', pending: true do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 

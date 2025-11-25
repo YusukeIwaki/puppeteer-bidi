@@ -418,66 +418,9 @@ module Puppeteer
       # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
       # @return [ElementHandle, nil] Element handle if found, nil if hidden option was used and element disappeared
       def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
-        assert_not_detached
-
-        # Determine visibility parameter for checkVisibility
-        # - true: wait for element to be visible
-        # - false: wait for element to be hidden or not present
-        # - nil: wait for element to exist (no visibility check)
-        visibility = if visible
-                       true
-                     elsif hidden
-                       false
-                     end
-
-        # Use 'raf' polling when checking visibility, otherwise use default
-        polling = (visible || hidden) ? 'raf' : nil
-
-        options = {}
-        options[:polling] = polling if polling
-        options[:timeout] = timeout if timeout
-
-        # Wait for element using isolated realm to avoid polluting main context
-        # This mirrors Puppeteer's implementation which uses isolatedRealm
-        begin
-          handle = isolated_realm.wait_for_function(
-            WAIT_FOR_SELECTOR_SCRIPT,
-            options,
-            isolated_realm.puppeteer_util,
-            selector,
-            visibility,
-            &block)
-
-          return nil unless handle
-
-          unless handle.is_a?(ElementHandle)
-            begin
-              handle.dispose
-            rescue StandardError
-              # Ignored: primitive handles may not support dispose.
-            end
-            return nil
-          end
-
-          main_realm.transfer_handle(handle)
-        rescue Puppeteer::Bidi::TimeoutError => e
-          raise Puppeteer::Bidi::TimeoutError,
-                "Waiting for selector `#{selector}` failed: Waiting failed: #{e.message.split(': ').last}"
-        end
+        result = QueryHandler.instance.get_query_handler_and_selector(selector)
+        result.query_handler.new.wait_for(self, result.updated_selector, visible: visible, hidden: hidden, polling: result.polling, timeout: timeout, &block)
       end
-
-      # JavaScript function for waitForSelector polling
-      # Uses Puppeteer's checkVisibility from injected utilities
-      # Note: visibility parameter is converted from null to undefined because
-      # BiDi serializes Ruby nil as null, but checkVisibility expects undefined
-      WAIT_FOR_SELECTOR_SCRIPT = <<~JS
-        (PuppeteerUtil, selector, visibility) => {
-          const element = document.querySelector(selector);
-          // Convert null to undefined for checkVisibility
-          return PuppeteerUtil.checkVisibility(element, visibility === null ? undefined : visibility);
-        }
-      JS
-      private_constant :WAIT_FOR_SELECTOR_SCRIPT
 
       private
 
