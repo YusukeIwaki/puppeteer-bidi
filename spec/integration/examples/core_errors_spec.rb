@@ -6,7 +6,7 @@ RSpec.describe 'Core error handling' do
       connection = legacy_browser.connection
       session_info = { 'sessionId' => 'default-session', 'capabilities' => {} }
       session = Puppeteer::Bidi::Core::Session.new(connection, session_info)
-      browser = Puppeteer::Bidi::Core::Browser.from(session)
+      browser = Puppeteer::Bidi::Core::Browser.from(session).wait
       session.browser = browser
       context = browser.default_user_context
 
@@ -18,7 +18,7 @@ RSpec.describe 'Core error handling' do
 
       # Verify BrowsingContextClosedError is raised
       expect {
-        browsing_context.navigate('https://example.com')
+        browsing_context.navigate('https://example.com').wait
       }.to raise_error(Puppeteer::Bidi::Core::BrowsingContextClosedError) do |error|
         expect(error.resource_type).to eq('Browsing context')
         expect(error.reason).to eq('Test closure')
