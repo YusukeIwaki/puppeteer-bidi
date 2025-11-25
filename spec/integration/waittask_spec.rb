@@ -166,7 +166,11 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     end
   end
 
-  it 'should work with strict CSP policy' do
+  # Known limitation: BiDi protocol's script.evaluate is blocked by CSP when using new Function()
+  # Puppeteer marks this as FAIL for Firefox+BiDi in TestExpectations.json
+  # See: https://github.com/puppeteer/puppeteer/blob/main/test/TestExpectations.json
+  # Firefox Bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1650112
+  it 'should work with strict CSP policy', pending: 'BiDi script.evaluate blocked by CSP (new Function())' do
     with_test_state do |page:, server:, **|
       server.set_route('/csp.html') do |_req, res|
         res.status = 200
@@ -177,14 +181,12 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
 
       page.goto("#{server.prefix}/csp.html")
 
-      Sync do
-        watchdog = Async do
-          page.wait_for_function("() => window.__FOO === 'hit'", polling: 'raf')
-        end
-        page.evaluate("() => window.__FOO = 'hit'")
-
-        watchdog.wait
+      watchdog = Async do
+        page.wait_for_function("() => window.__FOO === 'hit'", polling: 'raf')
       end
+      page.evaluate("() => window.__FOO = 'hit'")
+
+      watchdog.wait
     end
   end
 
