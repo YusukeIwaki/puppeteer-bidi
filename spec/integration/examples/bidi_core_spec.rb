@@ -85,7 +85,7 @@ RSpec.describe 'Core BiDi implementation' do
       # Create core components
       session_info = { 'sessionId' => 'default-session', 'capabilities' => {} }
       session = Puppeteer::Bidi::Core::Session.new(connection, session_info)
-      browser = Puppeteer::Bidi::Core::Browser.from(session)
+      browser = Puppeteer::Bidi::Core::Browser.from(session).wait
       session.browser = browser
       user_context = browser.default_user_context
 
@@ -149,7 +149,7 @@ RSpec.describe 'Core BiDi implementation' do
       # Create core components
       session_info = { 'sessionId' => 'default-session', 'capabilities' => {} }
       session = Puppeteer::Bidi::Core::Session.new(connection, session_info)
-      browser = Puppeteer::Bidi::Core::Browser.from(session)
+      browser = Puppeteer::Bidi::Core::Browser.from(session).wait
       session.browser = browser
       user_context = browser.default_user_context
 
@@ -198,7 +198,7 @@ RSpec.describe 'Core BiDi implementation' do
 
       session_info = { 'sessionId' => 'default-session', 'capabilities' => {} }
       session = Puppeteer::Bidi::Core::Session.new(connection, session_info)
-      browser = Puppeteer::Bidi::Core::Browser.from(session)
+      browser = Puppeteer::Bidi::Core::Browser.from(session).wait
       session.browser = browser
 
       puts "Step 1: Getting default user context..."
@@ -206,7 +206,7 @@ RSpec.describe 'Core BiDi implementation' do
       puts "✓ Default context: #{default_context.id}"
 
       puts "\nStep 2: Creating incognito user context..."
-      incognito_context = browser.create_user_context
+      incognito_context = browser.create_user_context.wait
       puts "✓ Incognito context: #{incognito_context.id}"
 
       puts "\nStep 3: Creating browsing contexts in each user context..."

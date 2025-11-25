@@ -92,7 +92,7 @@ module Puppeteer
         all_args = [@remote_value] + args.map { |arg| Serializer.serialize(arg) }
 
         # Puppeteer passes awaitPromise: true to wait for promises to resolve
-        result = @realm.call_function(script, true, arguments: all_args)
+        result = @realm.call_function(script, true, arguments: all_args).wait
 
         # Check for exceptions
         if result['type'] == 'exception'

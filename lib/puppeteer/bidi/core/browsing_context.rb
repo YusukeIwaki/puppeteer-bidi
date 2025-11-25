@@ -104,20 +104,24 @@ module Puppeteer
 
         # Capture a screenshot
         # @param options [Hash] Screenshot options
-        # @return [String] Base64-encoded image data
+        # @return [Async::Task<String>] Base64-encoded image data
         def capture_screenshot(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          result = session.async_send_command('browsingContext.captureScreenshot', options.merge(context: @id))
-          result['data']
+          Async do
+            result = session.async_send_command('browsingContext.captureScreenshot', options.merge(context: @id)).wait
+            result['data']
+          end
         end
 
         # Print to PDF
         # @param options [Hash] Print options
-        # @return [String] Base64-encoded PDF data
+        # @return [Async::Task<String>] Base64-encoded PDF data
         def print(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          result = session.async_send_command('browsingContext.print', options.merge(context: @id))
-          result['data']
+          Async do
+            result = session.async_send_command('browsingContext.print', options.merge(context: @id)).wait
+            result['data']
+          end
         end
 
         # Close this browsing context
@@ -341,12 +345,14 @@ module Puppeteer
         # Set JavaScript enabled state
         # @param enabled [Boolean] Whether JavaScript is enabled
         def set_javascript_enabled(enabled)
-          raise BrowsingContextClosedError, @reason if closed?
-          session.async_send_command('emulation.setScriptingEnabled', {
-            enabled: enabled ? nil : false,
-            contexts: [@id]
-          })
-          @emulation_state[:javascript_enabled] = enabled
+          Async do
+            raise BrowsingContextClosedError, @reason if closed?
+            session.async_send_command('emulation.setScriptingEnabled', {
+              enabled: enabled ? nil : false,
+              contexts: [@id]
+            })
+            @emulation_state[:javascript_enabled] = enabled
+          end
         end
 
         # Check if JavaScript is enabled

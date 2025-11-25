@@ -83,15 +83,17 @@ module Puppeteer
           end
           params[:sandbox] = options[:sandbox] if options[:sandbox]
 
-          result = @session.send_command('script.addPreloadScript', params)
-          result['script']
+          Async do
+            result = @session.async_send_command('script.addPreloadScript', params).wait
+            result['script']
+          end
         end
 
         # Remove a preload script
         # @param script [String] Script ID
         def remove_preload_script(script)
           raise BrowserDisconnectedError, @reason if disconnected?
-          @session.send_command('script.removePreloadScript', { script: script })
+          @session.async_send_command('script.removePreloadScript', { script: script })
         end
 
         # Create a new user context
@@ -111,17 +113,19 @@ module Puppeteer
             }.compact
           end
 
-          result = @session.send_command('browser.createUserContext', params)
-          user_context_id = result['userContext']
+          Async do
+            result = @session.async_send_command('browser.createUserContext', params).wait
+            user_context_id = result['userContext']
 
-          create_user_context_object(user_context_id)
+            create_user_context_object(user_context_id)
+          end
         end
 
         # Remove a network intercept
         # @param intercept [String] Intercept ID
         def remove_intercept(intercept)
           raise BrowserDisconnectedError, @reason if disconnected?
-          @session.send_command('network.removeIntercept', { intercept: intercept })
+          @session.async_send_command('network.removeIntercept', { intercept: intercept })
         end
 
         protected
