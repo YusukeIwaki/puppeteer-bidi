@@ -522,7 +522,7 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
         page.evaluate(add_element, 'div')
       end
 
-      expect(element_handle.frame).to eq(page.main_frame)
+      expect(element_handle.frame.browsing_context.id).to eq(page.main_frame.browsing_context.id)
     end
   end
 
@@ -538,7 +538,7 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
         frame2.evaluate(add_element, 'div')
       end
 
-      expect(element.frame).to eq(frame2)
+      expect(element.frame.browsing_context.id).to eq(frame2.browsing_context.id)
       element.dispose
     end
   end
@@ -924,7 +924,7 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
           frame2.evaluate(xpath_add_element, 'div')
         end
 
-        expect(element&.frame).to eq(frame2)
+        expect(element&.frame&.browsing_context&.id).to eq(frame2.browsing_context.id)
         element.dispose
       end
     end
