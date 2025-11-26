@@ -869,17 +869,11 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
 
   it 'should have correct stack trace for timeout' do
     with_test_state do |page:, **|
-      error = nil
-
-      begin
+      expect {
         page.wait_for_selector('.zombo', timeout: 10)
-      rescue => e
-        error = e
+      }.to raise_error(/Waiting for selector `.zombo` faile/) do |err|
+        expect(err.backtrace.join("\n")).to include('waittask_spec.rb')
       end
-
-      expect(error).not_to be_nil
-      stack = Array(error.backtrace).join("\n")
-      expect(stack).to include('Waiting for selector `.zombo` failed')
     end
   end
 
