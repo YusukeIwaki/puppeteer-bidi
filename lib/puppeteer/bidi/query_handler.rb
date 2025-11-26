@@ -162,16 +162,15 @@ module Puppeteer
       def query_one(puppeteer_util)
         fn = puppeteer_util.evaluate('({xpathQuerySelectorAll}) => xpathQuerySelectorAll.toString()')
 
-        js = <<~JAVASCRIPT
+        <<~JAVASCRIPT
         (root, selector) => {
           const fn = #{fn};
-          return fn(root, selector, 1)[0] || null;
+          for (const result of fn(root, selector, 1)) {
+            return result;
+          }
+          return null;
         }
         JAVASCRIPT
-
-        puts js
-
-        js
       end
     end
   end
