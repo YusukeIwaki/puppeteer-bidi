@@ -374,6 +374,60 @@ module Puppeteer
         main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
       end
 
+      # Wait for a file chooser to be opened
+      # @param timeout [Numeric, nil] Timeout in milliseconds (default: use default timeout, 0 for no timeout)
+      # @yield Block to execute that triggers the file chooser (e.g., clicking a file input)
+      # @return [FileChooser] The file chooser that was opened
+      # @raise [TimeoutError] If timeout expires before file chooser is opened
+      def wait_for_file_chooser(timeout: nil, &block)
+        assert_not_closed
+
+        # Use provided timeout, or default timeout, treating 0 as infinite
+        effective_timeout = timeout || @timeout_settings.timeout
+
+        promise = Async::Promise.new
+
+        # Listener for file dialog opened event
+        file_dialog_listener = lambda do |info|
+          # info contains: element, multiple
+          element_info = info['element']
+          return unless element_info
+
+          # Create ElementHandle from the element info
+          # The element info should have sharedId and/or handle
+          element_remote_value = {
+            'type' => 'node',
+            'sharedId' => element_info['sharedId'],
+            'handle' => element_info['handle']
+          }.compact
+
+          element = ElementHandle.from(element_remote_value, @browsing_context.default_realm)
+          multiple = info['multiple'] || false
+
+          file_chooser = FileChooser.new(element, multiple)
+          promise.resolve(file_chooser)
+        end
+
+        begin
+          # Register listener before executing the block
+          @browsing_context.on(:filedialogopened, &file_dialog_listener)
+
+          # Execute the block that triggers the file chooser
+          Async(&block).wait if block
+
+          # Wait for file chooser with timeout
+          if timeout == 0
+            promise.wait
+          else
+            AsyncUtils.async_timeout(effective_timeout, promise).wait
+          end
+        rescue Async::TimeoutError
+          raise TimeoutError, "Waiting for file chooser timed out after #{effective_timeout}ms"
+        ensure
+          @browsing_context.off(:filedialogopened, &file_dialog_listener)
+        end
+      end
+
       # Wait for network to be idle (no more than concurrency connections for idle_time)
       # Based on Puppeteer's waitForNetworkIdle implementation
       # @param idle_time [Numeric] Time in milliseconds to wait for network to be idle (default: 500)
@@ -464,6 +518,7 @@ module Puppeteer
       end
 
       alias viewport= set_viewport
+      alias default_timeout= set_default_timeout
 
       # Set JavaScript enabled state
       # @param enabled [Boolean] Whether JavaScript is enabled

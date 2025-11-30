@@ -29,6 +29,8 @@ jobs:
 
       - name: Setup Firefox
         uses: browser-actions/setup-firefox@latest
+        with:
+          firefox-version: latest-nightly
 
       - name: Verify Firefox installation
         run: firefox --version
@@ -37,7 +39,7 @@ jobs:
         run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
 
       - name: Run integration tests
-        run: bundle exec rspec spec/integration/
+        run: FIREFOX_PATH=`which firefox` bundle exec rspec spec/integration/
         env:
           HEADLESS: true
 
