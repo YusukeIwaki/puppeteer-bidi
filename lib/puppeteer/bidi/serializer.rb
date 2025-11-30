@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'puppeteer/bidi/lazy_arg'
 
 module Puppeteer
   module Bidi
@@ -13,6 +14,8 @@ module Puppeteer
         # @return [Hash] BiDi LocalValue
         # @raise [ArgumentError] for unsupported types or circular references
         def serialize(value)
+          value = value.resolve while value.is_a?(LazyArg)
+
           # Check for circular references first for complex objects
           if complex_object?(value)
             check_circular_reference(value)
@@ -96,10 +99,10 @@ module Puppeteer
           remote_value = handle.remote_value
 
           # Prefer handle over sharedId
-          if remote_value['handle']
-            { handle: remote_value['handle'] }
-          elsif remote_value['sharedId']
+          if remote_value['sharedId']
             { sharedId: remote_value['sharedId'] }
+          elsif remote_value['handle']
+            { handle: remote_value['handle'] }
           else
             # Fallback: return the full remote value
             remote_value

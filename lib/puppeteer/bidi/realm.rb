@@ -62,6 +62,30 @@ module Puppeteer
         @disposed
       end
 
+      # Adopt a handle from another realm into this realm.
+      # Mirrors Puppeteer's BidiRealm#adoptHandle implementation.
+      # @param handle [JSHandle] The handle to adopt
+      # @return [JSHandle] Handle that belongs to this realm
+      def adopt_handle(handle)
+        raise ArgumentError, 'handle must be a JSHandle' unless handle.is_a?(JSHandle)
+
+        evaluate_handle('(node) => node', handle)
+      end
+
+      # Transfer a handle into this realm, disposing of the original.
+      # Mirrors Puppeteer's BidiRealm#transferHandle implementation.
+      # @param handle [JSHandle] Handle that may belong to another realm
+      # @return [JSHandle] Handle adopted into this realm
+      def transfer_handle(handle)
+        raise ArgumentError, 'handle must be a JSHandle' unless handle.is_a?(JSHandle)
+
+        return handle if handle.realm.equal?(self)
+
+        adopted = adopt_handle(handle)
+        handle.dispose
+        adopted
+      end
+
       private
 
       def ensure_environment_active!
@@ -81,6 +105,7 @@ module Puppeteer
         @frame = frame
         @core_realm = core_realm
         @puppeteer_util_handle = nil
+        @puppeteer_util_lazy_arg = nil
         super(frame.page.timeout_settings)
 
         setup_core_realm_callbacks
@@ -129,9 +154,14 @@ module Puppeteer
         @puppeteer_util_handle = evaluate_handle(script)
       end
 
+      def puppeteer_util_lazy_arg
+        @puppeteer_util_lazy_arg ||= LazyArg.create { puppeteer_util }
+      end
+
       def reset_puppeteer_util_handle!
         handle = @puppeteer_util_handle
         @puppeteer_util_handle = nil
+        @puppeteer_util_lazy_arg = nil
         return unless handle
 
         begin

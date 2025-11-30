@@ -131,6 +131,17 @@ module Puppeteer
         end
       end
 
+      # Wait for an element matching the selector to appear as a descendant of this element
+      # @param selector [String] CSS selector
+      # @param visible [Boolean] Wait for element to be visible
+      # @param hidden [Boolean] Wait for element to be hidden or not found
+      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
+      # @return [ElementHandle, nil] Element handle if found, nil if hidden option was used and element disappeared
+      def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
+        result = QueryHandler.instance.get_query_handler_and_selector(selector)
+        result.query_handler.new.wait_for(self, result.updated_selector, visible: visible, hidden: hidden, polling: result.polling, timeout: timeout, &block)
+      end
+
       # Click the element
       # @param button [String] Mouse button
       # @param count [Integer] Number of clicks

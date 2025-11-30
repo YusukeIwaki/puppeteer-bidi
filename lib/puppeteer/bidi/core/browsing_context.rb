@@ -134,7 +134,11 @@ module Puppeteer
           Async do
             # Close all children first
             children.each do |child|
-              child.close(prompt_unload: prompt_unload).wait
+              begin
+                child.close(prompt_unload: prompt_unload).wait
+              rescue BrowsingContextClosedError
+                # Child already closed (e.g., iframe removed mid-operation)
+              end
             end
 
             # Send close command
@@ -383,10 +387,22 @@ module Puppeteer
           @reason ||= 'Browsing context closed, probably because the user context closed'
           emit(:closed, { reason: @reason })
 
-          # Dispose all children
-          @children.values.each do |child|
-            child.send(:dispose_context, 'Parent browsing context was disposed')
+          dispose_children('Parent browsing context was disposed')
+
+          begin
+            @default_realm.dispose unless @default_realm&.disposed?
+          rescue StandardError
+            # Ignore realm disposal failures during shutdown
           end
+
+          @realms.values.each do |realm|
+            begin
+              realm.dispose unless realm.disposed?
+            rescue StandardError
+              # Ignore per-realm cleanup errors
+            end
+          end
+          @realms.clear
 
           @disposables.dispose
           super
@@ -412,6 +428,7 @@ module Puppeteer
           # Context destroyed
           session.on('browsingContext.contextDestroyed') do |info|
             next unless info['context'] == @id
+            dispose_children('Parent browsing context was disposed')
             dispose_context('Browsing context already closed')
           end
 
@@ -554,6 +571,13 @@ module Puppeteer
           session.on('input.fileDialogOpened') do |info|
             next unless info['context'] == @id
             emit(:filedialogopened, info)
+          end
+        end
+
+        def dispose_children(reason)
+          @children.values.each do |child|
+            next if child.closed?
+            child.send(:dispose_context, reason)
           end
         end
 
