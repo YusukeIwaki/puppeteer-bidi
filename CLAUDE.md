@@ -16,7 +16,7 @@ Port the WebDriver BiDi protocol portions of Puppeteer to Ruby, providing a stan
 ### Running Tests
 
 ```bash
-# All integration tests
+# All integration tests (requires Firefox Nightly for full functionality)
 bundle exec rspec spec/integration/
 
 # Single test file
@@ -27,7 +27,12 @@ HEADLESS=false bundle exec rspec spec/integration/
 
 # Debug protocol messages
 DEBUG_BIDI_COMMAND=1 bundle exec rspec spec/integration/click_spec.rb
+
+# Use specific Firefox path (e.g., Nightly)
+FIREFOX_PATH="/Applications/Firefox Nightly.app/Contents/MacOS/firefox" bundle exec rspec
 ```
+
+**Note**: Some features (e.g., FileChooser) require Firefox Nightly. The browser launcher prioritizes Nightly automatically.
 
 ### Key Architecture
 
@@ -99,6 +104,7 @@ See the [CLAUDE/](CLAUDE/) directory for detailed implementation guides:
 - **[Wrapped Element Click](CLAUDE/wrapped_element_click.md)** - getClientRects() for multi-line elements
 - **[Navigation Waiting](CLAUDE/navigation_waiting.md)** - waitForNavigation patterns
 - **[Frame Architecture](CLAUDE/frame_architecture.md)** - Parent-based frame hierarchy
+- **[FileChooser](CLAUDE/file_chooser.md)** - File upload and dialog handling (requires Firefox Nightly)
 - **[Error Handling](CLAUDE/error_handling.md)** - Custom exception types
 
 ### Testing
