@@ -15,67 +15,25 @@ module Puppeteer
       end
 
       # Query for a descendant element matching the selector
-      # @param selector [String] CSS selector
+      # Supports CSS selectors and prefixed selectors (xpath/, text/, aria/, pierce/)
+      # @param selector [String] Selector (CSS or prefixed)
       # @return [ElementHandle, nil] Element handle if found, nil otherwise
       def query_selector(selector)
         assert_not_disposed
 
-        # Use querySelector on this element
-        result = @realm.call_function(
-          '(element, selector) => element.querySelector(selector)',
-          false,
-          arguments: [
-            @remote_value,
-            Serializer.serialize(selector)
-          ]
-        ).wait
-
-        # Check for exceptions
-        if result['type'] == 'exception'
-          exception_details = result['exceptionDetails']
-          text = exception_details['text'] || 'Query selector failed'
-          raise text
-        end
-
-        # Check if result is null
-        result_value = result['result']
-        return nil if result_value['type'] == 'null' || result_value['type'] == 'undefined'
-
-        # Return ElementHandle for the found element
-        ElementHandle.new(@realm, result_value)
+        result = QueryHandler.instance.get_query_handler_and_selector(selector)
+        result.query_handler.new.run_query_one(self, result.updated_selector)
       end
 
       # Query for all descendant elements matching the selector
-      # @param selector [String] CSS selector
+      # Supports CSS selectors and prefixed selectors (xpath/, text/, aria/, pierce/)
+      # @param selector [String] Selector (CSS or prefixed)
       # @return [Array<ElementHandle>] Array of element handles
       def query_selector_all(selector)
         assert_not_disposed
 
-        # Use querySelectorAll on this element
-        result = @realm.call_function(
-          '(element, selector) => Array.from(element.querySelectorAll(selector))',
-          false,
-          arguments: [
-            @remote_value,
-            Serializer.serialize(selector)
-          ]
-        ).wait
-
-        # Check for exceptions
-        if result['type'] == 'exception'
-          exception_details = result['exceptionDetails']
-          text = exception_details['text'] || 'Query selector failed'
-          raise text
-        end
-
-        # Result should be an array
-        result_value = result['result']
-        return [] unless result_value['type'] == 'array'
-
-        # Convert each element to ElementHandle
-        result_value['value'].map do |element_value|
-          ElementHandle.new(@realm, element_value)
-        end
+        result = QueryHandler.instance.get_query_handler_and_selector(selector)
+        result.query_handler.new.run_query_all(self, result.updated_selector)
       end
 
       # Evaluate a function on the first element matching the selector

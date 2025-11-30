@@ -144,6 +144,67 @@ module Puppeteer
     end
 
     class BaseQueryHandler
+      # Query for a single element matching the selector
+      # @param element [ElementHandle] Element to query from
+      # @param selector [String] Selector to match
+      # @return [ElementHandle, nil] Found element or nil
+      def run_query_one(element, selector)
+        realm = element.frame.isolated_realm
+        puppeteer_util = realm.puppeteer_util
+
+        result = realm.call_function(
+          query_one_script,
+          false,
+          arguments: [
+            Serializer.serialize(realm.puppeteer_util_lazy_arg),
+            Serializer.serialize(query_one(puppeteer_util)),
+            element.remote_value,
+            Serializer.serialize(selector)
+          ]
+        )
+
+        return nil if result['type'] == 'exception'
+
+        result_value = result['result']
+        return nil if result_value['type'] == 'null' || result_value['type'] == 'undefined'
+
+        handle = JSHandle.from(result_value, realm.core_realm)
+        return nil unless handle.is_a?(ElementHandle)
+
+        element.frame.main_realm.transfer_handle(handle)
+      end
+
+      # Query for all elements matching the selector
+      # @param element [ElementHandle] Element to query from
+      # @param selector [String] Selector to match
+      # @return [Array<ElementHandle>] Array of found elements
+      def run_query_all(element, selector)
+        realm = element.frame.isolated_realm
+        puppeteer_util = realm.puppeteer_util
+
+        result = realm.call_function(
+          query_all_script,
+          true,
+          arguments: [
+            Serializer.serialize(realm.puppeteer_util_lazy_arg),
+            Serializer.serialize(query_all(puppeteer_util)),
+            element.remote_value,
+            Serializer.serialize(selector)
+          ]
+        )
+
+        return [] if result['type'] == 'exception'
+
+        result_value = result['result']
+        return [] unless result_value['type'] == 'array'
+
+        handles = result_value['value'].map do |element_value|
+          JSHandle.from(element_value, realm.core_realm)
+        end.select { |h| h.is_a?(ElementHandle) }
+
+        handles.map { |h| element.frame.main_realm.transfer_handle(h) }
+      end
+
       def wait_for(element_or_frame, selector, visible: nil, hidden: nil, timeout: nil, polling: nil, &block)
         if element_or_frame.is_a?(Frame)
           wait_for_in_frame(element_or_frame, nil, selector, visible: visible, hidden: hidden, timeout: timeout, polling: polling, &block)
@@ -157,6 +218,33 @@ module Puppeteer
       end
 
       private
+
+      def query_one_script
+        <<~JAVASCRIPT
+        (PuppeteerUtil, query, element, selector) => {
+          const querySelector = PuppeteerUtil.createFunction(query);
+          return querySelector(element, selector);
+        }
+        JAVASCRIPT
+      end
+
+      def query_all_script
+        <<~JAVASCRIPT
+        async (PuppeteerUtil, query, element, selector) => {
+          const querySelectorAll = PuppeteerUtil.createFunction(query);
+          const result = querySelectorAll(element, selector);
+          // Handle both sync iterables and async iterables
+          if (result[Symbol.asyncIterator]) {
+            const elements = [];
+            for await (const el of result) {
+              elements.push(el);
+            }
+            return elements;
+          }
+          return [...result];
+        }
+        JAVASCRIPT
+      end
 
       def wait_for_selector_script
         <<~JAVASCRIPT
@@ -227,6 +315,11 @@ module Puppeteer
         # (root, selector) => root.querySelector(selector)
         puppeteer_util.evaluate('({cssQuerySelector}) => cssQuerySelector.toString()')
       end
+
+      def query_all(puppeteer_util)
+        # (root, selector) => root.querySelectorAll(selector)
+        puppeteer_util.evaluate('({cssQuerySelectorAll}) => cssQuerySelectorAll.toString()')
+      end
     end
 
     class XPathQueryHandler < BaseQueryHandler
@@ -240,6 +333,17 @@ module Puppeteer
             return result;
           }
           return null;
+        }
+        JAVASCRIPT
+      end
+
+      def query_all(puppeteer_util)
+        fn = puppeteer_util.evaluate('({xpathQuerySelectorAll}) => xpathQuerySelectorAll.toString()')
+
+        <<~JAVASCRIPT
+        (root, selector) => {
+          const fn = #{fn};
+          return fn(root, selector);
         }
         JAVASCRIPT
       end

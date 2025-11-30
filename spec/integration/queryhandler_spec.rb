@@ -4,12 +4,8 @@ require 'spec_helper'
 
 RSpec.describe 'QueryHandler', type: :integration do
   describe 'XPath selectors' do
-    # Note: XPath support for query_selector/query_selector_all requires
-    # implementing QueryHandler integration. Currently only wait_for_selector
-    # supports XPath via the QueryHandler system.
-
     describe 'in Page' do
-      it 'should query existing element', skip: 'XPath support for query_selector not implemented (needs QueryHandler integration)' do
+      it 'should query existing element' do
         with_test_state do |page:, server:, **|
           page.set_content('<section>test</section>')
 
@@ -21,7 +17,7 @@ RSpec.describe 'QueryHandler', type: :integration do
         end
       end
 
-      it 'should return empty array for non-existing element', skip: 'XPath support for query_selector not implemented (needs QueryHandler integration)' do
+      it 'should return empty array for non-existing element' do
         with_test_state do |page:, server:, **|
           element = page.query_selector('xpath/html/body/non-existing-element')
           expect(element).to be_nil
@@ -31,7 +27,7 @@ RSpec.describe 'QueryHandler', type: :integration do
         end
       end
 
-      it 'should return first element', skip: 'XPath support for query_selector not implemented (needs QueryHandler integration)' do
+      it 'should return first element' do
         with_test_state do |page:, server:, **|
           page.set_content('<div>a</div> <div></div>')
 
@@ -43,7 +39,7 @@ RSpec.describe 'QueryHandler', type: :integration do
         end
       end
 
-      it 'should return multiple elements', skip: 'XPath support for query_selector not implemented (needs QueryHandler integration)' do
+      it 'should return multiple elements' do
         with_test_state do |page:, server:, **|
           page.set_content('<div></div> <div></div>')
 
@@ -54,7 +50,7 @@ RSpec.describe 'QueryHandler', type: :integration do
     end
 
     describe 'in ElementHandles' do
-      it 'should query existing element', skip: 'XPath support for query_selector not implemented (needs QueryHandler integration)' do
+      it 'should query existing element' do
         with_test_state do |page:, server:, **|
           page.set_content('<div class="a">a<span></span></div>')
 
@@ -69,7 +65,7 @@ RSpec.describe 'QueryHandler', type: :integration do
         end
       end
 
-      it 'should return null for non-existing element', skip: 'XPath support for query_selector not implemented (needs QueryHandler integration)' do
+      it 'should return null for non-existing element' do
         with_test_state do |page:, server:, **|
           page.set_content('<div class="a">a</div>')
 
