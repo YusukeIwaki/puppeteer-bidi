@@ -366,5 +366,42 @@ module Puppeteer
         JAVASCRIPT
       end
     end
+
+    class TextQueryHandler < BaseQueryHandler
+      # textQuerySelectorAll cannot be extracted via toString() because it references
+      # helper functions (f, m, d) that are only available within the PuppeteerUtil closure.
+      # So we use a different pattern: call textQuerySelectorAll directly from PuppeteerUtil.
+
+      def query_one(_puppeteer_util)
+        # Unused - we override query_one_script to use PuppeteerUtil directly
+        nil
+      end
+
+      def query_all(_puppeteer_util)
+        # Unused - we override query_all_script to use PuppeteerUtil directly
+        nil
+      end
+
+      private
+
+      def query_one_script
+        <<~JAVASCRIPT
+        (PuppeteerUtil, _query, element, selector) => {
+          for (const result of PuppeteerUtil.textQuerySelectorAll(element, selector)) {
+            return result;
+          }
+          return null;
+        }
+        JAVASCRIPT
+      end
+
+      def query_all_script
+        <<~JAVASCRIPT
+        async (PuppeteerUtil, _query, element, selector) => {
+          return [...PuppeteerUtil.textQuerySelectorAll(element, selector)];
+        }
+        JAVASCRIPT
+      end
+    end
   end
 end

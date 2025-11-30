@@ -6,7 +6,6 @@ RSpec.describe 'QueryHandler', type: :integration do
   describe 'Text selectors' do
     describe 'in Page' do
       it 'should query existing element' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content('<section>test</section>')
 
@@ -16,7 +15,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should return empty array for non-existing element' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           expect(page.query_selector('text/test')).to be_nil
           expect(page.query_selector_all('text/test').length).to eq(0)
@@ -24,7 +22,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should return first element' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content('<div id="1">a</div> <div>a</div>')
 
@@ -35,7 +32,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should return multiple elements' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content('<div>a</div> <div>a</div>')
 
@@ -45,7 +41,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should pierce shadow DOM' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.evaluate(<<~JS)
             () => {
@@ -68,7 +63,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should query deeply nested text' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content(<<~HTML)
             <div>
@@ -84,7 +78,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should query inputs' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content('<input value="a" />')
 
@@ -95,7 +88,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should not query radio' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content('<radio value="a"></radio>')
 
@@ -104,7 +96,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should query text spanning multiple elements' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content('<div><span>a</span> <span>b</span></div>')
 
@@ -115,7 +106,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should clear caches' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content(<<~HTML)
             <div id="target1">text</div>
@@ -153,7 +143,6 @@ RSpec.describe 'QueryHandler', type: :integration do
 
     describe 'in ElementHandles' do
       it 'should query existing element' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content('<div class="a"><span>a</span></div>')
 
@@ -164,7 +153,6 @@ RSpec.describe 'QueryHandler', type: :integration do
       end
 
       it 'should return null for non-existing element' do
-        pending 'TextQueryHandler not yet implemented'
         with_test_state do |page:, **|
           page.set_content('<div class="a"></div>')
 
