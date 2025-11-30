@@ -16,3 +16,7 @@ Gemfile.lock
 
 # Test output artifacts
 /spec/output/
+
+# Node tooling artifacts
+node_modules/
+package-lock.json

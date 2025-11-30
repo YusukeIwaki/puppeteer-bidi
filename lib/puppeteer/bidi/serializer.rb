@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'puppeteer/bidi/lazy_arg'
 
 module Puppeteer
   module Bidi
@@ -13,6 +14,8 @@ module Puppeteer
         # @return [Hash] BiDi LocalValue
         # @raise [ArgumentError] for unsupported types or circular references
         def serialize(value)
+          value = value.resolve while value.is_a?(LazyArg)
+
           # Check for circular references first for complex objects
           if complex_object?(value)
             check_circular_reference(value)

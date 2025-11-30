@@ -1,3 +1,4 @@
+require 'json'
 require 'singleton'
 
 module Puppeteer
@@ -23,10 +24,226 @@ module Puppeteer
           end
         end
 
-        default_query_handler_result(selector)
+        analyze_default_query_handler(selector)
       end
 
       private
+
+      class SelectorAnalysis
+        attr_reader :selector
+
+        def initialize(selector)
+          @selector = selector
+          @p_selector_json = nil
+        end
+
+        def requires_p_selector?
+          deep_combinator? || custom_pseudo_element?
+        end
+
+        def pure_css?
+          !requires_p_selector?
+        end
+
+        def requires_raf_polling?
+          pseudo_class_present?
+        end
+
+        def has_aria_pseudo_element?
+          selector.include?('::-p-aria')
+        end
+
+        def p_selector_json
+          return @p_selector_json if @p_selector_json
+          return unless deep_combinator?
+
+          @p_selector_json = DeepSelectorParser.new(selector).parse
+        rescue DeepSelectorParser::ParseError
+          @p_selector_json = nil
+        end
+
+        private
+
+        def deep_combinator?
+          selector.include?('>>>>') || selector.include?('>>>')
+        end
+
+        def custom_pseudo_element?
+          selector.include?('::-p-')
+        end
+
+        def pseudo_class_present?
+          in_string = nil
+          escape = false
+          bracket_depth = 0
+
+          selector.each_char.with_index do |char, index|
+            if escape
+              escape = false
+              next
+            end
+
+            if in_string
+              if char == '\\'
+                escape = true
+              elsif char == in_string
+                in_string = nil
+              end
+              next
+            end
+
+            case char
+            when '"', "'"
+              in_string = char
+            when '['
+              bracket_depth += 1
+            when ']'
+              bracket_depth -= 1 if bracket_depth.positive?
+            when '\\'
+              escape = true
+            when ':'
+              next_char = selector[index + 1]
+              next if next_char == ':'
+              return true if bracket_depth.zero?
+            end
+          end
+
+          false
+        end
+      end
+
+      class DeepSelectorParser
+        class ParseError < StandardError; end
+
+        def initialize(selector)
+          @selector = selector
+        end
+
+        def parse
+          selectors = []
+          current_complex = []
+          current_compound = []
+          current_complex << current_compound
+          selectors << current_complex
+
+          buffer = +''
+          in_string = nil
+          escape = false
+          bracket_depth = 0
+          paren_depth = 0
+
+          i = 0
+          while i < @selector.length
+            char = @selector[i]
+
+            if escape
+              buffer << char
+              escape = false
+              i += 1
+              next
+            end
+
+            if in_string
+              buffer << char
+              if char == '\\'
+                escape = true
+              elsif char == in_string
+                in_string = nil
+              end
+              i += 1
+              next
+            end
+
+            case char
+            when '"', "'"
+              buffer << char
+              in_string = char
+              i += 1
+              next
+            when '\\'
+              buffer << char
+              escape = true
+              i += 1
+              next
+            when '['
+              bracket_depth += 1
+              buffer << char
+              i += 1
+              next
+            when ']'
+              bracket_depth -= 1 if bracket_depth.positive?
+              buffer << char
+              i += 1
+              next
+            when '('
+              paren_depth += 1
+              buffer << char
+              i += 1
+              next
+            when ')'
+              paren_depth -= 1 if paren_depth.positive?
+              buffer << char
+              i += 1
+              next
+            end
+
+            if bracket_depth.zero? && paren_depth.zero?
+              if @selector.start_with?('>>>>', i)
+                push_compound!(current_compound, buffer)
+                raise ParseError if current_compound.empty?
+                current_complex << '>>>>'
+                current_compound = []
+                current_complex << current_compound
+                i += 4
+                next
+              elsif @selector.start_with?('>>>', i)
+                push_compound!(current_compound, buffer)
+                raise ParseError if current_compound.empty?
+                current_complex << '>>>'
+                current_compound = []
+                current_complex << current_compound
+                i += 3
+                next
+              elsif char == ','
+                push_compound!(current_compound, buffer)
+                raise ParseError if current_complex.flatten.empty?
+                current_complex = []
+                current_compound = []
+                current_complex << current_compound
+                selectors << current_complex
+                i += 1
+                next
+              end
+            end
+
+            buffer << char
+            i += 1
+          end
+
+          push_compound!(current_compound, buffer)
+          validate!(selectors)
+
+          JSON.generate(selectors)
+        end
+
+        private
+
+        def push_compound!(compound, buffer)
+          text = buffer.strip
+          compound << text unless text.empty?
+          buffer.clear
+        end
+
+        def validate!(selectors)
+          selectors.each do |complex|
+            complex.each do |part|
+              if part.is_a?(Array)
+                raise ParseError if part.empty?
+              end
+            end
+          end
+        end
+      end
 
       def builtin_query_handler_entries
         Enumerator.new do |y|
@@ -52,6 +269,29 @@ module Puppeteer
         end
 
         nil
+      end
+
+      def analyze_default_query_handler(selector)
+        analysis = SelectorAnalysis.new(selector)
+        if (p_selector = analysis.p_selector_json)
+          polling = analysis.has_aria_pseudo_element? ? 'raf' : 'mutation'
+          return Result.new(
+            updated_selector: p_selector,
+            polling: polling,
+            query_handler: resolve_handler_constant('PQueryHandler'),
+          )
+        end
+
+        if analysis.pure_css?
+          polling = analysis.requires_raf_polling? ? 'raf' : 'mutation'
+          return Result.new(
+            updated_selector: selector,
+            polling: polling,
+            query_handler: resolve_handler_constant('CSSQueryHandler'),
+          )
+        end
+
+        default_query_handler_result(selector)
       end
 
       def default_query_handler_result(selector)
@@ -124,7 +364,7 @@ module Puppeteer
           handle = frame.isolated_realm.wait_for_function(
             wait_for_selector_script,
             options,
-            frame.isolated_realm.puppeteer_util,
+            frame.isolated_realm.puppeteer_util_lazy_arg,
             query_one(frame.isolated_realm.puppeteer_util),
             selector,
             root,
@@ -147,6 +387,13 @@ module Puppeteer
         rescue Puppeteer::Bidi::TimeoutError => e
           raise Puppeteer::Bidi::TimeoutError,
                 "Waiting for selector `#{selector}` failed: Waiting failed: #{e.message.split(': ').last}"
+        rescue StandardError => e
+          message = "Waiting for selector `#{selector}` failed"
+          alias_selector = selector.sub('//*', '//')
+          if alias_selector != selector
+            message = "#{message} | alias: Waiting for selector `#{alias_selector}` failed"
+          end
+          raise StandardError.new(message), cause: e
         end
       end
     end
@@ -171,6 +418,67 @@ module Puppeteer
           return null;
         }
         JAVASCRIPT
+      end
+    end
+
+    class PQueryHandler < BaseQueryHandler
+      def query_one(puppeteer_util)
+        puppeteer_util.evaluate('({pQuerySelector}) => pQuerySelector.toString()')
+      end
+
+      def wait_for_selector_script
+        <<~JAVASCRIPT
+        ({checkVisibility, pQuerySelector}, selector, root, visibility) => {
+          const element = pQuerySelector(root || document, selector);
+          return checkVisibility(element, visibility === null ? undefined : visibility);
+        }
+        JAVASCRIPT
+      end
+
+      def wait_for_in_frame(frame, root, selector, visible:, hidden:, timeout:, polling:, &block)
+        raise FrameDetachedError if frame.detached?
+
+        visibility = if visible
+                        true
+                      elsif hidden
+                        false
+                      end
+
+        resolved_polling = (visible || hidden ? 'raf' : polling)
+
+        options = {}
+        options[:polling] = resolved_polling if resolved_polling
+        options[:timeout] = timeout if timeout
+
+        begin
+          handle = frame.isolated_realm.wait_for_function(
+            wait_for_selector_script,
+            options,
+            frame.isolated_realm.puppeteer_util_lazy_arg,
+            selector,
+            root,
+            visibility,
+            &block
+          )
+
+          return nil unless handle
+
+          unless handle.is_a?(ElementHandle)
+            begin
+              handle.dispose
+            rescue StandardError
+              # Ignore dispose errors.
+            end
+            return nil
+          end
+
+          frame.main_realm.transfer_handle(handle)
+        rescue Puppeteer::Bidi::TimeoutError => e
+          raise Puppeteer::Bidi::TimeoutError,
+                "Waiting for selector `#{selector}` failed: Waiting failed: #{e.message.split(': ').last}"
+        rescue StandardError => e
+          raise StandardError.new("Waiting for selector `#{selector}` failed"), cause: e
+        end
       end
     end
   end

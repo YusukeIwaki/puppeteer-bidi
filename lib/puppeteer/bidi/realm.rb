@@ -105,6 +105,7 @@ module Puppeteer
         @frame = frame
         @core_realm = core_realm
         @puppeteer_util_handle = nil
+        @puppeteer_util_lazy_arg = nil
         super(frame.page.timeout_settings)
 
         setup_core_realm_callbacks
@@ -153,9 +154,14 @@ module Puppeteer
         @puppeteer_util_handle = evaluate_handle(script)
       end
 
+      def puppeteer_util_lazy_arg
+        @puppeteer_util_lazy_arg ||= LazyArg.create { puppeteer_util }
+      end
+
       def reset_puppeteer_util_handle!
         handle = @puppeteer_util_handle
         @puppeteer_util_handle = nil
+        @puppeteer_util_lazy_arg = nil
         return unless handle
 
         begin
