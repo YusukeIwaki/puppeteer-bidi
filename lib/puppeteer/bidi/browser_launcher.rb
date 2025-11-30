@@ -81,12 +81,14 @@ module Puppeteer
       def find_firefox
         candidates = [
           ENV['FIREFOX_PATH'],
-          '/usr/bin/firefox',
+          '/usr/bin/firefox-nightly',
           '/usr/bin/firefox-devedition',
+          '/usr/bin/firefox',
           '/usr/bin/firefox-esr',
           '/snap/bin/firefox',
-          '/Applications/Firefox.app/Contents/MacOS/firefox',
+          '/Applications/Firefox Nightly.app/Contents/MacOS/firefox',
           '/Applications/Firefox Developer Edition.app/Contents/MacOS/firefox',
+          '/Applications/Firefox.app/Contents/MacOS/firefox',
         ].compact
 
         candidates.each do |path|

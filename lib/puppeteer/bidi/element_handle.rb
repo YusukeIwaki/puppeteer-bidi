@@ -164,6 +164,34 @@ module Puppeteer
         evaluate('element => element.focus()')
       end
 
+      # Upload files to this element (for <input type="file">)
+      # Following Puppeteer's implementation: ElementHandle.uploadFile -> Frame.setFiles
+      # @param files [Array<String>] File paths to upload
+      def upload_file(*files)
+        assert_not_disposed
+
+        # Resolve relative paths to absolute paths
+        files = files.map do |file|
+          if File.absolute_path?(file)
+            file
+          else
+            File.expand_path(file)
+          end
+        end
+
+        frame.set_files(self, files)
+      end
+
+      # Get the remote value as a SharedReference for BiDi commands
+      # @return [Hash] SharedReference with sharedId
+      def remote_value_as_shared_reference
+        if @remote_value['sharedId']
+          { sharedId: @remote_value['sharedId'] }
+        else
+          { handle: @remote_value['handle'] }
+        end
+      end
+
       # Scroll element into view if needed
       def scroll_into_view_if_needed
         assert_not_disposed

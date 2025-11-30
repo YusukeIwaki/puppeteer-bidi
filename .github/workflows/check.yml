@@ -29,6 +29,8 @@ jobs:
 
       - name: Setup Firefox
         uses: browser-actions/setup-firefox@latest
+        with:
+          firefox-version: latest-nightly
 
       - name: Verify Firefox installation
         run: firefox --version

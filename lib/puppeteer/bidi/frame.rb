@@ -422,6 +422,18 @@ module Puppeteer
         result.query_handler.new.wait_for(self, result.updated_selector, visible: visible, hidden: hidden, polling: result.polling, timeout: timeout, &block)
       end
 
+      # Set files on an input element
+      # @param element [ElementHandle] The input element
+      # @param files [Array<String>] File paths to set
+      def set_files(element, files)
+        assert_not_detached
+
+        @browsing_context.set_files(
+          element.remote_value_as_shared_reference,
+          files
+        ).wait
+      end
+
       private
 
       # Check if this frame is detached and raise error if so
