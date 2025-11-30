@@ -144,6 +144,77 @@ module Puppeteer
     end
 
     class BaseQueryHandler
+      # Query for a single element matching the selector
+      # @param element [ElementHandle] Element to query from
+      # @param selector [String] Selector to match
+      # @return [ElementHandle, nil] Found element or nil
+      def run_query_one(element, selector)
+        realm = element.frame.isolated_realm
+
+        # Adopt the element into the isolated realm first.
+        # This ensures the realm is valid and triggers puppeteer_util reset if needed
+        # after navigation (mirrors Puppeteer's @bindIsolatedHandle decorator pattern).
+        adopted_element = realm.adopt_handle(element)
+
+        result = realm.call_function(
+          query_one_script,
+          false,
+          arguments: [
+            Serializer.serialize(realm.puppeteer_util_lazy_arg),
+            adopted_element.remote_value,
+            Serializer.serialize(selector)
+          ]
+        )
+
+        return nil if result['type'] == 'exception'
+
+        result_value = result['result']
+        return nil if result_value['type'] == 'null' || result_value['type'] == 'undefined'
+
+        handle = JSHandle.from(result_value, realm.core_realm)
+        return nil unless handle.is_a?(ElementHandle)
+
+        element.frame.main_realm.transfer_handle(handle)
+      ensure
+        adopted_element&.dispose
+      end
+
+      # Query for all elements matching the selector
+      # @param element [ElementHandle] Element to query from
+      # @param selector [String] Selector to match
+      # @return [Array<ElementHandle>] Array of found elements
+      def run_query_all(element, selector)
+        realm = element.frame.isolated_realm
+
+        # Adopt the element into the isolated realm first.
+        # This ensures the realm is valid and triggers puppeteer_util reset if needed
+        # after navigation (mirrors Puppeteer's @bindIsolatedHandle decorator pattern).
+        adopted_element = realm.adopt_handle(element)
+
+        result = realm.call_function(
+          query_all_script,
+          true,
+          arguments: [
+            Serializer.serialize(realm.puppeteer_util_lazy_arg),
+            adopted_element.remote_value,
+            Serializer.serialize(selector)
+          ]
+        )
+
+        return [] if result['type'] == 'exception'
+
+        result_value = result['result']
+        return [] unless result_value['type'] == 'array'
+
+        handles = result_value['value'].map do |element_value|
+          JSHandle.from(element_value, realm.core_realm)
+        end.select { |h| h.is_a?(ElementHandle) }
+
+        handles.map { |h| element.frame.main_realm.transfer_handle(h) }
+      ensure
+        adopted_element&.dispose
+      end
+
       def wait_for(element_or_frame, selector, visible: nil, hidden: nil, timeout: nil, polling: nil, &block)
         if element_or_frame.is_a?(Frame)
           wait_for_in_frame(element_or_frame, nil, selector, visible: visible, hidden: hidden, timeout: timeout, polling: polling, &block)
@@ -158,15 +229,16 @@ module Puppeteer
 
       private
 
+      def query_one_script
+        raise NotImplementedError, "#{self.class}#query_one_script must be implemented"
+      end
+
+      def query_all_script
+        raise NotImplementedError, "#{self.class}#query_all_script must be implemented"
+      end
+
       def wait_for_selector_script
-        <<~JAVASCRIPT
-        ({checkVisibility, createFunction}, query, selector, root, visibility) => {
-          const querySelector = createFunction(query)
-          const element = querySelector(root || document, selector);
-          // Convert null to undefined for checkVisibility
-          return checkVisibility(element, visibility === null ? undefined : visibility);
-        }
-        JAVASCRIPT
+        raise NotImplementedError, "#{self.class}#wait_for_selector_script must be implemented"
       end
 
       def wait_for_in_frame(frame, root, selector, visible:, hidden:, timeout:, polling:, &block)
@@ -189,7 +261,6 @@ module Puppeteer
             wait_for_selector_script,
             options,
             frame.isolated_realm.puppeteer_util_lazy_arg,
-            query_one(frame.isolated_realm.puppeteer_util),
             selector,
             root,
             visibility,
@@ -223,23 +294,101 @@ module Puppeteer
     end
 
     class CSSQueryHandler < BaseQueryHandler
-      def query_one(puppeteer_util)
-        # (root, selector) => root.querySelector(selector)
-        puppeteer_util.evaluate('({cssQuerySelector}) => cssQuerySelector.toString()')
+      private
+
+      def query_one_script
+        <<~JAVASCRIPT
+        (PuppeteerUtil, element, selector) => {
+          return PuppeteerUtil.cssQuerySelector(element, selector);
+        }
+        JAVASCRIPT
+      end
+
+      def query_all_script
+        <<~JAVASCRIPT
+        async (PuppeteerUtil, element, selector) => {
+          return [...PuppeteerUtil.cssQuerySelectorAll(element, selector)];
+        }
+        JAVASCRIPT
+      end
+
+      def wait_for_selector_script
+        <<~JAVASCRIPT
+        (PuppeteerUtil, selector, root, visibility) => {
+          const element = PuppeteerUtil.cssQuerySelector(root || document, selector);
+          return PuppeteerUtil.checkVisibility(element, visibility === null ? undefined : visibility);
+        }
+        JAVASCRIPT
       end
     end
 
     class XPathQueryHandler < BaseQueryHandler
-      def query_one(puppeteer_util)
-        fn = puppeteer_util.evaluate('({xpathQuerySelectorAll}) => xpathQuerySelectorAll.toString()')
+      private
 
+      def query_one_script
         <<~JAVASCRIPT
-        (root, selector) => {
-          const fn = #{fn};
-          for (const result of fn(root, selector, 1)) {
+        (PuppeteerUtil, element, selector) => {
+          for (const result of PuppeteerUtil.xpathQuerySelectorAll(element, selector, 1)) {
             return result;
           }
           return null;
+        }
+        JAVASCRIPT
+      end
+
+      def query_all_script
+        <<~JAVASCRIPT
+        async (PuppeteerUtil, element, selector) => {
+          return [...PuppeteerUtil.xpathQuerySelectorAll(element, selector)];
+        }
+        JAVASCRIPT
+      end
+
+      def wait_for_selector_script
+        <<~JAVASCRIPT
+        (PuppeteerUtil, selector, root, visibility) => {
+          let element = null;
+          for (const result of PuppeteerUtil.xpathQuerySelectorAll(root || document, selector, 1)) {
+            element = result;
+            break;
+          }
+          return PuppeteerUtil.checkVisibility(element, visibility === null ? undefined : visibility);
+        }
+        JAVASCRIPT
+      end
+    end
+
+    class TextQueryHandler < BaseQueryHandler
+      private
+
+      def query_one_script
+        <<~JAVASCRIPT
+        (PuppeteerUtil, element, selector) => {
+          for (const result of PuppeteerUtil.textQuerySelectorAll(element, selector)) {
+            return result;
+          }
+          return null;
+        }
+        JAVASCRIPT
+      end
+
+      def query_all_script
+        <<~JAVASCRIPT
+        async (PuppeteerUtil, element, selector) => {
+          return [...PuppeteerUtil.textQuerySelectorAll(element, selector)];
+        }
+        JAVASCRIPT
+      end
+
+      def wait_for_selector_script
+        <<~JAVASCRIPT
+        (PuppeteerUtil, selector, root, visibility) => {
+          let element = null;
+          for (const result of PuppeteerUtil.textQuerySelectorAll(root || document, selector)) {
+            element = result;
+            break;
+          }
+          return PuppeteerUtil.checkVisibility(element, visibility === null ? undefined : visibility);
         }
         JAVASCRIPT
       end
