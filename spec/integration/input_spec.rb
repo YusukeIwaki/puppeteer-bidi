@@ -82,6 +82,17 @@ RSpec.describe 'input tests' do
       end
     end
 
+    it 'should work when file input is attached to DOM using JavaScript' do
+      pending 'Firefox BiDi does not fire fileDialogOpened event for input elements clicked via JavaScript'
+      with_test_state do |page:, **|
+        page.set_content('<input type="file" />')
+        chooser = page.wait_for_file_chooser do
+          page.eval_on_selector('input', 'input => input.click()')
+        end
+        expect(chooser).to be_a(Puppeteer::Bidi::FileChooser)
+      end
+    end
+
     it 'should work when file input is not attached to DOM' do
       # Firefox BiDi does not fire input.fileDialogOpened event for detached elements
       pending 'Firefox BiDi does not support fileDialogOpened for detached elements'
