@@ -150,6 +150,13 @@ module Puppeteer
       # @return [ElementHandle, nil] Found element or nil
       def run_query_one(element, selector)
         realm = element.frame.isolated_realm
+
+        # Adopt the element into the isolated realm first.
+        # This ensures the realm is valid and triggers puppeteer_util reset if needed
+        # after navigation (mirrors Puppeteer's @bindIsolatedHandle decorator pattern).
+        adopted_element = realm.adopt_handle(element)
+
+        # Now puppeteer_util will be fresh (re-evaluated if realm was recreated)
         puppeteer_util = realm.puppeteer_util
 
         result = realm.call_function(
@@ -158,7 +165,7 @@ module Puppeteer
           arguments: [
             Serializer.serialize(realm.puppeteer_util_lazy_arg),
             Serializer.serialize(query_one(puppeteer_util)),
-            element.remote_value,
+            adopted_element.remote_value,
             Serializer.serialize(selector)
           ]
         )
@@ -172,6 +179,8 @@ module Puppeteer
         return nil unless handle.is_a?(ElementHandle)
 
         element.frame.main_realm.transfer_handle(handle)
+      ensure
+        adopted_element&.dispose
       end
 
       # Query for all elements matching the selector
@@ -180,6 +189,13 @@ module Puppeteer
       # @return [Array<ElementHandle>] Array of found elements
       def run_query_all(element, selector)
         realm = element.frame.isolated_realm
+
+        # Adopt the element into the isolated realm first.
+        # This ensures the realm is valid and triggers puppeteer_util reset if needed
+        # after navigation (mirrors Puppeteer's @bindIsolatedHandle decorator pattern).
+        adopted_element = realm.adopt_handle(element)
+
+        # Now puppeteer_util will be fresh (re-evaluated if realm was recreated)
         puppeteer_util = realm.puppeteer_util
 
         result = realm.call_function(
@@ -188,7 +204,7 @@ module Puppeteer
           arguments: [
             Serializer.serialize(realm.puppeteer_util_lazy_arg),
             Serializer.serialize(query_all(puppeteer_util)),
-            element.remote_value,
+            adopted_element.remote_value,
             Serializer.serialize(selector)
           ]
         )
@@ -203,6 +219,8 @@ module Puppeteer
         end.select { |h| h.is_a?(ElementHandle) }
 
         handles.map { |h| element.frame.main_realm.transfer_handle(h) }
+      ensure
+        adopted_element&.dispose
       end
 
       def wait_for(element_or_frame, selector, visible: nil, hidden: nil, timeout: nil, polling: nil, &block)
