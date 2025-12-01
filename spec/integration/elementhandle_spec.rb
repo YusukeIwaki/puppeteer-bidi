@@ -195,8 +195,6 @@ RSpec.describe 'ElementHandle specs' do
   describe 'ElementHandle.isVisible and ElementHandle.isHidden' do
     it 'should work' do
       with_test_state do |page:, **|
-        pending 'isVisible/isHidden not yet implemented'
-
         page.set_content('<div style="display: none">text</div>')
         element = page.wait_for_selector('div')
         expect(element.visible?).to be false

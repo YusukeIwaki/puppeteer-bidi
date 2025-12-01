@@ -189,6 +189,26 @@ module Puppeteer
         end
       end
 
+      # Check if the element is visible
+      # An element is considered visible if:
+      # - It has computed styles
+      # - Its visibility is not 'hidden' or 'collapse'
+      # - Its bounding box is not empty (width > 0 AND height > 0)
+      # @return [Boolean] True if visible
+      def visible?
+        check_visibility(true)
+      end
+
+      # Check if the element is hidden
+      # An element is considered hidden if:
+      # - It has no computed styles
+      # - Its visibility is 'hidden' or 'collapse'
+      # - Its bounding box is empty (width == 0 OR height == 0)
+      # @return [Boolean] True if hidden
+      def hidden?
+        check_visibility(false)
+      end
+
       # Focus the element
       def focus
         assert_not_disposed
@@ -416,6 +436,39 @@ module Puppeteer
         # Ensure non-negative coordinates
         box['x'] = [box['x'], 0].max
         box['y'] = [box['y'], 0].max
+      end
+
+      # Check element visibility
+      # @param visible [Boolean] True to check if visible, false to check if hidden
+      # @return [Boolean] Result of visibility check
+      def check_visibility(visible)
+        assert_not_disposed
+
+        evaluate(<<~JS, visible)
+          (node, visible) => {
+            const HIDDEN_VISIBILITY_VALUES = ['hidden', 'collapse'];
+
+            if (!node) {
+              return visible === false;
+            }
+
+            // For text nodes, check parent element
+            const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+            if (!element) {
+              return visible === false;
+            }
+
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            const isBoundingBoxEmpty = rect.width === 0 || rect.height === 0;
+
+            const isVisible = style &&
+              !HIDDEN_VISIBILITY_VALUES.includes(style.visibility) &&
+              !isBoundingBoxEmpty;
+
+            return visible === isVisible;
+          }
+        JS
       end
 
       # String representation includes element type
