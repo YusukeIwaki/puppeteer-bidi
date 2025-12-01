@@ -85,6 +85,22 @@ point.x  # => 50.0
 point.y  # => 75.0
 ```
 
+### ElementHandle::BoxModel
+
+CSS box model with content, padding, border, and margin quads. Each quad is an array of 4 Points (top-left, top-right, bottom-right, bottom-left).
+
+```ruby
+BoxModel = Data.define(:content, :padding, :border, :margin, :width, :height)
+
+box = element.box_model
+box.width           # => 200.0
+box.height          # => 100.0
+box.border[0]       # => Point(x: 10.0, y: 20.0) - top-left corner
+box.content[0].x    # => 21.0 (border.x + borderLeftWidth + paddingLeft)
+```
+
+**Note**: Frame offset handling is not yet implemented. For elements inside iframes, coordinates are relative to the iframe, not the main page.
+
 ## ElementHandle#click
 
 ElementHandle has its own `click` method that:

@@ -475,6 +475,11 @@ ElementHandle
 | `BidiElementHandle#$()` | `ElementHandle#query_selector` | CSS selector |
 | `BidiElementHandle#$$()` | `ElementHandle#query_selector_all` | Multiple elements |
 | `BidiElementHandle#frame` | `ElementHandle#frame` | realm.environment |
+| `BidiElementHandle#contentFrame()` | `ElementHandle#content_frame` | iframe/frame content |
+| `BidiElementHandle#isVisible()` | `ElementHandle#visible?` | Visibility check |
+| `BidiElementHandle#isHidden()` | `ElementHandle#hidden?` | Hidden check |
+| `BidiElementHandle#toElement()` | `ElementHandle#to_element` | Tag name validation |
+| `BidiElementHandle#boxModel()` | `ElementHandle#box_model` | CSS box model |
 | `BidiSerializer.serialize()` | `Serializer.serialize()` | Centralized |
 | `BidiDeserializer.deserialize()` | `Deserializer.deserialize()` | Centralized |
 
