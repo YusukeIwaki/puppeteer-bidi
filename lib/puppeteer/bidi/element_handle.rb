@@ -6,6 +6,12 @@ module Puppeteer
     # Based on Puppeteer's BidiElementHandle implementation
     # This extends JSHandle with DOM-specific methods
     class ElementHandle < JSHandle
+      # Bounding box data class representing element position and dimensions
+      BoundingBox = Data.define(:x, :y, :width, :height)
+
+      # Point data class representing a coordinate
+      Point = Data.define(:x, :y)
+
       # Factory method to create ElementHandle from remote value
       # @param remote_value [Hash] BiDi RemoteValue
       # @param realm [Core::Realm] Associated realm
@@ -105,18 +111,13 @@ module Puppeteer
       # @param count [Integer] Number of clicks
       # @param delay [Numeric] Delay between mousedown and mouseup
       # @param offset [Hash] Click offset {x:, y:} relative to element center
-      # @param frame [Frame] Frame containing this element (passed from Frame#click)
-      def click(button: 'left', count: 1, delay: nil, offset: nil, frame: nil)
+      def click(button: 'left', count: 1, delay: nil, offset: nil)
         assert_not_disposed
 
         scroll_into_view_if_needed
         point = clickable_point(offset: offset)
 
-        # Use the frame parameter to get the page
-        # Frame is needed because ElementHandle doesn't have direct access to Page
-        raise 'Frame parameter required for click' unless frame
-
-        frame.page.mouse.click(point[:x], point[:y], button: button, count: count, delay: delay)
+        frame.page.mouse.click(point.x, point.y, button: button, count: count, delay: delay)
       end
 
       # Type text into the element
@@ -162,6 +163,16 @@ module Puppeteer
         assert_not_disposed
 
         evaluate('element => element.focus()')
+      end
+
+      # Hover over the element
+      # Scrolls element into view if needed and moves mouse to element center
+      def hover
+        assert_not_disposed
+
+        scroll_into_view_if_needed
+        point = clickable_point
+        frame.page.mouse.move(point.x, point.y)
       end
 
       # Upload files to this element (for <input type="file">)
@@ -231,8 +242,8 @@ module Puppeteer
       end
 
       # Get clickable point for the element
-      # @param offset [Hash, nil] Offset {x:, y:} from element center
-      # @return [Hash] Point {x:, y:}
+      # @param offset [Hash, nil] Offset {x:, y:} from element top-left corner
+      # @return [Point] Point with x and y coordinates
       def clickable_point(offset: nil)
         assert_not_disposed
 
@@ -240,16 +251,45 @@ module Puppeteer
         raise 'Node is either not clickable or not an Element' unless box
 
         if offset
-          {
+          Point.new(
             x: box[:x] + offset[:x],
             y: box[:y] + offset[:y]
-          }
+          )
         else
-          {
+          Point.new(
             x: box[:x] + box[:width] / 2,
             y: box[:y] + box[:height] / 2
-          }
+          )
         end
+      end
+
+      # Get the bounding box of the element
+      # Uses getBoundingClientRect() to get the element's position and size
+      # @return [BoundingBox, nil] Bounding box or nil if not visible
+      def bounding_box
+        assert_not_disposed
+
+        result = evaluate(<<~JS)
+          element => {
+            if (!(element instanceof Element)) {
+              return null;
+            }
+            const rect = element.getBoundingClientRect();
+            return {x: rect.x, y: rect.y, width: rect.width, height: rect.height};
+          }
+        JS
+
+        return nil unless result
+
+        # Return nil if element has zero dimensions (not visible)
+        return nil if result['width'].zero? && result['height'].zero?
+
+        BoundingBox.new(
+          x: result['x'],
+          y: result['y'],
+          width: result['width'],
+          height: result['height']
+        )
       end
 
       # Get the clickable box for the element

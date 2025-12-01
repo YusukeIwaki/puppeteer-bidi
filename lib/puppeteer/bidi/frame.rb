@@ -139,7 +139,7 @@ module Puppeteer
         raise SelectorNotFoundError, selector unless handle
 
         begin
-          handle.click(button: button, count: count, delay: delay, offset: offset, frame: self)
+          handle.click(button: button, count: count, delay: delay, offset: offset)
         ensure
           handle.dispose
         end
@@ -157,6 +157,21 @@ module Puppeteer
 
         begin
           handle.type(text, delay: delay)
+        ensure
+          handle.dispose
+        end
+      end
+
+      # Hover over an element matching the selector
+      # @param selector [String] CSS selector
+      def hover(selector)
+        assert_not_detached
+
+        handle = query_selector(selector)
+        raise SelectorNotFoundError, selector unless handle
+
+        begin
+          handle.hover
         ensure
           handle.dispose
         end

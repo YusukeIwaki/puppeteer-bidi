@@ -229,6 +229,12 @@ module Puppeteer
         main_frame.type(selector, text, delay: delay)
       end
 
+      # Hover over an element matching the selector
+      # @param selector [String] CSS selector
+      def hover(selector)
+        main_frame.hover(selector)
+      end
+
       # Focus an element matching the selector
       # @param selector [String] CSS selector
       def focus(selector)
