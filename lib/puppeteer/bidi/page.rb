@@ -276,7 +276,7 @@ module Puppeteer
       # Get the main frame
       # @return [Frame] Main frame
       def main_frame
-        @main_frame ||= Frame.new(self, @browsing_context)
+        @main_frame ||= Frame.from(self, @browsing_context)
       end
 
       # Get the focused frame
@@ -318,10 +318,11 @@ module Puppeteer
         frame
       end
 
-      # Get all frames (main frame + child frames)
+      # Get all frames (main frame + all nested child frames)
+      # Following Puppeteer's pattern of returning all frames recursively
       # @return [Array<Frame>] All frames
       def frames
-        [main_frame] + main_frame.child_frames
+        collect_frames(main_frame)
       end
 
       # Get the mouse instance
@@ -541,6 +542,17 @@ module Puppeteer
       end
 
       private
+
+      # Recursively collect all frames starting from the given frame
+      # @param frame [Frame] Starting frame
+      # @return [Array<Frame>] All frames including the starting frame and its descendants
+      def collect_frames(frame)
+        result = [frame]
+        frame.child_frames.each do |child|
+          result.concat(collect_frames(child))
+        end
+        result
+      end
 
       # Check if this page is closed and raise error if so
       # @raise [PageClosedError] If page is closed

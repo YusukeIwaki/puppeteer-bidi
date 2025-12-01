@@ -57,8 +57,6 @@ RSpec.describe 'Frame specs' do
   describe 'Frame.evaluateHandle' do
     it 'should work' do
       with_test_state do |page:, server:, **|
-        skip 'Frame.evaluateHandle not yet implemented'
-
         page.goto(server.empty_page)
         main_frame = page.main_frame
         window_handle = main_frame.evaluate_handle('() => window')
@@ -83,8 +81,6 @@ RSpec.describe 'Frame specs' do
 
     it 'allows readonly array to be an argument' do
       with_test_state do |page:, server:, **|
-        skip 'Frame.evaluate not yet implemented'
-
         page.goto(server.empty_page)
         main_frame = page.main_frame
 
@@ -99,8 +95,6 @@ RSpec.describe 'Frame specs' do
   describe 'Frame.page' do
     it 'should retrieve the page from a frame' do
       with_test_state do |page:, server:, **|
-        skip 'Frame.page not yet implemented'
-
         page.goto(server.empty_page)
         main_frame = page.main_frame
         expect(main_frame.page).to eq(page)
@@ -111,8 +105,6 @@ RSpec.describe 'Frame specs' do
   describe 'Frame Management' do
     it 'should handle nested frames' do
       with_test_state do |page:, server:, **|
-        skip 'Nested frames not yet implemented'
-
         page.goto("#{server.prefix}/frames/nested-frames.html")
         expect(dump_frames(page.main_frame)).to eq([
           'http://localhost:<PORT>/frames/nested-frames.html',
@@ -274,8 +266,6 @@ RSpec.describe 'Frame specs' do
 
     it 'should report frame.parent()' do
       with_test_state do |page:, server:, **|
-        skip 'Frame parent not yet implemented'
-
         attach_frame(page, 'frame1', server.empty_page)
         attach_frame(page, 'frame2', server.empty_page)
         expect(page.frames[0].parent_frame).to be_nil
@@ -341,8 +331,6 @@ RSpec.describe 'Frame specs' do
   describe 'Frame.frameElement' do
     it 'should work' do
       with_test_state do |page:, server:, **|
-        skip 'Frame.frameElement not yet implemented'
-
         attach_frame(page, 'theFrameId', server.empty_page)
         page.evaluate(<<~JS, server.empty_page)
           (url) => {

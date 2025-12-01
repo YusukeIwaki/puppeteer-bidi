@@ -4,12 +4,24 @@ module Puppeteer
   module Bidi
     # Frame represents a frame (main frame or iframe) in the page
     # This is a high-level wrapper around Core::BrowsingContext
+    # Following Puppeteer's BidiFrame implementation
     class Frame
       attr_reader :browsing_context
+
+      # Factory method following Puppeteer's BidiFrame.from pattern
+      # @param parent [Page, Frame] Parent page or frame
+      # @param browsing_context [Core::BrowsingContext] Associated browsing context
+      # @return [Frame] New frame instance
+      def self.from(parent, browsing_context)
+        frame = new(parent, browsing_context)
+        frame.send(:initialize_frame)
+        frame
+      end
 
       def initialize(parent, browsing_context)
         @parent = parent
         @browsing_context = browsing_context
+        @frames = {} # Map of browsing context id to Frame (like WeakMap in JS)
 
         default_core_realm = @browsing_context.default_realm
         internal_core_realm = @browsing_context.create_window_realm("__puppeteer_internal_#{rand(1..10_000)}")
@@ -245,10 +257,17 @@ module Puppeteer
       end
 
       # Get the frame name
-      # @return [String, nil] Frame name
+      # Returns the name attribute of the iframe, or id if name is empty
+      # Following Puppeteer's Frame.name() implementation
+      # @return [String] Frame name (empty string if no name)
       def name
-        # TODO: Implement frame name retrieval
-        nil
+        # Evaluate window.name in the frame context
+        # This is more reliable than trying to get it from the browsing context info
+        @name ||= begin
+          main_realm.evaluate('() => window.name') || ''
+        rescue StandardError
+          ''
+        end
       end
 
       # Check if frame is detached
@@ -258,14 +277,49 @@ module Puppeteer
       end
 
       # Get child frames
+      # Returns cached frame instances following Puppeteer's pattern
       # @return [Array<Frame>] Child frames
       def child_frames
-        # Get child browsing contexts directly from the browsing context
-        child_contexts = @browsing_context.children
+        @browsing_context.children.map do |child_context|
+          @frames[child_context.id]
+        end.compact
+      end
 
-        # Create Frame objects for each child
-        child_contexts.map do |child_context|
-          Frame.new(self, child_context)
+      # Get the frame element (iframe/frame DOM element) for this frame
+      # Returns nil for the main frame
+      # Following Puppeteer's Frame.frameElement() implementation exactly
+      # @return [ElementHandle, nil] The iframe/frame element handle, or nil for main frame
+      def frame_element
+        assert_not_detached
+
+        parent = parent_frame
+        return nil unless parent
+
+        # Query all iframe and frame elements in the parent frame
+        list = parent.isolated_realm.evaluate_handle('() => document.querySelectorAll("iframe,frame")')
+
+        begin
+          # Get the array of elements
+          length = list.evaluate('list => list.length')
+
+          length.times do |i|
+            iframe = list.evaluate_handle("(list, i) => list[i]", i)
+            begin
+              # Check if this iframe's content frame matches our frame
+              content_frame = iframe.as_element&.content_frame
+              if content_frame&.browsing_context&.id == @browsing_context.id
+                # Transfer the handle to the main realm (adopt handle)
+                # This ensures the returned handle is in the correct execution context
+                return parent.main_realm.transfer_handle(iframe.as_element)
+              end
+            ensure
+              iframe.dispose unless iframe.disposed?
+            end
+          end
+
+          nil
+        ensure
+          list.dispose unless list.disposed?
         end
       end
 
@@ -449,12 +503,54 @@ module Puppeteer
         ).wait
       end
 
+      # Get the frame ID (browsing context ID)
+      # Following Puppeteer's _id pattern
+      # @return [String] Frame ID
+      def _id
+        @browsing_context.id
+      end
+
       private
+
+      # Initialize the frame by setting up child frame tracking
+      # Following Puppeteer's BidiFrame.#initialize pattern
+      def initialize_frame
+        # Create Frame objects for existing child contexts
+        @browsing_context.children.each do |child_context|
+          create_frame_target(child_context)
+        end
+
+        # Listen for new child frames
+        @browsing_context.on(:browsingcontext) do |data|
+          create_frame_target(data[:browsing_context])
+        end
+
+        # Clean up when browsing context is closed
+        @browsing_context.on(:closed) do
+          @frames.clear
+        end
+      end
+
+      # Create a Frame for a child browsing context
+      # Following Puppeteer's BidiFrame.#createFrameTarget pattern
+      # @param browsing_context [Core::BrowsingContext] Child browsing context
+      # @return [Frame] Created frame
+      def create_frame_target(browsing_context)
+        frame = Frame.from(self, browsing_context)
+        @frames[browsing_context.id] = frame
+
+        # Remove frame when its context is closed
+        browsing_context.once(:closed) do
+          @frames.delete(browsing_context.id)
+        end
+
+        frame
+      end
 
       # Check if this frame is detached and raise error if so
       # @raise [FrameDetachedError] If frame is detached
       def assert_not_detached
-        raise FrameDetachedError if @browsing_context.closed?
+        raise FrameDetachedError, "Attempted to use detached Frame '#{_id}'." if @browsing_context.closed?
       end
 
     end
