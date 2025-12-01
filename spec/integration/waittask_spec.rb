@@ -7,13 +7,11 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      Sync do
-        watchdog = Async do
-          page.wait_for_function("() => window.__FOO === 1")
-        end
-        page.evaluate("() => window.__FOO = 1")
-        watchdog.wait
+      watchdog = Async do
+        page.wait_for_function("() => window.__FOO === 1")
       end
+      page.evaluate("() => window.__FOO = 1")
+      watchdog.wait
     end
   end
 
@@ -48,21 +46,19 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      Sync do
-        start_time = Time.now
+      start_time = Time.now
 
-        watchdog = Async do
-          page.wait_for_function("() => window.__FOO === 'hit'", polling: 200)
-        end
-        Async do
-          page.evaluate("() => setTimeout(() => { window.__FOO = 'hit' }, 50)")
-        end
-
-        watchdog.wait
-        elapsed = ((Time.now - start_time) * 1000).to_i
-
-        expect(elapsed).to be >= 150
+      watchdog = Async do
+        page.wait_for_function("() => window.__FOO === 'hit'", polling: 500)
       end
+      Async do
+        page.evaluate("() => setTimeout(() => { window.__FOO = 'hit' }, 50)")
+      end
+
+      watchdog.wait
+      elapsed = ((Time.now - start_time) * 1000).to_i
+
+      expect(elapsed).to be >= 250
     end
   end
 
@@ -72,13 +68,13 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
 
       start_time = Time.now
 
-      page.wait_for_function("() => window.__FOO === 'hit'", polling: 200) do
+      page.wait_for_function("() => window.__FOO === 'hit'", polling: 500) do
         page.evaluate("() => setTimeout(() => { window.__FOO = 'hit' }, 50)")
       end
 
       elapsed = ((Time.now - start_time) * 1000).to_i
 
-      expect(elapsed).to be >= 150
+      expect(elapsed).to be >= 250
     end
   end
 
@@ -86,24 +82,22 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      Sync do
-        success = false
+      success = false
 
-        watchdog = Async do
-          page.wait_for_function(
-            "() => window.__FOO === 'hit'",
-            polling: 'mutation'
-          ).tap { success = true }
-        end
-
-        page.evaluate("() => window.__FOO = 'hit'")
-        expect(success).to be false
-
-        page.evaluate("() => document.body.appendChild(document.createElement('div'))")
-
-        watchdog.wait
-        expect(success).to be true
+      watchdog = Async do
+        page.wait_for_function(
+          "() => window.__FOO === 'hit'",
+          polling: 'mutation'
+        ).tap { success = true }
       end
+
+      page.evaluate("() => window.__FOO = 'hit'")
+      expect(success).to be false
+
+      page.evaluate("() => document.body.appendChild(document.createElement('div'))")
+
+      watchdog.wait
+      expect(success).to be true
     end
   end
 
@@ -111,25 +105,23 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      Sync do
-        success = false
+      success = false
 
-        watchdog = Async do
-          page.wait_for_function(
-            "async () => window.__FOO === 'hit'",
-            polling: 'mutation'
-          ).tap { success = true }
-        end
-
-        page.evaluate("async () => window.__FOO = 'hit'")
-        expect(success).to be false
-
-        page.evaluate("async () => document.body.appendChild(document.createElement('div'))")
-
-        handle = watchdog.wait
-        expect(success).to be true
-        handle.dispose
+      watchdog = Async do
+        page.wait_for_function(
+          "async () => window.__FOO === 'hit'",
+          polling: 'mutation'
+        ).tap { success = true }
       end
+
+      page.evaluate("async () => window.__FOO = 'hit'")
+      expect(success).to be false
+
+      page.evaluate("async () => document.body.appendChild(document.createElement('div'))")
+
+      handle = watchdog.wait
+      expect(success).to be true
+      handle.dispose
     end
   end
 
@@ -137,14 +129,12 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      Sync do
-        watchdog = Async do
-          page.wait_for_function("async () => window.__FOO === 'hit'", polling: 'raf')
-        end
-        page.evaluate("async () => window.__FOO = 'hit'")
-
-        watchdog.wait
+      watchdog = Async do
+        page.wait_for_function("async () => window.__FOO === 'hit'", polling: 'raf')
       end
+      page.evaluate("async () => window.__FOO = 'hit'")
+
+      watchdog.wait
     end
   end
 
@@ -152,17 +142,15 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      Sync do
-        watchdog = Async do
-          page.wait_for_function("async () => window.__FOO === 'hit'", polling: 'raf')
-        end
-
-        page.evaluate("() => window.__FOO = 'hit'")
-
-        handle = watchdog.wait
-        expect(handle).not_to be_nil
-        handle.dispose
+      watchdog = Async do
+        page.wait_for_function("async () => window.__FOO === 'hit'", polling: 'raf')
       end
+
+      page.evaluate("() => window.__FOO = 'hit'")
+
+      handle = watchdog.wait
+      expect(handle).not_to be_nil
+      handle.dispose
     end
   end
 
@@ -223,25 +211,23 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
 
       div = page.query_selector('div')
 
-      Sync do
-        resolved = false
+      resolved = false
 
-        watchdog = Async do
-          page.wait_for_function(
-            "element => element.localName === 'div' && !element.parentElement",
-            {},
-            div
-          ).tap { resolved = true }
-        end
-
-        expect(resolved).to be false
-
-        page.evaluate('element => element.remove()', div)
-
-        handle = watchdog.wait
-        expect(resolved).to be true
-        handle.dispose
+      watchdog = Async do
+        page.wait_for_function(
+          "element => element.localName === 'div' && !element.parentElement",
+          {},
+          div
+        ).tap { resolved = true }
       end
+
+      expect(resolved).to be false
+
+      page.evaluate('element => element.remove()', div)
+
+      handle = watchdog.wait
+      expect(resolved).to be true
+      handle.dispose
 
       div.dispose
     end
@@ -273,75 +259,69 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      Sync do
-        watchdog = Async do
-          page.wait_for_function(
-            <<~JS,
-              () => {
-                window.__counter = (window.__counter || 0) + 1;
-                return window.__injected;
-              }
-            JS
-            timeout: 0,
-            polling: 10
-          )
-        end
-
-        page.wait_for_function("() => window.__counter > 10")
-        page.evaluate("() => window.__injected = true")
-
-        watchdog.wait
+      watchdog = Async do
+        page.wait_for_function(
+          <<~JS,
+            () => {
+              window.__counter = (window.__counter || 0) + 1;
+              return window.__injected;
+            }
+          JS
+          timeout: 0,
+          polling: 10
+        )
       end
+
+      page.wait_for_function("() => window.__counter > 10")
+      page.evaluate("() => window.__injected = true")
+
+      watchdog.wait
     end
   end
 
   it 'should survive cross-process navigation' do
     with_test_state do |page:, server:, **|
-      Sync do
-        foo_found = false
+      foo_found = false
 
-        watchdog = Async do
-          page.wait_for_function("() => window.__FOO === 1").tap { foo_found = true }
-        end
-
-        page.goto(server.empty_page)
-        expect(foo_found).to be false
-
-        # page.reload
-        page.goto(server.empty_page)
-        expect(foo_found).to be false
-
-        page.goto("#{server.cross_process_prefix}/grid.html")
-        expect(foo_found).to be false
-
-        page.evaluate("() => window.__FOO = 1")
-
-        watchdog.wait
-        expect(foo_found).to be true
+      watchdog = Async do
+        page.wait_for_function("() => window.__FOO === 1").tap { foo_found = true }
       end
+
+      page.goto(server.empty_page)
+      expect(foo_found).to be false
+
+      # page.reload
+      page.goto(server.empty_page)
+      expect(foo_found).to be false
+
+      page.goto("#{server.cross_process_prefix}/grid.html")
+      expect(foo_found).to be false
+
+      page.evaluate("() => window.__FOO = 1")
+
+      watchdog.wait
+      expect(foo_found).to be true
     end
   end
 
   it 'should survive navigations' do
     with_test_state do |page:, server:, **|
-      Sync do
-        done = false
+      done = false
 
-        watchdog = Async do
-          page.wait_for_function("() => window.__DONE === true").tap { done = true }
-        end
-
-        page.goto(server.empty_page)
-        expect(done).to be false
-
-        page.goto("#{server.prefix}/grid.html")
-        expect(done).to be false
-
-        page.evaluate("() => window.__DONE = true")
-
-        watchdog.wait
-        expect(done).to be true
+      watchdog = Async do
+        page.wait_for_function("() => window.__DONE === true").tap { done = true }
       end
+
+      page.goto(server.empty_page)
+      expect(done).to be false
+
+      page.goto("#{server.prefix}/grid.html")
+      expect(done).to be false
+
+      page.evaluate("() => window.__DONE = true")
+
+      watchdog.wait
+      expect(done).to be true
     end
   end
 
