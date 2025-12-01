@@ -362,8 +362,6 @@ RSpec.describe 'Mouse' do
 
   it 'should evaluate before mouse event' do
     with_test_state do |page:, server:, **|
-      pending 'element_handle.clickable_point not implemented yet'
-
       page.goto(server.empty_page)
       page.goto("#{server.cross_process_prefix}/input/button.html")
 
@@ -378,7 +376,7 @@ RSpec.describe 'Mouse' do
         }
       JS
 
-      page.mouse.click(point['x'], point['y'])
+      page.mouse.click(point.x, point.y)
       page.evaluate('() => globalThis.clickPromise')
     end
   end
