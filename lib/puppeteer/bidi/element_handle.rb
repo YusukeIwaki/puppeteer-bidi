@@ -111,16 +111,11 @@ module Puppeteer
       # @param count [Integer] Number of clicks
       # @param delay [Numeric] Delay between mousedown and mouseup
       # @param offset [Hash] Click offset {x:, y:} relative to element center
-      # @param frame [Frame] Frame containing this element (passed from Frame#click)
-      def click(button: 'left', count: 1, delay: nil, offset: nil, frame: nil)
+      def click(button: 'left', count: 1, delay: nil, offset: nil)
         assert_not_disposed
 
         scroll_into_view_if_needed
         point = clickable_point(offset: offset)
-
-        # Use the frame parameter to get the page
-        # Frame is needed because ElementHandle doesn't have direct access to Page
-        raise 'Frame parameter required for click' unless frame
 
         frame.page.mouse.click(point.x, point.y, button: button, count: count, delay: delay)
       end

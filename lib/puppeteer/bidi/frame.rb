@@ -139,7 +139,7 @@ module Puppeteer
         raise SelectorNotFoundError, selector unless handle
 
         begin
-          handle.click(button: button, count: count, delay: delay, offset: offset, frame: self)
+          handle.click(button: button, count: count, delay: delay, offset: offset)
         ensure
           handle.dispose
         end
