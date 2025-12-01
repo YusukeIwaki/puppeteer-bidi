@@ -175,6 +175,75 @@ module Puppeteer
         frame.page.mouse.move(point.x, point.y)
       end
 
+      # Autofill the form with the given data
+      # Note: WebDriver BiDi does not have a native autofill command like CDP's Autofill.trigger.
+      # This implementation uses JavaScript to find and fill form fields.
+      # @param credit_card [Hash] Credit card data with keys: :number, :name, :expiry_month, :expiry_year, :cvc
+      def autofill(credit_card:)
+        assert_not_disposed
+
+        # Find the form containing this element and fill in credit card fields
+        evaluate(<<~JS, credit_card)
+          (element, creditCard) => {
+            // Find the form containing this element
+            const form = element.closest('form') || element.ownerDocument;
+
+            // Helper function to find input by various attributes
+            const findInput = (form, patterns) => {
+              const inputs = form.querySelectorAll('input');
+              for (const input of inputs) {
+                const id = (input.id || '').toLowerCase();
+                const name = (input.name || '').toLowerCase();
+                const autocomplete = (input.autocomplete || '').toLowerCase();
+
+                for (const pattern of patterns) {
+                  if (id.includes(pattern) || name.includes(pattern) || autocomplete.includes(pattern)) {
+                    return input;
+                  }
+                }
+              }
+              return null;
+            };
+
+            // Fill in the credit card fields
+            const nameInput = findInput(form, ['cc-name', 'ccname', 'cardholder', 'name']);
+            if (nameInput && creditCard.name) {
+              nameInput.value = creditCard.name;
+              nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+              nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            const numberInput = findInput(form, ['cc-number', 'ccnumber', 'cardnumber', 'card_number', 'number']);
+            if (numberInput && creditCard.number) {
+              numberInput.value = creditCard.number;
+              numberInput.dispatchEvent(new Event('input', { bubbles: true }));
+              numberInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            const monthInput = findInput(form, ['cc-exp-month', 'ccmonth', 'expmonth', 'expiration_month', 'exp_month']);
+            if (monthInput && creditCard.expiry_month) {
+              monthInput.value = creditCard.expiry_month;
+              monthInput.dispatchEvent(new Event('input', { bubbles: true }));
+              monthInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            const yearInput = findInput(form, ['cc-exp-year', 'ccyear', 'expyear', 'expiration_year', 'exp_year']);
+            if (yearInput && creditCard.expiry_year) {
+              yearInput.value = creditCard.expiry_year;
+              yearInput.dispatchEvent(new Event('input', { bubbles: true }));
+              yearInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            const cvcInput = findInput(form, ['cc-csc', 'cvc', 'cvv', 'csc', 'security']);
+            if (cvcInput && creditCard.cvc) {
+              cvcInput.value = creditCard.cvc;
+              cvcInput.dispatchEvent(new Event('input', { bubbles: true }));
+              cvcInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+        JS
+      end
+
       # Upload files to this element (for <input type="file">)
       # Following Puppeteer's implementation: ElementHandle.uploadFile -> Frame.setFiles
       # @param files [Array<String>] File paths to upload
