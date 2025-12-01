@@ -12,6 +12,11 @@ module Puppeteer
       # Point data class representing a coordinate
       Point = Data.define(:x, :y)
 
+      # Box model data class representing element's CSS box model
+      # Each quad (content, padding, border, margin) contains 4 Points representing corners
+      # Corners are ordered: top-left, top-right, bottom-right, bottom-left
+      BoxModel = Data.define(:content, :padding, :border, :margin, :width, :height)
+
       # Factory method to create ElementHandle from remote value
       # @param remote_value [Hash] BiDi RemoteValue
       # @param realm [Core::Realm] Associated realm
@@ -158,6 +163,71 @@ module Puppeteer
         @realm.environment
       end
 
+      # Get the content frame for iframe/frame elements
+      # Returns the frame that the iframe/frame element refers to
+      # @return [Frame, nil] The content frame, or nil if not an iframe/frame
+      def content_frame
+        assert_not_disposed
+
+        handle = evaluate_handle(<<~JS)
+          element => {
+            if (element instanceof HTMLIFrameElement || element instanceof HTMLFrameElement) {
+              return element.contentWindow;
+            }
+            return undefined;
+          }
+        JS
+
+        begin
+          value = handle.remote_value
+          if value['type'] == 'window'
+            # Find the frame with matching browsing context ID
+            context_id = value.dig('value', 'context')
+            return nil unless context_id
+
+            frame.page.frames.find { |f| f.browsing_context.id == context_id }
+          else
+            nil
+          end
+        ensure
+          handle.dispose
+        end
+      end
+
+      # Check if the element is visible
+      # An element is considered visible if:
+      # - It has computed styles
+      # - Its visibility is not 'hidden' or 'collapse'
+      # - Its bounding box is not empty (width > 0 AND height > 0)
+      # @return [Boolean] True if visible
+      def visible?
+        check_visibility(true)
+      end
+
+      # Check if the element is hidden
+      # An element is considered hidden if:
+      # - It has no computed styles
+      # - Its visibility is 'hidden' or 'collapse'
+      # - Its bounding box is empty (width == 0 OR height == 0)
+      # @return [Boolean] True if hidden
+      def hidden?
+        check_visibility(false)
+      end
+
+      # Convert the current handle to the given element type
+      # Validates that the element matches the expected tag name
+      # @param tag_name [String] The expected tag name (e.g., 'div', 'a', 'input')
+      # @return [ElementHandle] Self if tag name matches
+      # @raise [RuntimeError] If the element doesn't match the expected tag name
+      def to_element(tag_name)
+        assert_not_disposed
+
+        is_matching = evaluate('(node, tagName) => node.nodeName === tagName.toUpperCase()', tag_name)
+        raise "Element is not a(n) `#{tag_name}` element" unless is_matching
+
+        self
+      end
+
       # Focus the element
       def focus
         assert_not_disposed
@@ -292,6 +362,96 @@ module Puppeteer
         )
       end
 
+      # Get the box model of the element (content, padding, border, margin)
+      # @return [BoxModel, nil] Box model or nil if not visible
+      def box_model
+        assert_not_disposed
+
+        model = evaluate(<<~JS)
+          element => {
+            if (!(element instanceof Element)) {
+              return null;
+            }
+            // Element is not visible
+            if (element.getClientRects().length === 0) {
+              return null;
+            }
+            const rect = element.getBoundingClientRect();
+            const style = window.getComputedStyle(element);
+            const offsets = {
+              padding: {
+                left: parseInt(style.paddingLeft, 10),
+                top: parseInt(style.paddingTop, 10),
+                right: parseInt(style.paddingRight, 10),
+                bottom: parseInt(style.paddingBottom, 10),
+              },
+              margin: {
+                left: -parseInt(style.marginLeft, 10),
+                top: -parseInt(style.marginTop, 10),
+                right: -parseInt(style.marginRight, 10),
+                bottom: -parseInt(style.marginBottom, 10),
+              },
+              border: {
+                left: parseInt(style.borderLeftWidth, 10),
+                top: parseInt(style.borderTopWidth, 10),
+                right: parseInt(style.borderRightWidth, 10),
+                bottom: parseInt(style.borderBottomWidth, 10),
+              },
+            };
+            const border = [
+              {x: rect.left, y: rect.top},
+              {x: rect.left + rect.width, y: rect.top},
+              {x: rect.left + rect.width, y: rect.top + rect.height},
+              {x: rect.left, y: rect.top + rect.height},
+            ];
+            const padding = transformQuadWithOffsets(border, offsets.border);
+            const content = transformQuadWithOffsets(padding, offsets.padding);
+            const margin = transformQuadWithOffsets(border, offsets.margin);
+            return {
+              content,
+              padding,
+              border,
+              margin,
+              width: rect.width,
+              height: rect.height,
+            };
+
+            function transformQuadWithOffsets(quad, offsets) {
+              return [
+                {
+                  x: quad[0].x + offsets.left,
+                  y: quad[0].y + offsets.top,
+                },
+                {
+                  x: quad[1].x - offsets.right,
+                  y: quad[1].y + offsets.top,
+                },
+                {
+                  x: quad[2].x - offsets.right,
+                  y: quad[2].y - offsets.bottom,
+                },
+                {
+                  x: quad[3].x + offsets.left,
+                  y: quad[3].y - offsets.bottom,
+                },
+              ];
+            }
+          }
+        JS
+
+        return nil unless model
+
+        # Convert raw arrays to Point objects for each quad
+        BoxModel.new(
+          content: model['content'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          padding: model['padding'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          border: model['border'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          margin: model['margin'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          width: model['width'],
+          height: model['height']
+        )
+      end
+
       # Get the clickable box for the element
       # Uses getClientRects() to handle wrapped/multi-line elements correctly
       # Following Puppeteer's implementation:
@@ -385,6 +545,39 @@ module Puppeteer
         # Ensure non-negative coordinates
         box['x'] = [box['x'], 0].max
         box['y'] = [box['y'], 0].max
+      end
+
+      # Check element visibility
+      # @param visible [Boolean] True to check if visible, false to check if hidden
+      # @return [Boolean] Result of visibility check
+      def check_visibility(visible)
+        assert_not_disposed
+
+        evaluate(<<~JS, visible)
+          (node, visible) => {
+            const HIDDEN_VISIBILITY_VALUES = ['hidden', 'collapse'];
+
+            if (!node) {
+              return visible === false;
+            }
+
+            // For text nodes, check parent element
+            const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+            if (!element) {
+              return visible === false;
+            }
+
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            const isBoundingBoxEmpty = rect.width === 0 || rect.height === 0;
+
+            const isVisible = style &&
+              !HIDDEN_VISIBILITY_VALUES.includes(style.visibility) &&
+              !isBoundingBoxEmpty;
+
+            return visible === isVisible;
+          }
+        JS
       end
 
       # String representation includes element type

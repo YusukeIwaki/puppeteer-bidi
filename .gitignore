@@ -20,3 +20,5 @@ Gemfile.lock
 # Node tooling artifacts
 node_modules/
 package-lock.json
+
+.ruby-version

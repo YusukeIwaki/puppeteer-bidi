@@ -27,8 +27,9 @@ RSpec.configure do |config|
   rspec_around_suite_patch = Module.new do
     def with_suite_hooks(...)
       puts "\n[Test Suite] Starting..."
-      Sync do
+      Sync do |parent|
         super(...)
+        parent.reactor.print_hierarchy
       end
     end
   end
