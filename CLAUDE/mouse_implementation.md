@@ -34,6 +34,9 @@ Moves to coordinates and performs click(s).
 ```ruby
 mouse.click(100, 200)                    # Single left click
 mouse.click(100, 200, button: 'right')   # Right click
+mouse.click(100, 200, button: 'middle')  # Middle click (aux click)
+mouse.click(100, 200, button: 'back')    # Back button
+mouse.click(100, 200, button: 'forward') # Forward button
 mouse.click(100, 200, count: 2)          # Double click
 mouse.click(100, 200, delay: 100)        # Click with 100ms delay between down/up
 ```
@@ -81,6 +84,22 @@ point = element.clickable_point
 point.x  # => 50.0
 point.y  # => 75.0
 ```
+
+## ElementHandle#click
+
+ElementHandle has its own `click` method that:
+1. Scrolls element into view if needed
+2. Gets clickable point
+3. Uses `frame.page.mouse.click()` to perform the click
+
+```ruby
+element = page.query_selector('button')
+element.click                      # Single click
+element.click(count: 2)            # Double click
+element.click(button: 'right')     # Right click
+```
+
+Note: ElementHandle gets its frame via `@realm.environment`, so no frame parameter is needed.
 
 ## Hover Implementation
 
