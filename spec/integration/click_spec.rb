@@ -196,17 +196,10 @@ RSpec.describe 'Page.click' do
   it 'should scroll and click the button' do
     with_test_state do |page:, server:, **|
       page.goto("#{server.prefix}/input/scrollable.html")
-      20.times do |i|
-        page.click("#button-#{i}")
-      end
-
-      # Verify last button was clicked by checking its text changed to 'clicked'
-      result = page.evaluate(<<~JS)
-        () => {
-          return document.querySelector('#button-19').textContent;
-        }
-      JS
-      expect(result).to eq('clicked')
+      page.click('#button-5')
+      expect(page.evaluate("() => document.querySelector('#button-5').textContent")).to eq('clicked')
+      page.click('#button-80')
+      expect(page.evaluate("() => document.querySelector('#button-80').textContent")).to eq('clicked')
     end
   end
 
