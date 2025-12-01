@@ -209,19 +209,19 @@ RSpec.describe 'Mouse' do
       elem = page.query_selector('div')
       bounding_box_before = elem.bounding_box
 
-      expect(bounding_box_before['width']).to eq(115)
-      expect(bounding_box_before['height']).to eq(115)
+      expect(bounding_box_before.width).to eq(115)
+      expect(bounding_box_before.height).to eq(115)
 
       page.mouse.move(
-        bounding_box_before['x'] + bounding_box_before['width'] / 2,
-        bounding_box_before['y'] + bounding_box_before['height'] / 2
+        bounding_box_before.x + bounding_box_before.width / 2,
+        bounding_box_before.y + bounding_box_before.height / 2
       )
 
       page.mouse.wheel(delta_y: -100)
 
       bounding_box_after = elem.bounding_box
-      expect(bounding_box_after['width']).to eq(230)
-      expect(bounding_box_after['height']).to eq(230)
+      expect(bounding_box_after.width).to eq(230)
+      expect(bounding_box_after.height).to eq(230)
     end
   end
 

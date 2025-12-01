@@ -6,6 +6,9 @@ module Puppeteer
     # Based on Puppeteer's BidiElementHandle implementation
     # This extends JSHandle with DOM-specific methods
     class ElementHandle < JSHandle
+      # Bounding box data class representing element position and dimensions
+      BoundingBox = Data.define(:x, :y, :width, :height)
+
       # Factory method to create ElementHandle from remote value
       # @param remote_value [Hash] BiDi RemoteValue
       # @param realm [Core::Realm] Associated realm
@@ -254,7 +257,7 @@ module Puppeteer
 
       # Get the bounding box of the element
       # Uses getBoundingClientRect() to get the element's position and size
-      # @return [Hash, nil] Box {x:, y:, width:, height:} or nil if not visible
+      # @return [BoundingBox, nil] Bounding box or nil if not visible
       def bounding_box
         assert_not_disposed
 
@@ -273,7 +276,12 @@ module Puppeteer
         # Return nil if element has zero dimensions (not visible)
         return nil if result['width'].zero? && result['height'].zero?
 
-        result
+        BoundingBox.new(
+          x: result['x'],
+          y: result['y'],
+          width: result['width'],
+          height: result['height']
+        )
       end
 
       # Get the clickable box for the element
