@@ -200,12 +200,13 @@ RSpec.describe 'Page.click' do
         page.click("#button-#{i}")
       end
 
+      # Verify last button was clicked by checking its text changed to 'clicked'
       result = page.evaluate(<<~JS)
         () => {
-          return globalThis.clicked;
+          return document.querySelector('#button-19').textContent;
         }
       JS
-      expect(result).to eq(19) # Last button clicked (0-indexed to 19)
+      expect(result).to eq('clicked')
     end
   end
 
@@ -275,12 +276,13 @@ RSpec.describe 'Page.click' do
     with_test_state do |page:, server:, **|
       page.goto("#{server.prefix}/input/scrollable.html")
       page.click('#button-8', button: 'middle')
+      # Verify middle click by checking button text changed to 'aux click'
       result = page.evaluate(<<~JS)
         () => {
-          return globalThis.auxclick;
+          return document.querySelector('#button-8').textContent;
         }
       JS
-      expect(result).to be true
+      expect(result).to eq('aux click')
     end
   end
 
