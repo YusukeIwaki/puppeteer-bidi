@@ -83,7 +83,8 @@ RSpec.describe 'ElementHandle specs' do
   describe 'ElementHandle.boxModel' do
     it 'should work' do
       with_test_state do |page:, server:, **|
-        pending 'boxModel not yet implemented'
+        # This test requires frame offset handling which is not yet implemented
+        skip 'Frame offset handling not yet implemented'
 
         page.goto("#{server.prefix}/resetcss.html")
 
@@ -129,17 +130,20 @@ RSpec.describe 'ElementHandle specs' do
         box = div_handle.box_model
         expect(box.width).to eq(6)
         expect(box.height).to eq(7)
-        expect(box.margin[0]).to eq({ x: 1 + 4, y: 2 + 5 }) # frame.left + div.left
-        expect(box.border[0]).to eq({ x: 1 + 4 + 3, y: 2 + 5 }) # frame.left + div.left + div.margin-left
-        expect(box.padding[0]).to eq({ x: 1 + 4 + 3 + 1, y: 2 + 5 }) # + div.borderLeft
-        expect(box.content[0]).to eq({ x: 1 + 4 + 3 + 1 + 2, y: 2 + 5 }) # + div.paddingLeft
+        # Note: These would need Point comparison when frame offset is implemented
+        expect(box.margin[0].x).to eq(1 + 4) # frame.left + div.left
+        expect(box.margin[0].y).to eq(2 + 5)
+        expect(box.border[0].x).to eq(1 + 4 + 3) # frame.left + div.left + div.margin-left
+        expect(box.border[0].y).to eq(2 + 5)
+        expect(box.padding[0].x).to eq(1 + 4 + 3 + 1) # + div.borderLeft
+        expect(box.padding[0].y).to eq(2 + 5)
+        expect(box.content[0].x).to eq(1 + 4 + 3 + 1 + 2) # + div.paddingLeft
+        expect(box.content[0].y).to eq(2 + 5)
       end
     end
 
     it 'should return null for invisible elements' do
       with_test_state do |page:, **|
-        pending 'boxModel not yet implemented'
-
         page.set_content('<div style="display:none">hi</div>')
         element = page.query_selector('div')
         expect(element.box_model).to be_nil
@@ -148,8 +152,6 @@ RSpec.describe 'ElementHandle specs' do
 
     it 'should correctly compute box model with offsets' do
       with_test_state do |page:, **|
-        pending 'boxModel not yet implemented'
-
         border = 10
         padding = 11
         margin = 12

@@ -12,6 +12,11 @@ module Puppeteer
       # Point data class representing a coordinate
       Point = Data.define(:x, :y)
 
+      # Box model data class representing element's CSS box model
+      # Each quad (content, padding, border, margin) contains 4 Points representing corners
+      # Corners are ordered: top-left, top-right, bottom-right, bottom-left
+      BoxModel = Data.define(:content, :padding, :border, :margin, :width, :height)
+
       # Factory method to create ElementHandle from remote value
       # @param remote_value [Hash] BiDi RemoteValue
       # @param realm [Core::Realm] Associated realm
@@ -354,6 +359,96 @@ module Puppeteer
           y: result['y'],
           width: result['width'],
           height: result['height']
+        )
+      end
+
+      # Get the box model of the element (content, padding, border, margin)
+      # @return [BoxModel, nil] Box model or nil if not visible
+      def box_model
+        assert_not_disposed
+
+        model = evaluate(<<~JS)
+          element => {
+            if (!(element instanceof Element)) {
+              return null;
+            }
+            // Element is not visible
+            if (element.getClientRects().length === 0) {
+              return null;
+            }
+            const rect = element.getBoundingClientRect();
+            const style = window.getComputedStyle(element);
+            const offsets = {
+              padding: {
+                left: parseInt(style.paddingLeft, 10),
+                top: parseInt(style.paddingTop, 10),
+                right: parseInt(style.paddingRight, 10),
+                bottom: parseInt(style.paddingBottom, 10),
+              },
+              margin: {
+                left: -parseInt(style.marginLeft, 10),
+                top: -parseInt(style.marginTop, 10),
+                right: -parseInt(style.marginRight, 10),
+                bottom: -parseInt(style.marginBottom, 10),
+              },
+              border: {
+                left: parseInt(style.borderLeftWidth, 10),
+                top: parseInt(style.borderTopWidth, 10),
+                right: parseInt(style.borderRightWidth, 10),
+                bottom: parseInt(style.borderBottomWidth, 10),
+              },
+            };
+            const border = [
+              {x: rect.left, y: rect.top},
+              {x: rect.left + rect.width, y: rect.top},
+              {x: rect.left + rect.width, y: rect.top + rect.height},
+              {x: rect.left, y: rect.top + rect.height},
+            ];
+            const padding = transformQuadWithOffsets(border, offsets.border);
+            const content = transformQuadWithOffsets(padding, offsets.padding);
+            const margin = transformQuadWithOffsets(border, offsets.margin);
+            return {
+              content,
+              padding,
+              border,
+              margin,
+              width: rect.width,
+              height: rect.height,
+            };
+
+            function transformQuadWithOffsets(quad, offsets) {
+              return [
+                {
+                  x: quad[0].x + offsets.left,
+                  y: quad[0].y + offsets.top,
+                },
+                {
+                  x: quad[1].x - offsets.right,
+                  y: quad[1].y + offsets.top,
+                },
+                {
+                  x: quad[2].x - offsets.right,
+                  y: quad[2].y - offsets.bottom,
+                },
+                {
+                  x: quad[3].x + offsets.left,
+                  y: quad[3].y - offsets.bottom,
+                },
+              ];
+            }
+          }
+        JS
+
+        return nil unless model
+
+        # Convert raw arrays to Point objects for each quad
+        BoxModel.new(
+          content: model['content'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          padding: model['padding'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          border: model['border'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          margin: model['margin'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          width: model['width'],
+          height: model['height']
         )
       end
 
