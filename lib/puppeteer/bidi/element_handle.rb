@@ -252,6 +252,30 @@ module Puppeteer
         end
       end
 
+      # Get the bounding box of the element
+      # Uses getBoundingClientRect() to get the element's position and size
+      # @return [Hash, nil] Box {x:, y:, width:, height:} or nil if not visible
+      def bounding_box
+        assert_not_disposed
+
+        result = evaluate(<<~JS)
+          element => {
+            if (!(element instanceof Element)) {
+              return null;
+            }
+            const rect = element.getBoundingClientRect();
+            return {x: rect.x, y: rect.y, width: rect.width, height: rect.height};
+          }
+        JS
+
+        return nil unless result
+
+        # Return nil if element has zero dimensions (not visible)
+        return nil if result['width'].zero? && result['height'].zero?
+
+        result
+      end
+
       # Get the clickable box for the element
       # Uses getClientRects() to handle wrapped/multi-line elements correctly
       # Following Puppeteer's implementation:

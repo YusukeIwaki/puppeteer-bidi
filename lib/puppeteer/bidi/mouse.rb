@@ -112,6 +112,27 @@ module Puppeteer
         perform_actions(actions)
       end
 
+      # Scroll using mouse wheel
+      # @param delta_x [Numeric] Horizontal scroll amount
+      # @param delta_y [Numeric] Vertical scroll amount
+      def wheel(delta_x: 0, delta_y: 0)
+        @browsing_context.perform_actions([
+          {
+            type: 'wheel',
+            id: '__puppeteer_wheel',
+            actions: [
+              {
+                type: 'scroll',
+                x: @x.to_i,
+                y: @y.to_i,
+                deltaX: delta_x.to_i,
+                deltaY: delta_y.to_i
+              }
+            ]
+          }
+        ]).wait
+      end
+
       private
 
       # Convert mouse button name to BiDi button number

@@ -205,8 +205,6 @@ RSpec.describe 'Mouse' do
 
   it 'should send mouse wheel events' do
     with_test_state do |page:, server:, **|
-      pending 'mouse.wheel and element_handle.bounding_box not implemented yet'
-
       page.goto("#{server.prefix}/input/wheel.html")
       elem = page.query_selector('div')
       bounding_box_before = elem.bounding_box
@@ -229,8 +227,6 @@ RSpec.describe 'Mouse' do
 
   it 'should set ctrlKey on the wheel event' do
     with_test_state do |page:, server:, **|
-      pending 'mouse.wheel not implemented yet'
-
       page.goto(server.empty_page)
 
       page.evaluate(<<~JS)
