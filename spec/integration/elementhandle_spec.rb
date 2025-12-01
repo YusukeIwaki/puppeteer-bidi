@@ -249,7 +249,7 @@ RSpec.describe 'ElementHandle specs' do
 
     it 'should work for Shadow DOM v1' do
       with_test_state do |page:, server:, **|
-        pending 'shadow.html test asset not available'
+        skip 'shadow.html test asset not available'
 
         page.goto("#{server.prefix}/shadow.html")
         button_handle = page.evaluate_handle('() => button')
@@ -318,7 +318,7 @@ RSpec.describe 'ElementHandle specs' do
   describe 'ElementHandle.touchStart' do
     it 'should work' do
       with_test_state do |page:, **|
-        pending 'touchStart not yet implemented'
+        skip 'touchStart not yet implemented'
 
         page.evaluate(<<~JS)
           () => {
@@ -355,7 +355,7 @@ RSpec.describe 'ElementHandle specs' do
   describe 'ElementHandle.touchMove' do
     it 'should work' do
       with_test_state do |page:, **|
-        pending 'touchMove not yet implemented'
+        skip 'touchMove not yet implemented'
 
         page.evaluate(<<~JS)
           () => {
@@ -399,7 +399,7 @@ RSpec.describe 'ElementHandle specs' do
   describe 'ElementHandle.touchEnd' do
     it 'should work' do
       with_test_state do |page:, **|
-        pending 'touchEnd not yet implemented'
+        skip 'touchEnd not yet implemented'
 
         page.evaluate(<<~JS)
           () => {
@@ -593,7 +593,7 @@ RSpec.describe 'ElementHandle specs' do
       with_test_state do |page:, server:, **|
         # Implementation uses > instead of >= for threshold comparison
         # This causes threshold: 1 to fail when intersectionRatio is exactly 1.0
-        pending 'Implementation needs to use >= instead of > for threshold comparison'
+        skip 'Implementation needs to use >= instead of > for threshold comparison'
 
         page.goto("#{server.prefix}/offscreenbuttons.html")
         button = page.query_selector('#btn0')
@@ -603,7 +603,7 @@ RSpec.describe 'ElementHandle specs' do
 
     it 'should work with svg elements' do
       with_test_state do |page:, server:, **|
-        pending 'inline-svg.html test asset not available'
+        skip 'inline-svg.html test asset not available'
 
         page.goto("#{server.prefix}/inline-svg.html")
         visible_circle = page.query_selector('circle')
@@ -628,7 +628,7 @@ RSpec.describe 'ElementHandle specs' do
   describe 'Custom queries' do
     it 'should register and unregister' do
       with_test_state do |page:, **|
-        pending 'Custom query handlers not yet fully implemented'
+        skip 'Custom query handlers not yet fully implemented'
 
         page.set_content('<div id="not-foo"></div><div id="foo"></div>')
 
@@ -654,7 +654,7 @@ RSpec.describe 'ElementHandle specs' do
 
     it 'should throw with invalid query names' do
       with_test_state do |**|
-        pending 'Custom query handlers not yet fully implemented'
+        skip 'Custom query handlers not yet fully implemented'
 
         expect {
           Puppeteer::Bidi.register_custom_query_handler('1/2/3') { 'foo' }
@@ -664,7 +664,7 @@ RSpec.describe 'ElementHandle specs' do
 
     it 'should work for multiple elements' do
       with_test_state do |page:, **|
-        pending 'Custom query handlers not yet fully implemented'
+        skip 'Custom query handlers not yet fully implemented'
 
         page.set_content(<<~HTML)
           <div id="not-foo"></div>
