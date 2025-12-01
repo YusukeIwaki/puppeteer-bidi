@@ -257,17 +257,10 @@ module Puppeteer
       end
 
       # Get the frame name
-      # Returns the name attribute of the iframe, or id if name is empty
-      # Following Puppeteer's Frame.name() implementation
-      # @return [String] Frame name (empty string if no name)
+      # @deprecated Use frame_element.evaluate('el => el.name || el.id') instead
+      # @return [String] Frame name or empty string
       def name
-        # Evaluate window.name in the frame context
-        # This is more reliable than trying to get it from the browsing context info
-        @name ||= begin
-          main_realm.evaluate('() => window.name') || ''
-        rescue StandardError
-          ''
-        end
+        @_name || ''
       end
 
       # Check if frame is detached

@@ -40,12 +40,21 @@ RSpec.describe 'Frame specs' do
   end
 
   # Helper method to dump frame tree structure
+  # Following Puppeteer's dumpFrames implementation from test/src/utils.ts
   def dump_frames(frame, indentation = '')
     result = []
     # Replace port number with placeholder
     url = frame.url.gsub(/:\d+\//, ':<PORT>/')
     description = url
-    description += " (#{frame.name})" unless frame.name.empty?
+
+    # Get frame name from frameElement, following Puppeteer's pattern
+    element = frame.frame_element
+    if element
+      name_or_id = element.evaluate('frame => frame.name || frame.id')
+      description += " (#{name_or_id})" if name_or_id && !name_or_id.empty?
+      element.dispose
+    end
+
     result << "#{indentation}#{description}"
 
     frame.child_frames.each do |child|
