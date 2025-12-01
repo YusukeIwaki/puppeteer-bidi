@@ -133,8 +133,6 @@ RSpec.describe 'Mouse' do
 
   it 'should trigger hover state' do
     with_test_state do |page:, server:, **|
-      pending 'page.hover not implemented yet'
-
       page.goto("#{server.prefix}/input/scrollable.html")
 
       page.hover('#button-6')
@@ -150,8 +148,6 @@ RSpec.describe 'Mouse' do
 
   it 'should trigger hover state with removed window.Node' do
     with_test_state do |page:, server:, **|
-      pending 'page.hover not implemented yet'
-
       page.goto("#{server.prefix}/input/scrollable.html")
       page.evaluate('() => delete window.Node')
 
@@ -340,8 +336,6 @@ RSpec.describe 'Mouse' do
 
   it 'should reset properly' do
     with_test_state do |page:, server:, **|
-      pending 'mouse.reset not implemented yet'
-
       page.goto(server.empty_page)
 
       page.mouse.move(5, 5)

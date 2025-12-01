@@ -133,6 +133,14 @@ module Puppeteer
         ]).wait
       end
 
+      # Reset mouse state
+      # Resets position to origin and releases all pressed buttons
+      def reset
+        @x = 0
+        @y = 0
+        @browsing_context.release_actions.wait
+      end
+
       private
 
       # Convert mouse button name to BiDi button number

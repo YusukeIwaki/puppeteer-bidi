@@ -1,30 +1,37 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Scrollable buttons</title>
-</head>
-<body>
-  <script>
-    window.clicked = null;
-    window.auxclick = false;
-
-    for (let i = 0; i < 20; i++) {
-      const button = document.createElement('button');
-      button.id = `button-${i}`;
-      button.textContent = `Button ${i}`;
-      button.onclick = () => { window.clicked = i; };
-      button.oncontextmenu = (e) => {
-        e.preventDefault();
-        button.textContent = 'context menu';
-      };
-      button.onauxclick = () => { window.auxclick = true; };
-
-      // Add spacing
-      const container = document.createElement('div');
-      container.style.padding = '50px';
-      container.appendChild(button);
-      document.body.appendChild(container);
-    }
-  </script>
-</body>
+  <head>
+    <title>Scrollable test</title>
+  </head>
+  <body>
+    <script src='mouse-helper.js'></script>
+    <script>
+        for (let i = 0; i < 100; i++) {
+            let button = document.createElement('button');
+            button.textContent = i + ': not clicked';
+            button.id = 'button-' + i;
+            button.onclick = () => button.textContent = 'clicked';
+            button.oncontextmenu = event => {
+              if (![2].includes(event.button)) {
+                return;
+              }
+              event.preventDefault();
+              button.textContent = 'context menu';
+            }
+            button.onmouseup = event => {
+              if (![1,3,4].includes(event.button)) {
+                return;
+              }
+              event.preventDefault();
+              button.textContent = {
+                3: 'back click',
+                4: 'forward click',
+                1: 'aux click',
+              }[event.button];
+            }
+            document.body.appendChild(button);
+            document.body.appendChild(document.createElement('br'));
+        }
+    </script>
+  </body>
 </html>

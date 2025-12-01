@@ -167,6 +167,16 @@ module Puppeteer
         evaluate('element => element.focus()')
       end
 
+      # Hover over the element
+      # Scrolls element into view if needed and moves mouse to element center
+      def hover
+        assert_not_disposed
+
+        scroll_into_view_if_needed
+        point = clickable_point
+        frame.page.mouse.move(point[:x], point[:y])
+      end
+
       # Upload files to this element (for <input type="file">)
       # Following Puppeteer's implementation: ElementHandle.uploadFile -> Frame.setFiles
       # @param files [Array<String>] File paths to upload

@@ -162,6 +162,21 @@ module Puppeteer
         end
       end
 
+      # Hover over an element matching the selector
+      # @param selector [String] CSS selector
+      def hover(selector)
+        assert_not_detached
+
+        handle = query_selector(selector)
+        raise SelectorNotFoundError, selector unless handle
+
+        begin
+          handle.hover
+        ensure
+          handle.dispose
+        end
+      end
+
       # Get the frame URL
       # @return [String] Current URL
       def url
