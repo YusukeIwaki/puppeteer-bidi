@@ -17,34 +17,32 @@ RSpec.describe 'Page.waitForNavigation' do
 
   it 'should work with both domcontentloaded and load' do
     with_test_state do |page:, server:, **|
-      Sync do
-        response_promise = Async::Promise.new
-        server.set_route('/one-style.css') do |_request, writer|
-          response_promise.wait
-        end
-
-        load_fired = false
-
-        domcontentloaded_task = Async do
-          page.wait_for_navigation(wait_until: 'domcontentloaded')
-        end
-
-        load_task = Async do
-          page.wait_for_navigation(wait_until: 'load').tap do
-            load_fired = true
-          end
-        end
-
-        navigation_task = Async do
-          page.goto("#{server.prefix}/one-style.html")
-        end
-
-        server.wait_for_request('/one-style.css')
-        domcontentloaded_task.wait
-        expect(load_fired).to eq(false)
-        response_promise.resolve("It works!")
-        Puppeteer::Bidi::AsyncUtils.await_promise_all([navigation_task, load_task])
+      response_promise = Async::Promise.new
+      server.set_route('/one-style.css') do |_request, writer|
+        response_promise.wait
       end
+
+      load_fired = false
+
+      domcontentloaded_task = Async do
+        page.wait_for_navigation(wait_until: 'domcontentloaded')
+      end
+
+      load_task = Async do
+        page.wait_for_navigation(wait_until: 'load').tap do
+          load_fired = true
+        end
+      end
+
+      navigation_task = Async do
+        page.goto("#{server.prefix}/one-style.html")
+      end
+
+      server.wait_for_request('/one-style.css')
+      domcontentloaded_task.wait
+      expect(load_fired).to eq(false)
+      response_promise.resolve("It works!")
+      Puppeteer::Bidi::AsyncUtils.await_promise_all([navigation_task, load_task])
     end
   end
 
