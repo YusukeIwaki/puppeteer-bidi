@@ -158,6 +158,37 @@ module Puppeteer
         @realm.environment
       end
 
+      # Get the content frame for iframe/frame elements
+      # Returns the frame that the iframe/frame element refers to
+      # @return [Frame, nil] The content frame, or nil if not an iframe/frame
+      def content_frame
+        assert_not_disposed
+
+        handle = evaluate_handle(<<~JS)
+          element => {
+            if (element instanceof HTMLIFrameElement || element instanceof HTMLFrameElement) {
+              return element.contentWindow;
+            }
+            return undefined;
+          }
+        JS
+
+        begin
+          value = handle.remote_value
+          if value['type'] == 'window'
+            # Find the frame with matching browsing context ID
+            context_id = value.dig('value', 'context')
+            return nil unless context_id
+
+            frame.page.frames.find { |f| f.browsing_context.id == context_id }
+          else
+            nil
+          end
+        ensure
+          handle.dispose
+        end
+      end
+
       # Focus the element
       def focus
         assert_not_disposed

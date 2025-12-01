@@ -174,8 +174,6 @@ RSpec.describe 'ElementHandle specs' do
   describe 'ElementHandle.contentFrame' do
     it 'should work' do
       with_test_state do |page:, server:, **|
-        pending 'contentFrame not yet implemented'
-
         page.goto(server.empty_page)
         page.evaluate(<<~JS, server.empty_page)
           (url) => {
@@ -188,7 +186,8 @@ RSpec.describe 'ElementHandle specs' do
         JS
         element_handle = page.query_selector('#frame1')
         frame = element_handle.content_frame
-        expect(frame).to eq(page.frames[1])
+        # Compare browsing context IDs since Frame instances may differ
+        expect(frame.browsing_context.id).to eq(page.frames[1].browsing_context.id)
       end
     end
   end
