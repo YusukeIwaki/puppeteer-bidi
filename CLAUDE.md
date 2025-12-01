@@ -101,6 +101,7 @@ See the [CLAUDE/](CLAUDE/) directory for detailed implementation guides:
 - **[JSHandle and ElementHandle](CLAUDE/jshandle_implementation.md)** - Object handle management
 - **[Selector Evaluation](CLAUDE/selector_evaluation.md)** - `eval_on_selector` methods
 - **[Click Implementation](CLAUDE/click_implementation.md)** - Mouse input and clicking
+- **[Mouse Implementation](CLAUDE/mouse_implementation.md)** - wheel, reset, hover, BoundingBox/Point data classes
 - **[Wrapped Element Click](CLAUDE/wrapped_element_click.md)** - getClientRects() for multi-line elements
 - **[Navigation Waiting](CLAUDE/navigation_waiting.md)** - waitForNavigation patterns
 - **[Frame Architecture](CLAUDE/frame_architecture.md)** - Parent-based frame hierarchy
