@@ -209,6 +209,20 @@ module Puppeteer
         check_visibility(false)
       end
 
+      # Convert the current handle to the given element type
+      # Validates that the element matches the expected tag name
+      # @param tag_name [String] The expected tag name (e.g., 'div', 'a', 'input')
+      # @return [ElementHandle] Self if tag name matches
+      # @raise [RuntimeError] If the element doesn't match the expected tag name
+      def to_element(tag_name)
+        assert_not_disposed
+
+        is_matching = evaluate('(node, tagName) => node.nodeName === tagName.toUpperCase()', tag_name)
+        raise "Element is not a(n) `#{tag_name}` element" unless is_matching
+
+        self
+      end
+
       # Focus the element
       def focus
         assert_not_disposed

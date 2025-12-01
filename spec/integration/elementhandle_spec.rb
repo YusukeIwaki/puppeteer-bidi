@@ -684,12 +684,21 @@ RSpec.describe 'ElementHandle specs' do
   describe 'ElementHandle.toElement' do
     it 'should work' do
       with_test_state do |page:, **|
-        pending 'toElement not yet implemented'
-
         page.set_content('<div class="foo">Foo1</div>')
         element = page.query_selector('.foo')
         div = element.to_element('div')
         expect(div).not_to be_nil
+        expect(div).to eq(element)
+      end
+    end
+
+    it 'should throw if element does not match' do
+      with_test_state do |page:, **|
+        page.set_content('<div class="foo">Foo1</div>')
+        element = page.query_selector('.foo')
+        expect {
+          element.to_element('span')
+        }.to raise_error(/Element is not a\(n\) `span` element/)
       end
     end
   end
