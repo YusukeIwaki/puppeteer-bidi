@@ -81,6 +81,7 @@ module Puppeteer
       def find_firefox
         candidates = [
           ENV['FIREFOX_PATH'],
+          '/usr/bin/firefox-nightly',
           '/usr/bin/firefox-devedition',
           '/usr/bin/firefox',
           '/usr/bin/firefox-esr',
