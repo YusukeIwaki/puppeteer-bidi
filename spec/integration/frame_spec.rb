@@ -77,14 +77,12 @@ RSpec.describe 'Frame specs' do
   describe 'Frame.evaluate' do
     it 'should throw for detached frames' do
       with_test_state do |page:, server:, **|
-        skip 'Frame detachment detection not yet implemented'
-
         frame1 = attach_frame(page, 'frame1', server.empty_page)
         detach_frame(page, 'frame1')
 
         expect {
           frame1.evaluate('() => 7 * 8')
-        }.to raise_error(/Attempted to use detached Frame/)
+        }.to raise_error(Puppeteer::Bidi::FrameDetachedError, /Attempted to use detached Frame/)
       end
     end
 
