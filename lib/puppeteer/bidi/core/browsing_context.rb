@@ -381,12 +381,20 @@ module Puppeteer
           session.subscribe(events, [@id])
         end
 
-        protected
+        # Override dispose to emit :closed event before setting @disposed = true
+        # This is needed because EventEmitter#emit returns early if @disposed is true
+        def dispose
+          return if disposed?
 
-        def perform_dispose
           @reason ||= 'Browsing context closed, probably because the user context closed'
           emit(:closed, { reason: @reason })
 
+          super # This sets @disposed = true and calls perform_dispose
+        end
+
+        protected
+
+        def perform_dispose
           dispose_children('Parent browsing context was disposed')
 
           begin
@@ -582,8 +590,10 @@ module Puppeteer
         end
 
         def dispose_context(reason)
-          @reason = reason
+          # IMPORTANT: Set @reason AFTER calling dispose to avoid early return
+          # dispose checks disposed? which is aliased to closed?, and closed? returns !@reason.nil?
           dispose
+          @reason = reason
         end
       end
     end

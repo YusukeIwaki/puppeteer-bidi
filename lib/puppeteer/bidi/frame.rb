@@ -506,7 +506,7 @@ module Puppeteer
       private
 
       # Initialize the frame by setting up child frame tracking
-      # Following Puppeteer's BidiFrame.#initialize pattern
+      # Following Puppeteer's BidiFrame.#initialize pattern exactly
       def initialize_frame
         # Create Frame objects for existing child contexts
         @browsing_context.children.each do |child_context|
@@ -518,21 +518,50 @@ module Puppeteer
           create_frame_target(data[:browsing_context])
         end
 
-        # Clean up when browsing context is closed
+        # Emit framedetached when THIS frame's browsing context is closed
+        # Following Puppeteer's pattern: this.browsingContext.on('closed', () => {
+        #   this.page().trustedEmitter.emit(PageEvent.FrameDetached, this);
+        # });
         @browsing_context.on(:closed) do
           @frames.clear
+          page.emit(:framedetached, self)
+        end
+
+        # Listen for navigation events and emit framenavigated
+        # Following Puppeteer's pattern: emit framenavigated on DOMContentLoaded
+        @browsing_context.on(:dom_content_loaded) do
+          page.emit(:framenavigated, self)
+        end
+
+        # Also emit framenavigated on fragment navigation (anchor links, hash changes)
+        # Note: Puppeteer uses navigation.once('fragment'), but we listen to
+        # browsingContext's fragment_navigated which is equivalent
+        @browsing_context.on(:fragment_navigated) do
+          page.emit(:framenavigated, self)
         end
       end
 
       # Create a Frame for a child browsing context
-      # Following Puppeteer's BidiFrame.#createFrameTarget pattern
+      # Following Puppeteer's BidiFrame.#createFrameTarget pattern exactly:
+      #   const frame = BidiFrame.from(this, browsingContext);
+      #   this.#frames.set(browsingContext, frame);
+      #   this.page().trustedEmitter.emit(PageEvent.FrameAttached, frame);
+      #   browsingContext.on('closed', () => {
+      #     this.#frames.delete(browsingContext);
+      #   });
+      # Note: FrameDetached is NOT emitted here - it's emitted in #initialize
+      # when the frame's own browsing context closes
       # @param browsing_context [Core::BrowsingContext] Child browsing context
       # @return [Frame] Created frame
       def create_frame_target(browsing_context)
         frame = Frame.from(self, browsing_context)
         @frames[browsing_context.id] = frame
 
-        # Remove frame when its context is closed
+        # Emit frameattached event
+        page.emit(:frameattached, frame)
+
+        # Remove frame from parent's frames map when its context is closed
+        # Note: FrameDetached is emitted by the frame itself in its initialize_frame
         browsing_context.once(:closed) do
           @frames.delete(browsing_context.id)
         end

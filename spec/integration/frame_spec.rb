@@ -125,27 +125,28 @@ RSpec.describe 'Frame specs' do
 
     it 'should send events when frames are manipulated dynamically' do
       with_test_state do |page:, server:, **|
-        skip 'Frame events not yet implemented'
-
         page.goto(server.empty_page)
 
-        # Validate frameattached events
+        # Set up all event listeners before any frame operations
         attached_frames = []
-        page.on('frameattached') { |frame| attached_frames << frame }
-        attach_frame(page, 'frame1', './assets/frame.html')
-        expect(attached_frames.length).to eq(1)
-        expect(attached_frames[0].url).to include('/assets/frame.html')
-
-        # Validate framenavigated events
         navigated_frames = []
-        page.on('framenavigated') { |frame| navigated_frames << frame }
-        navigate_frame(page, 'frame1', './empty.html')
-        expect(navigated_frames.length).to eq(1)
-        expect(navigated_frames[0].url).to eq(server.empty_page)
-
-        # Validate framedetached events
         detached_frames = []
-        page.on('framedetached') { |frame| detached_frames << frame }
+        page.on(:frameattached) { |frame| attached_frames << frame }
+        page.on(:framenavigated) { |frame| navigated_frames << frame }
+        page.on(:framedetached) { |frame| detached_frames << frame }
+
+        # Test frameattached
+        attach_frame(page, 'frame1', "#{server.prefix}/frames/frame.html")
+        expect(attached_frames.length).to eq(1)
+        expect(attached_frames[0].url).to include('/frames/frame.html')
+
+        # Test framenavigated (clear to only count new events)
+        initial_navigated_count = navigated_frames.length
+        navigate_frame(page, 'frame1', server.empty_page)
+        expect(navigated_frames.length - initial_navigated_count).to eq(1)
+        expect(navigated_frames.last.url).to eq(server.empty_page)
+
+        # Test framedetached
         detach_frame(page, 'frame1')
         expect(detached_frames.length).to eq(1)
         expect(detached_frames[0].detached?).to be true
@@ -154,12 +155,10 @@ RSpec.describe 'Frame specs' do
 
     it 'should send "framenavigated" when navigating on anchor URLs' do
       with_test_state do |page:, server:, **|
-        skip 'Frame navigation events not yet implemented'
-
         page.goto(server.empty_page)
 
         navigated = false
-        page.on('framenavigated') { navigated = true }
+        page.on(:framenavigated) { navigated = true }
         page.goto("#{server.empty_page}#foo")
 
         expect(navigated).to be true
@@ -180,11 +179,9 @@ RSpec.describe 'Frame specs' do
 
     it 'should not send attach/detach events for main frame' do
       with_test_state do |page:, server:, **|
-        skip 'Frame events not yet implemented'
-
         has_events = false
-        page.on('frameattached') { has_events = true }
-        page.on('framedetached') { has_events = true }
+        page.on(:frameattached) { has_events = true }
+        page.on(:framedetached) { has_events = true }
         page.goto(server.empty_page)
         expect(has_events).to be false
       end
@@ -192,14 +189,12 @@ RSpec.describe 'Frame specs' do
 
     it 'should detach child frames on navigation' do
       with_test_state do |page:, server:, **|
-        skip 'Frame detachment events not yet implemented'
-
         attached_frames = []
         detached_frames = []
         navigated_frames = []
-        page.on('frameattached') { |frame| attached_frames << frame }
-        page.on('framedetached') { |frame| detached_frames << frame }
-        page.on('framenavigated') { |frame| navigated_frames << frame }
+        page.on(:frameattached) { |frame| attached_frames << frame }
+        page.on(:framedetached) { |frame| detached_frames << frame }
+        page.on(:framenavigated) { |frame| navigated_frames << frame }
         page.goto("#{server.prefix}/frames/nested-frames.html")
 
         expect(attached_frames.length).to eq(4)
