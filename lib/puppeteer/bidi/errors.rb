@@ -20,8 +20,8 @@ module Puppeteer
 
     # Raised when attempting to use a detached Frame
     class FrameDetachedError < Error
-      def initialize
-        super('Frame is detached')
+      def initialize(message = 'Frame is detached')
+        super(message)
       end
     end
 

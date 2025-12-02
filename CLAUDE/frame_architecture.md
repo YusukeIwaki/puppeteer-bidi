@@ -160,10 +160,123 @@ bundle exec rspec spec/integration/
 3. **Enables future iframe support** - Architecture supports nested frame trees
 4. **Remove redundant attr_reader** - No need for `attr_reader :parent` when using private instance variable
 
+## Frame Events
+
+### Overview
+
+Frame lifecycle events are emitted on the Page object, following Puppeteer's pattern:
+
+- `:frameattached` - Fired when a new child frame is created
+- `:framedetached` - Fired when a frame's browsing context is closed
+- `:framenavigated` - Fired on DOMContentLoaded or fragment navigation
+
+### Event Emission Locations (Following Puppeteer Exactly)
+
+**Critical**: The location where each event is emitted matters for correct behavior.
+
+| Event | Location | Trigger |
+|-------|----------|---------|
+| `:frameattached` | `Frame#create_frame_target` | Child browsing context created |
+| `:framedetached` | `Frame#initialize_frame` | **Self's** browsing context closed |
+| `:framenavigated` | `Frame#initialize_frame` | DOMContentLoaded or fragment_navigated |
+
+### Puppeteer Reference Code
+
+From [Puppeteer's bidi/Frame.ts](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/bidi/Frame.ts):
+
+```typescript
+// In #initialize() - FrameDetached is emitted for THIS frame
+this.browsingContext.on('closed', () => {
+  this.page().trustedEmitter.emit(PageEvent.FrameDetached, this);
+});
+
+// In #createFrameTarget() - FrameAttached is emitted for child frame
+#createFrameTarget(browsingContext: BrowsingContext) {
+  const frame = BidiFrame.from(this, browsingContext);
+  this.#frames.set(browsingContext, frame);
+  this.page().trustedEmitter.emit(PageEvent.FrameAttached, frame);
+
+  // Note: FrameDetached is NOT emitted here
+  browsingContext.on('closed', () => {
+    this.#frames.delete(browsingContext);
+  });
+
+  return frame;
+}
+```
+
+### Ruby Implementation
+
+```ruby
+# Frame#initialize_frame
+def initialize_frame
+  # ... child frame setup ...
+
+  # FrameDetached: emit when THIS frame's context closes
+  @browsing_context.on(:closed) do
+    @frames.clear
+    page.emit(:framedetached, self)
+  end
+
+  # FrameNavigated: emit on navigation events
+  @browsing_context.on(:dom_content_loaded) do
+    page.emit(:framenavigated, self)
+  end
+
+  @browsing_context.on(:fragment_navigated) do
+    page.emit(:framenavigated, self)
+  end
+end
+
+# Frame#create_frame_target
+def create_frame_target(browsing_context)
+  frame = Frame.from(self, browsing_context)
+  @frames[browsing_context.id] = frame
+
+  # FrameAttached: emit for the new child frame
+  page.emit(:frameattached, frame)
+
+  # Only cleanup, NO FrameDetached here
+  browsing_context.once(:closed) do
+    @frames.delete(browsing_context.id)
+  end
+
+  frame
+end
+```
+
+### Common Mistake
+
+**Wrong**: Emitting `:framedetached` in `create_frame_target` when child's context closes.
+
+**Correct**: Each frame emits its own `:framedetached` in `initialize_frame` when its own browsing context closes.
+
+This matters because the event should be emitted by the frame instance that is being detached, not by its parent.
+
+## Page Event Emitter
+
+Page delegates to `Core::EventEmitter` for event handling:
+
+```ruby
+class Page
+  def initialize(...)
+    @emitter = Core::EventEmitter.new
+  end
+
+  def on(event, &block)
+    @emitter.on(event, &block)
+  end
+
+  def emit(event, data = nil)
+    @emitter.emit(event, data)
+  end
+end
+```
+
 ## Files Changed
 
-- `lib/puppeteer/bidi/frame.rb`: Constructor signature, page method, parent_frame method
-- `lib/puppeteer/bidi/page.rb`: main_frame initialization (`Frame.new(self, @browsing_context)`)
+- `lib/puppeteer/bidi/frame.rb`: Constructor signature, page method, parent_frame method, frame events
+- `lib/puppeteer/bidi/page.rb`: main_frame initialization, event emitter delegation
 
 ## Commit Reference
 
