@@ -278,6 +278,69 @@ end
 - `lib/puppeteer/bidi/frame.rb`: Constructor signature, page method, parent_frame method, frame events
 - `lib/puppeteer/bidi/page.rb`: main_frame initialization, event emitter delegation
 
+## BiDi Protocol Limitations
+
+### Frame.frameElement with Shadow DOM
+
+**Status**: Not supported in BiDi protocol
+
+`Frame#frame_element` returns `nil` for iframes inside Shadow DOM (both open and closed).
+
+#### Root Cause
+
+| Protocol | Behavior | Mechanism |
+|----------|----------|-----------|
+| **CDP (Chrome)** | Works | Uses `DOM.getFrameOwner` command |
+| **BiDi (Firefox)** | Returns nil | Uses `document.querySelectorAll` (cannot traverse Shadow DOM) |
+
+#### Technical Details
+
+1. **CDP Implementation** (`cdp/Frame.js`):
+   ```javascript
+   const { backendNodeId } = await parent.client.send('DOM.getFrameOwner', {
+     frameId: this._id,
+   });
+   return await parent.mainRealm().adoptBackendNode(backendNodeId);
+   ```
+
+2. **BiDi Implementation** (base `api/Frame.js`):
+   ```javascript
+   const list = await parentFrame.isolatedRealm().evaluateHandle(() => {
+     return document.querySelectorAll('iframe,frame');
+   });
+   // Cannot find elements inside Shadow DOM
+   ```
+
+3. **WebDriver BiDi Specification**: No `DOM.getFrameOwner` equivalent command exists.
+
+#### Verification
+
+Tested with Puppeteer (Node.js) using both protocols:
+
+```
+=== Firefox (BiDi protocol) ===
+Frame element is NULL - Shadow DOM issue confirmed
+
+=== Chrome (CDP protocol) ===
+Frame element tagName: iframe
+```
+
+#### References
+
+- [Puppeteer Issue #13155](https://github.com/puppeteer/puppeteer/issues/13155) - Original bug report
+- [Puppeteer PR #13156](https://github.com/puppeteer/puppeteer/pull/13156) - CDP-only fix (October 2024)
+- [WebDriver BiDi Specification](https://w3c.github.io/webdriver-bidi/) - browsingContext module
+
+#### Test Status
+
+```ruby
+it 'should handle shadow roots', pending: 'BiDi protocol limitation: no DOM.getFrameOwner equivalent' do
+  # ...
+end
+```
+
+This is a **protocol limitation**, not an implementation bug in this library.
+
 ## Commit Reference
 
 See commit: "Refactor Frame to use parent-based architecture following Puppeteer"

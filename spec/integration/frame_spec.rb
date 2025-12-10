@@ -69,7 +69,7 @@ RSpec.describe 'Frame specs' do
         page.goto(server.empty_page)
         main_frame = page.main_frame
         window_handle = main_frame.evaluate_handle('() => window')
-        expect(window_handle).to be_truthy
+        expect(window_handle).to be_a(Puppeteer::Bidi::JSHandle)
       end
     end
   end
@@ -323,10 +323,7 @@ RSpec.describe 'Frame specs' do
 
   describe 'Frame.client' do
     it 'should return the client instance' do
-      with_test_state do |page:, **|
-        # Skip: Frame.client is CDP-specific, not applicable to BiDi
-        skip 'Frame.client is CDP-specific, not applicable to WebDriver BiDi'
-      end
+      skip 'Frame.client is CDP-specific, not applicable to WebDriver BiDi'
     end
   end
 
@@ -359,10 +356,8 @@ RSpec.describe 'Frame specs' do
       end
     end
 
-    it 'should handle shadow roots' do
+    it 'should handle shadow roots', pending: 'BiDi protocol limitation: no DOM.getFrameOwner equivalent for shadow roots' do
       with_test_state do |page:, **|
-        skip 'Frame.frameElement with shadow roots not yet implemented'
-
         page.set_content(<<~HTML)
           <div id="shadow-host"></div>
           <script>
