@@ -16,6 +16,38 @@ module Puppeteer
         @browser_context = browser_context
         @browsing_context = browsing_context
         @timeout_settings = TimeoutSettings.new(DEFAULT_TIMEOUT)
+        @emitter = Core::EventEmitter.new
+      end
+
+      # Event emitter delegation methods
+      # Following Puppeteer's trustedEmitter pattern
+
+      # Register an event listener
+      # @param event [Symbol, String] Event name (e.g., :frameattached, :framedetached, :framenavigated)
+      # @param block [Proc] Event handler
+      def on(event, &block)
+        @emitter.on(event, &block)
+      end
+
+      # Register a one-time event listener
+      # @param event [Symbol, String] Event name
+      # @param block [Proc] Event handler
+      def once(event, &block)
+        @emitter.once(event, &block)
+      end
+
+      # Remove an event listener
+      # @param event [Symbol, String] Event name
+      # @param block [Proc] Event handler to remove
+      def off(event, &block)
+        @emitter.off(event, &block)
+      end
+
+      # Emit an event to all registered listeners
+      # @param event [Symbol, String] Event name
+      # @param data [Object] Event data
+      def emit(event, data = nil)
+        @emitter.emit(event, data)
       end
 
       # Navigate to a URL
@@ -276,7 +308,7 @@ module Puppeteer
       # Get the main frame
       # @return [Frame] Main frame
       def main_frame
-        @main_frame ||= Frame.new(self, @browsing_context)
+        @main_frame ||= Frame.from(self, @browsing_context)
       end
 
       # Get the focused frame
@@ -318,10 +350,11 @@ module Puppeteer
         frame
       end
 
-      # Get all frames (main frame + child frames)
+      # Get all frames (main frame + all nested child frames)
+      # Following Puppeteer's pattern of returning all frames recursively
       # @return [Array<Frame>] All frames
       def frames
-        [main_frame] + main_frame.child_frames
+        collect_frames(main_frame)
       end
 
       # Get the mouse instance
@@ -541,6 +574,17 @@ module Puppeteer
       end
 
       private
+
+      # Recursively collect all frames starting from the given frame
+      # @param frame [Frame] Starting frame
+      # @return [Array<Frame>] All frames including the starting frame and its descendants
+      def collect_frames(frame)
+        result = [frame]
+        frame.child_frames.each do |child|
+          result.concat(collect_frames(child))
+        end
+        result
+      end
 
       # Check if this page is closed and raise error if so
       # @raise [PageClosedError] If page is closed
