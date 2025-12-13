@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -75,7 +76,7 @@ module Puppeteer
           return if ended?
 
           begin
-            send_command('session.end', {})
+            async_send_command('session.end', {}).wait
           ensure
             dispose_session('Session ended')
           end

@@ -113,6 +113,50 @@ bundle exec rake rbs  # Generates sig/**/*.rbs
 
 **Note:** `sig/` directory is gitignored. RBS files are generated automatically during `rake build`.
 
+### Type Checking with Steep
+
+Run type checking locally:
+```bash
+bundle exec rake rbs       # Generate RBS files first
+bundle exec steep check    # Run type checker
+```
+
+**Steepfile Configuration:**
+- Currently configured with lenient `:hint` level diagnostics for gradual typing
+- As type coverage improves, change to `:warning` or `:error` in `Steepfile`
+
+**Special RBS Files (manually maintained, NOT gitignored):**
+
+1. **`sig/_external.rbs`** - External dependency stubs
+   - Types for async gem (`Async`, `Kernel#Async`, `Kernel#Sync`, `Async::Task`, etc.)
+   - Standard library extensions (`Dir.mktmpdir`, `Time.parse`)
+   - Third-party types (`Singleton`, `Protocol::WebSocket`)
+
+2. **`sig/_supplementary.rbs`** - Types rbs-inline cannot generate
+   - `extend self` pattern: Add `extend ModuleName` declaration
+   - Singleton pattern: Add `extend Singleton::SingletonClassMethods`
+   - Union type aliases that rbs-inline doesn't preserve
+
+**Common Issues:**
+
+1. **Type alias must be lowercase**: In RBS, `type target = ...` not `type Target = ...`
+
+2. **`extend self` not recognized**: Add to `sig/_supplementary.rbs`:
+   ```rbs
+   module Foo
+     extend Foo  # Makes instance methods callable as singleton methods
+   end
+   ```
+
+3. **Singleton pattern**: Add to `sig/_supplementary.rbs`:
+   ```rbs
+   class Bar
+     extend Singleton::SingletonClassMethods
+   end
+   ```
+
+4. **Missing external types**: Add stubs to `sig/_external.rbs`
+
 ### Testing
 
 - Use RSpec for unit and integration tests

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -9,8 +10,12 @@ module Puppeteer
 
       # Raised when attempting to use a disposed resource
       class DisposedError < Error
-        attr_reader :resource_type, :reason
+        attr_reader :resource_type #: String
+        attr_reader :reason #: String
 
+        # @rbs resource_type: String
+        # @rbs reason: String
+        # @rbs return: void
         def initialize(resource_type, reason)
           @resource_type = resource_type
           @reason = reason
@@ -20,6 +25,8 @@ module Puppeteer
 
       # Raised when a realm has been destroyed
       class RealmDestroyedError < DisposedError
+        # @rbs reason: String
+        # @rbs return: void
         def initialize(reason)
           super('Realm', reason)
         end
@@ -27,6 +34,8 @@ module Puppeteer
 
       # Raised when a browsing context has been closed
       class BrowsingContextClosedError < DisposedError
+        # @rbs reason: String
+        # @rbs return: void
         def initialize(reason)
           super('Browsing context', reason)
         end
@@ -34,6 +43,8 @@ module Puppeteer
 
       # Raised when a user context has been closed
       class UserContextClosedError < DisposedError
+        # @rbs reason: String
+        # @rbs return: void
         def initialize(reason)
           super('User context', reason)
         end
@@ -41,6 +52,8 @@ module Puppeteer
 
       # Raised when a user prompt has been closed
       class UserPromptClosedError < DisposedError
+        # @rbs reason: String
+        # @rbs return: void
         def initialize(reason)
           super('User prompt', reason)
         end
@@ -48,6 +61,8 @@ module Puppeteer
 
       # Raised when a session has ended
       class SessionEndedError < DisposedError
+        # @rbs reason: String
+        # @rbs return: void
         def initialize(reason)
           super('Session', reason)
         end
@@ -55,6 +70,8 @@ module Puppeteer
 
       # Raised when a browser has been disconnected
       class BrowserDisconnectedError < DisposedError
+        # @rbs reason: String
+        # @rbs return: void
         def initialize(reason)
           super('Browser', reason)
         end

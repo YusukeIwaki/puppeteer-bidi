@@ -104,10 +104,20 @@ module Puppeteer
         browser
       end
 
+      # Connect to an existing Firefox browser instance
+      # @rbs ws_endpoint: String
+      # @rbs return: Browser
+      def self.connect(ws_endpoint)
+        transport = Transport.new(ws_endpoint)
+        AsyncUtils.async_timeout(30 * 1000, transport.connect).wait
+        connection = Connection.new(transport)
+        create(connection: connection, launcher: nil)
+      end
+
       # Get BiDi session status
       # @rbs return: untyped
       def status
-        @connection.send_command('session.status')
+        @connection.async_send_command('session.status').wait
       end
 
       # Create a new page (Puppeteer-like API)
@@ -153,8 +163,8 @@ module Puppeteer
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
       # @rbs timeout: Integer?
-      # @rbs &predicate: (Target) -> boolish
-      # @rbs return: Target
+      # @rbs &predicate: (target) -> boolish
+      # @rbs return: target
       def wait_for_target(timeout: nil, &predicate)
         predicate ||= ->(_target) { true }
         timeout_ms = timeout || 30_000
@@ -246,8 +256,8 @@ module Puppeteer
 
       private
 
-      # @rbs &block: (Target) -> void
-      # @rbs return: Enumerator[Target, void]
+      # @rbs &block: (target) -> void
+      # @rbs return: Enumerator[target, void]
       def each_target(&block)
         return enum_for(:each_target) unless block_given?
         return unless @core_browser
@@ -269,8 +279,8 @@ module Puppeteer
         end
       end
 
-      # @rbs predicate: (Target) -> boolish
-      # @rbs return: Target?
+      # @rbs predicate: ^(target) -> boolish
+      # @rbs return: target?
       def find_target(predicate)
         each_target do |target|
           return target if predicate.call(target)

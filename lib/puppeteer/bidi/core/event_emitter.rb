@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -6,22 +7,25 @@ module Puppeteer
       # EventEmitter provides event subscription and emission capabilities
       # Similar to Node.js EventEmitter but simpler
       class EventEmitter
+        # @rbs return: void
         def initialize
           @listeners = Hash.new { |h, k| h[k] = [] }
           @disposed = false
         end
 
         # Register an event listener
-        # @param event [Symbol, String] Event name
-        # @param block [Proc] Event handler
+        # @rbs event: Symbol | String
+        # @rbs &block: (untyped) -> void
+        # @rbs return: void
         def on(event, &block)
           return if @disposed
           @listeners[event.to_sym] << block
         end
 
         # Register a one-time event listener
-        # @param event [Symbol, String] Event name
-        # @param block [Proc] Event handler
+        # @rbs event: Symbol | String
+        # @rbs &block: (untyped) -> void
+        # @rbs return: void
         def once(event, &block)
           return if @disposed
           wrapper = lambda do |*args|
@@ -32,8 +36,9 @@ module Puppeteer
         end
 
         # Remove an event listener
-        # @param event [Symbol, String] Event name
-        # @param block [Proc] Event handler to remove (optional)
+        # @rbs event: Symbol | String
+        # @rbs &block: ((untyped) -> void)?
+        # @rbs return: void
         def off(event, &block)
           event_sym = event.to_sym
           if block
@@ -44,7 +49,8 @@ module Puppeteer
         end
 
         # Remove all listeners for an event or all events
-        # @param event [Symbol, String, nil] Event name (optional)
+        # @rbs event: (Symbol | String)?
+        # @rbs return: void
         def remove_all_listeners(event = nil)
           if event
             @listeners.delete(event.to_sym)
@@ -54,8 +60,9 @@ module Puppeteer
         end
 
         # Emit an event to all registered listeners
-        # @param event [Symbol, String] Event name
-        # @param data [Object] Event data
+        # @rbs event: Symbol | String
+        # @rbs data: untyped
+        # @rbs return: void
         def emit(event, data = nil)
           return if @disposed
           listeners = @listeners[event.to_sym].dup
@@ -69,11 +76,13 @@ module Puppeteer
         end
 
         # Dispose the event emitter
+        # @rbs return: void
         def dispose
           @disposed = true
           @listeners.clear
         end
 
+        # @rbs return: bool
         def disposed?
           @disposed
         end

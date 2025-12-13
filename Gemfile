@@ -11,3 +11,5 @@ gem "rake"
 gem "rspec"
 gem "rbs-inline"
 gem "rubocop"
+
+gem "steep", group: :development
