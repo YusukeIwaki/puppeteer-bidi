@@ -19,17 +19,17 @@ module Puppeteer
       BoxModel = Data.define(:content, :padding, :border, :margin, :width, :height)
 
       # Factory method to create ElementHandle from remote value
-      # @rbs remote_value: Hash[String, untyped]
-      # @rbs realm: Core::Realm
-      # @rbs return: ElementHandle
+      # @rbs remote_value: Hash[String, untyped] -- BiDi RemoteValue
+      # @rbs realm: Core::Realm -- Associated realm
+      # @rbs return: ElementHandle -- ElementHandle instance
       def self.from(remote_value, realm)
         new(realm, remote_value)
       end
 
       # Query for a descendant element matching the selector
       # Supports CSS selectors and prefixed selectors (xpath/, text/, aria/, pierce/)
-      # @rbs selector: String
-      # @rbs return: ElementHandle?
+      # @rbs selector: String -- Selector to query
+      # @rbs return: ElementHandle? -- Matching element or nil
       def query_selector(selector)
         assert_not_disposed
 
@@ -39,8 +39,8 @@ module Puppeteer
 
       # Query for all descendant elements matching the selector
       # Supports CSS selectors and prefixed selectors (xpath/, text/, aria/, pierce/)
-      # @rbs selector: String
-      # @rbs return: Array[ElementHandle]
+      # @rbs selector: String -- Selector to query
+      # @rbs return: Array[ElementHandle] -- All matching elements
       def query_selector_all(selector)
         assert_not_disposed
 
@@ -49,10 +49,10 @@ module Puppeteer
       end
 
       # Evaluate a function on the first element matching the selector
-      # @rbs selector: String
-      # @rbs page_function: String
-      # @rbs *args: untyped
-      # @rbs return: untyped
+      # @rbs selector: String -- Selector to query
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: untyped -- Evaluation result
       def eval_on_selector(selector, page_function, *args)
         assert_not_disposed
 
@@ -67,10 +67,10 @@ module Puppeteer
       end
 
       # Evaluate a function on all elements matching the selector
-      # @rbs selector: String
-      # @rbs page_function: String
-      # @rbs *args: untyped
-      # @rbs return: untyped
+      # @rbs selector: String -- Selector to query
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: untyped -- Evaluation result
       def eval_on_selector_all(selector, page_function, *args)
         assert_not_disposed
 
@@ -102,22 +102,22 @@ module Puppeteer
       end
 
       # Wait for an element matching the selector to appear as a descendant of this element
-      # @rbs selector: String
-      # @rbs visible: bool?
-      # @rbs hidden: bool?
-      # @rbs timeout: Numeric?
-      # @rbs &block: ((ElementHandle?) -> void)?
-      # @rbs return: ElementHandle?
+      # @rbs selector: String -- Selector to wait for
+      # @rbs visible: bool? -- Wait for element to be visible
+      # @rbs hidden: bool? -- Wait for element to be hidden
+      # @rbs timeout: Numeric? -- Wait timeout in ms
+      # @rbs &block: ((ElementHandle?) -> void)? -- Optional block called with element
+      # @rbs return: ElementHandle? -- Element or nil if hidden
       def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
         result = QueryHandler.instance.get_query_handler_and_selector(selector)
         result.query_handler.new.wait_for(self, result.updated_selector, visible: visible, hidden: hidden, polling: result.polling, timeout: timeout, &block)
       end
 
       # Click the element
-      # @rbs button: String
-      # @rbs count: Integer
-      # @rbs delay: Numeric?
-      # @rbs offset: Hash[Symbol, Numeric]?
+      # @rbs button: String -- Mouse button ('left', 'right', 'middle')
+      # @rbs count: Integer -- Number of clicks
+      # @rbs delay: Numeric? -- Delay between clicks in ms
+      # @rbs offset: Hash[Symbol, Numeric]? -- Click offset from element center
       # @rbs return: void
       def click(button: 'left', count: 1, delay: nil, offset: nil)
         assert_not_disposed
@@ -129,8 +129,8 @@ module Puppeteer
       end
 
       # Type text into the element
-      # @rbs text: String
-      # @rbs delay: Numeric
+      # @rbs text: String -- Text to type
+      # @rbs delay: Numeric -- Delay between key presses in ms
       # @rbs return: void
       def type(text, delay: 0)
         assert_not_disposed
@@ -145,9 +145,9 @@ module Puppeteer
       end
 
       # Press a key on the element
-      # @rbs key: String
-      # @rbs delay: Numeric?
-      # @rbs text: String?
+      # @rbs key: String -- Key to press
+      # @rbs delay: Numeric? -- Delay between keydown and keyup in ms
+      # @rbs text: String? -- Text to send with key press
       # @rbs return: void
       def press(key, delay: nil, text: nil)
         assert_not_disposed
@@ -163,14 +163,14 @@ module Puppeteer
 
       # Get the frame this element belongs to
       # Following Puppeteer's pattern: realm.environment
-      # @rbs return: Frame
+      # @rbs return: Frame -- Owning frame
       def frame
         @realm.environment
       end
 
       # Get the content frame for iframe/frame elements
       # Returns the frame that the iframe/frame element refers to
-      # @rbs return: Frame?
+      # @rbs return: Frame? -- Content frame or nil
       def content_frame
         assert_not_disposed
 
@@ -204,7 +204,7 @@ module Puppeteer
       # - It has computed styles
       # - Its visibility is not 'hidden' or 'collapse'
       # - Its bounding box is not empty (width > 0 AND height > 0)
-      # @rbs return: bool
+      # @rbs return: bool -- Whether element is visible
       def visible?
         check_visibility(true)
       end
@@ -214,15 +214,15 @@ module Puppeteer
       # - It has no computed styles
       # - Its visibility is 'hidden' or 'collapse'
       # - Its bounding box is empty (width == 0 OR height == 0)
-      # @rbs return: bool
+      # @rbs return: bool -- Whether element is hidden
       def hidden?
         check_visibility(false)
       end
 
       # Convert the current handle to the given element type
       # Validates that the element matches the expected tag name
-      # @rbs tag_name: String
-      # @rbs return: ElementHandle
+      # @rbs tag_name: String -- Expected tag name
+      # @rbs return: ElementHandle -- This element if matching
       def to_element(tag_name)
         assert_not_disposed
 
@@ -253,7 +253,7 @@ module Puppeteer
 
       # Upload files to this element (for <input type="file">)
       # Following Puppeteer's implementation: ElementHandle.uploadFile -> Frame.setFiles
-      # @rbs *files: String
+      # @rbs *files: String -- File paths to upload
       # @rbs return: void
       def upload_file(*files)
         assert_not_disposed
@@ -271,7 +271,7 @@ module Puppeteer
       end
 
       # Get the remote value as a SharedReference for BiDi commands
-      # @rbs return: Hash[Symbol, String]
+      # @rbs return: Hash[Symbol, String] -- SharedReference for BiDi
       def remote_value_as_shared_reference
         if @remote_value['sharedId']
           { sharedId: @remote_value['sharedId'] }
@@ -300,8 +300,8 @@ module Puppeteer
       end
 
       # Check if element is intersecting the viewport
-      # @rbs threshold: Numeric
-      # @rbs return: bool
+      # @rbs threshold: Numeric -- Intersection ratio threshold
+      # @rbs return: bool -- Whether element intersects viewport
       def intersecting_viewport?(threshold: 0)
         assert_not_disposed
 
@@ -321,8 +321,8 @@ module Puppeteer
       end
 
       # Get clickable point for the element
-      # @rbs offset: Hash[Symbol, Numeric]?
-      # @rbs return: Point
+      # @rbs offset: Hash[Symbol, Numeric]? -- Offset from element center
+      # @rbs return: Point -- Clickable point coordinates
       def clickable_point(offset: nil)
         assert_not_disposed
 
@@ -344,7 +344,7 @@ module Puppeteer
 
       # Get the bounding box of the element
       # Uses getBoundingClientRect() to get the element's position and size
-      # @rbs return: BoundingBox?
+      # @rbs return: BoundingBox? -- Bounding box or nil if not visible
       def bounding_box
         assert_not_disposed
 
@@ -372,7 +372,7 @@ module Puppeteer
       end
 
       # Get the box model of the element (content, padding, border, margin)
-      # @rbs return: BoxModel?
+      # @rbs return: BoxModel? -- Box model or nil if not visible
       def box_model
         assert_not_disposed
 
@@ -465,7 +465,7 @@ module Puppeteer
       # Uses getClientRects() to handle wrapped/multi-line elements correctly
       # Following Puppeteer's implementation:
       # https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/ElementHandle.ts#clickableBox
-      # @rbs return: Hash[Symbol, Numeric]?
+      # @rbs return: Hash[Symbol, Numeric]? -- Clickable box or nil
       def clickable_box
         assert_not_disposed
 
@@ -508,7 +508,7 @@ module Puppeteer
 
       # Intersect bounding boxes with frame viewport boundaries
       # Modifies boxes in-place to clip them to visible area
-      # @rbs boxes: Array[Hash[String, Numeric]]
+      # @rbs boxes: Array[Hash[String, Numeric]] -- Bounding boxes to clip
       # @rbs return: void
       def intersect_bounding_boxes_with_frame(boxes)
         # Get document dimensions using element's evaluate (which handles deserialization)
@@ -532,9 +532,9 @@ module Puppeteer
 
       # Intersect a single bounding box with given width/height boundaries
       # Modifies box in-place
-      # @rbs box: Hash[String, Numeric]
-      # @rbs width: Numeric
-      # @rbs height: Numeric
+      # @rbs box: Hash[String, Numeric] -- Box to clip
+      # @rbs width: Numeric -- Viewport width
+      # @rbs height: Numeric -- Viewport height
       # @rbs return: void
       def intersect_bounding_box(box, width, height)
         # Clip width
@@ -559,8 +559,8 @@ module Puppeteer
       end
 
       # Check element visibility
-      # @rbs visible: bool
-      # @rbs return: bool
+      # @rbs visible: bool -- Expected visibility state
+      # @rbs return: bool -- Whether element matches visibility state
       def check_visibility(visible)
         assert_not_disposed
 
@@ -592,7 +592,7 @@ module Puppeteer
       end
 
       # String representation includes element type
-      # @rbs return: String
+      # @rbs return: String -- String representation
       def to_s
         return 'ElementHandle@disposed' if disposed?
         'ElementHandle@node'

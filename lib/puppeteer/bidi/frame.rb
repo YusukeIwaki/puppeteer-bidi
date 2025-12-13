@@ -10,17 +10,17 @@ module Puppeteer
       attr_reader :browsing_context #: Core::BrowsingContext
 
       # Factory method following Puppeteer's BidiFrame.from pattern
-      # @rbs parent: Page | Frame
-      # @rbs browsing_context: Core::BrowsingContext
-      # @rbs return: Frame
+      # @rbs parent: Page | Frame -- Parent page or frame
+      # @rbs browsing_context: Core::BrowsingContext -- Associated browsing context
+      # @rbs return: Frame -- New frame instance
       def self.from(parent, browsing_context)
         frame = new(parent, browsing_context)
         frame.send(:initialize_frame)
         frame
       end
 
-      # @rbs parent: Page | Frame
-      # @rbs browsing_context: Core::BrowsingContext
+      # @rbs parent: Page | Frame -- Parent page or frame
+      # @rbs browsing_context: Core::BrowsingContext -- Associated browsing context
       # @rbs return: void
       def initialize(parent, browsing_context)
         @parent = parent
@@ -34,55 +34,55 @@ module Puppeteer
         @isolated_realm = FrameRealm.new(self, internal_core_realm)
       end
 
-      # @rbs return: FrameRealm
+      # @rbs return: FrameRealm -- Main execution realm
       def main_realm
         @main_realm
       end
 
-      # @rbs return: FrameRealm
+      # @rbs return: FrameRealm -- Isolated execution realm
       def isolated_realm
         @isolated_realm
       end
 
       # Backwards compatibility for call sites that previously accessed Frame#realm.
-      # @rbs return: FrameRealm
+      # @rbs return: FrameRealm -- Main execution realm
       def realm
         main_realm
       end
 
       # Get the page that owns this frame
       # Traverses up the parent chain until reaching a Page
-      # @rbs return: Page
+      # @rbs return: Page -- Owning page
       def page
         @parent.is_a?(Page) ? @parent : @parent.page
       end
 
       # Get the parent frame
-      # @rbs return: Frame?
+      # @rbs return: Frame? -- Parent frame or nil for main frame
       def parent_frame
         @parent.is_a?(Frame) ? @parent : nil
       end
 
       # Evaluate JavaScript in the frame context
-      # @rbs script: String
-      # @rbs *args: untyped
-      # @rbs return: untyped
+      # @rbs script: String -- JavaScript code to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the script
+      # @rbs return: untyped -- Evaluation result
       def evaluate(script, *args)
         assert_not_detached
         main_realm.evaluate(script, *args)
       end
 
       # Evaluate JavaScript and return a handle to the result
-      # @rbs script: String
-      # @rbs *args: untyped
-      # @rbs return: JSHandle
+      # @rbs script: String -- JavaScript code to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the script
+      # @rbs return: JSHandle -- Handle to the result
       def evaluate_handle(script, *args)
         assert_not_detached
         main_realm.evaluate_handle(script, *args)
       end
 
       # Get the document element handle
-      # @rbs return: ElementHandle
+      # @rbs return: ElementHandle -- Document element handle
       def document
         assert_not_detached
         handle = main_realm.evaluate_handle('document')
@@ -94,8 +94,8 @@ module Puppeteer
       end
 
       # Query for an element matching the selector
-      # @rbs selector: String
-      # @rbs return: ElementHandle?
+      # @rbs selector: String -- Selector to query
+      # @rbs return: ElementHandle? -- Matching element or nil
       def query_selector(selector)
         doc = document
         begin
@@ -106,8 +106,8 @@ module Puppeteer
       end
 
       # Query for all elements matching the selector
-      # @rbs selector: String
-      # @rbs return: Array[ElementHandle]
+      # @rbs selector: String -- Selector to query
+      # @rbs return: Array[ElementHandle] -- All matching elements
       def query_selector_all(selector)
         doc = document
         begin
@@ -118,10 +118,10 @@ module Puppeteer
       end
 
       # Evaluate a function on the first element matching the selector
-      # @rbs selector: String
-      # @rbs page_function: String
-      # @rbs *args: untyped
-      # @rbs return: untyped
+      # @rbs selector: String -- Selector to query
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: untyped -- Evaluation result
       def eval_on_selector(selector, page_function, *args)
         doc = document
         begin
@@ -132,10 +132,10 @@ module Puppeteer
       end
 
       # Evaluate a function on all elements matching the selector
-      # @rbs selector: String
-      # @rbs page_function: String
-      # @rbs *args: untyped
-      # @rbs return: untyped
+      # @rbs selector: String -- Selector to query
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: untyped -- Evaluation result
       def eval_on_selector_all(selector, page_function, *args)
         doc = document
         begin
@@ -146,11 +146,11 @@ module Puppeteer
       end
 
       # Click an element matching the selector
-      # @rbs selector: String
-      # @rbs button: String
-      # @rbs count: Integer
-      # @rbs delay: Numeric?
-      # @rbs offset: Hash[Symbol, Numeric]?
+      # @rbs selector: String -- Selector to click
+      # @rbs button: String -- Mouse button ('left', 'right', 'middle')
+      # @rbs count: Integer -- Number of clicks
+      # @rbs delay: Numeric? -- Delay between clicks in ms
+      # @rbs offset: Hash[Symbol, Numeric]? -- Click offset from element center
       # @rbs return: void
       def click(selector, button: 'left', count: 1, delay: nil, offset: nil)
         assert_not_detached
@@ -166,9 +166,9 @@ module Puppeteer
       end
 
       # Type text into an element matching the selector
-      # @rbs selector: String
-      # @rbs text: String
-      # @rbs delay: Numeric
+      # @rbs selector: String -- Selector to type into
+      # @rbs text: String -- Text to type
+      # @rbs delay: Numeric -- Delay between key presses in ms
       # @rbs return: void
       def type(selector, text, delay: 0)
         assert_not_detached
@@ -184,7 +184,7 @@ module Puppeteer
       end
 
       # Hover over an element matching the selector
-      # @rbs selector: String
+      # @rbs selector: String -- Selector to hover
       # @rbs return: void
       def hover(selector)
         assert_not_detached
@@ -200,16 +200,16 @@ module Puppeteer
       end
 
       # Get the frame URL
-      # @rbs return: String
+      # @rbs return: String -- Current URL
       def url
         @browsing_context.url
       end
 
       # Navigate to a URL
-      # @rbs url: String
-      # @rbs wait_until: String
-      # @rbs timeout: Numeric
-      # @rbs return: HTTPResponse?
+      # @rbs url: String -- URL to navigate to
+      # @rbs wait_until: String -- When to consider navigation complete ('load', 'domcontentloaded')
+      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs return: HTTPResponse? -- Response or nil
       def goto(url, wait_until: 'load', timeout: 30000)
         response = wait_for_navigation(timeout: timeout, wait_until: wait_until) do
           @browsing_context.navigate(url, wait: 'interactive').wait
@@ -221,8 +221,8 @@ module Puppeteer
       end
 
       # Set frame content
-      # @rbs html: String
-      # @rbs wait_until: String
+      # @rbs html: String -- HTML content to set
+      # @rbs wait_until: String -- When to consider content set ('load', 'domcontentloaded')
       # @rbs return: void
       def set_content(html, wait_until: 'load')
         assert_not_detached
@@ -259,7 +259,7 @@ module Puppeteer
 
       # Set frame content using document.open/write/close
       # This is a low-level method that doesn't wait for load events
-      # @rbs content: String
+      # @rbs content: String -- HTML content to set
       # @rbs return: void
       def set_frame_content(content)
         assert_not_detached
@@ -274,20 +274,20 @@ module Puppeteer
       end
 
       # Get the frame name
-      # @rbs return: String
+      # @rbs return: String -- Frame name
       def name
         @_name || ''
       end
 
       # Check if frame is detached
-      # @rbs return: bool
+      # @rbs return: bool -- Whether frame is detached
       def detached?
         @browsing_context.closed?
       end
 
       # Get child frames
       # Returns cached frame instances following Puppeteer's pattern
-      # @rbs return: Array[Frame]
+      # @rbs return: Array[Frame] -- Child frames
       def child_frames
         @browsing_context.children.map do |child_context|
           @frames[child_context.id]
@@ -297,7 +297,7 @@ module Puppeteer
       # Get the frame element (iframe/frame DOM element) for this frame
       # Returns nil for the main frame
       # Following Puppeteer's Frame.frameElement() implementation exactly
-      # @rbs return: ElementHandle?
+      # @rbs return: ElementHandle? -- Frame element or nil for main frame
       def frame_element
         assert_not_detached
 
@@ -333,10 +333,10 @@ module Puppeteer
       end
 
       # Wait for navigation to complete
-      # @rbs timeout: Numeric
-      # @rbs wait_until: String | Array[String]
-      # @rbs &block: (-> void)?
-      # @rbs return: HTTPResponse?
+      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs wait_until: String | Array[String] -- When to consider navigation complete
+      # @rbs &block: (-> void)? -- Optional block to trigger navigation
+      # @rbs return: HTTPResponse? -- Response or nil
       def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
         assert_not_detached
 
@@ -478,30 +478,30 @@ module Puppeteer
       end
 
       # Wait for a function to return a truthy value
-      # @rbs page_function: String
-      # @rbs options: Hash[Symbol, untyped]
-      # @rbs *args: untyped
-      # @rbs &block: ((JSHandle) -> void)?
-      # @rbs return: JSHandle
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs options: Hash[Symbol, untyped] -- Wait options (timeout, polling)
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs &block: ((JSHandle) -> void)? -- Optional block called with result
+      # @rbs return: JSHandle -- Handle to the truthy result
       def wait_for_function(page_function, options = {}, *args, &block)
         main_realm.wait_for_function(page_function, options, *args, &block)
       end
 
       # Wait for an element matching the selector to appear in the frame
-      # @rbs selector: String
-      # @rbs visible: bool?
-      # @rbs hidden: bool?
-      # @rbs timeout: Numeric?
-      # @rbs &block: ((ElementHandle?) -> void)?
-      # @rbs return: ElementHandle?
+      # @rbs selector: String -- Selector to wait for
+      # @rbs visible: bool? -- Wait for element to be visible
+      # @rbs hidden: bool? -- Wait for element to be hidden
+      # @rbs timeout: Numeric? -- Wait timeout in ms
+      # @rbs &block: ((ElementHandle?) -> void)? -- Optional block called with element
+      # @rbs return: ElementHandle? -- Element or nil if hidden
       def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
         result = QueryHandler.instance.get_query_handler_and_selector(selector)
         result.query_handler.new.wait_for(self, result.updated_selector, visible: visible, hidden: hidden, polling: result.polling, timeout: timeout, &block)
       end
 
       # Set files on an input element
-      # @rbs element: ElementHandle
-      # @rbs files: Array[String]
+      # @rbs element: ElementHandle -- Input element
+      # @rbs files: Array[String] -- File paths to set
       # @rbs return: void
       def set_files(element, files)
         assert_not_detached
@@ -514,7 +514,7 @@ module Puppeteer
 
       # Get the frame ID (browsing context ID)
       # Following Puppeteer's _id pattern
-      # @rbs return: String
+      # @rbs return: String -- Frame ID
       def _id
         @browsing_context.id
       end
@@ -568,8 +568,8 @@ module Puppeteer
       #   });
       # Note: FrameDetached is NOT emitted here - it's emitted in #initialize
       # when the frame's own browsing context closes
-      # @rbs browsing_context: Core::BrowsingContext
-      # @rbs return: Frame
+      # @rbs browsing_context: Core::BrowsingContext -- Child browsing context
+      # @rbs return: Frame -- New child frame
       def create_frame_target(browsing_context)
         frame = Frame.from(self, browsing_context)
         @frames[browsing_context.id] = frame

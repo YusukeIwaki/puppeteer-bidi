@@ -15,8 +15,8 @@ module Puppeteer
       attr_reader :browser_context #: BrowserContext
       attr_reader :timeout_settings #: TimeoutSettings
 
-      # @rbs browser_context: BrowserContext
-      # @rbs browsing_context: Core::BrowsingContext
+      # @rbs browser_context: BrowserContext -- Parent browser context
+      # @rbs browsing_context: Core::BrowsingContext -- Associated browsing context
       # @rbs return: void
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
@@ -29,41 +29,41 @@ module Puppeteer
       # Following Puppeteer's trustedEmitter pattern
 
       # Register an event listener
-      # @rbs event: Symbol | String
-      # @rbs &block: (untyped) -> void
+      # @rbs event: Symbol | String -- Event name
+      # @rbs &block: (untyped) -> void -- Event handler
       # @rbs return: void
       def on(event, &block)
         @emitter.on(event, &block)
       end
 
       # Register a one-time event listener
-      # @rbs event: Symbol | String
-      # @rbs &block: (untyped) -> void
+      # @rbs event: Symbol | String -- Event name
+      # @rbs &block: (untyped) -> void -- Event handler
       # @rbs return: void
       def once(event, &block)
         @emitter.once(event, &block)
       end
 
       # Remove an event listener
-      # @rbs event: Symbol | String
-      # @rbs &block: (untyped) -> void
+      # @rbs event: Symbol | String -- Event name
+      # @rbs &block: (untyped) -> void -- Event handler to remove
       # @rbs return: void
       def off(event, &block)
         @emitter.off(event, &block)
       end
 
       # Emit an event to all registered listeners
-      # @rbs event: Symbol | String
-      # @rbs data: untyped
+      # @rbs event: Symbol | String -- Event name
+      # @rbs data: untyped -- Event data
       # @rbs return: void
       def emit(event, data = nil)
         @emitter.emit(event, data)
       end
 
       # Navigate to a URL
-      # @rbs url: String
-      # @rbs wait_until: String
-      # @rbs return: HTTPResponse?
+      # @rbs url: String -- URL to navigate to
+      # @rbs wait_until: String -- When to consider navigation complete ('load', 'domcontentloaded')
+      # @rbs return: HTTPResponse? -- Main response
       def goto(url, wait_until: 'load')
         assert_not_closed
 
@@ -71,20 +71,20 @@ module Puppeteer
       end
 
       # Set page content
-      # @rbs html: String
-      # @rbs wait_until: String
+      # @rbs html: String -- HTML content to set
+      # @rbs wait_until: String -- When to consider content set ('load', 'domcontentloaded')
       # @rbs return: void
       def set_content(html, wait_until: 'load')
         main_frame.set_content(html, wait_until: wait_until)
       end
 
       # Take a screenshot
-      # @rbs path: String?
-      # @rbs type: String
-      # @rbs full_page: bool
-      # @rbs clip: Hash[Symbol, Numeric]?
-      # @rbs capture_beyond_viewport: bool
-      # @rbs return: String
+      # @rbs path: String? -- File path to save screenshot
+      # @rbs type: String -- Image type ('png' or 'jpeg')
+      # @rbs full_page: bool -- Capture full page
+      # @rbs clip: Hash[Symbol, Numeric]? -- Clip region
+      # @rbs capture_beyond_viewport: bool -- Capture beyond viewport
+      # @rbs return: String -- Base64-encoded image data
       def screenshot(path: nil, type: 'png', full_page: false, clip: nil, capture_beyond_viewport: true)
         assert_not_closed
 
@@ -207,82 +207,82 @@ module Puppeteer
       end
 
       # Evaluate JavaScript in the page context
-      # @rbs script: String
-      # @rbs *args: untyped
-      # @rbs return: untyped
+      # @rbs script: String -- JavaScript code to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the script
+      # @rbs return: untyped -- Result of evaluation
       def evaluate(script, *args)
         main_frame.evaluate(script, *args)
       end
 
       # Evaluate JavaScript and return a handle to the result
-      # @rbs script: String
-      # @rbs *args: untyped
-      # @rbs return: JSHandle
+      # @rbs script: String -- JavaScript code to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the script
+      # @rbs return: JSHandle -- Handle to the result
       def evaluate_handle(script, *args)
         main_frame.evaluate_handle(script, *args)
       end
 
       # Query for an element matching the selector
-      # @rbs selector: String
-      # @rbs return: ElementHandle?
+      # @rbs selector: String -- Selector to query
+      # @rbs return: ElementHandle? -- Matching element or nil
       def query_selector(selector)
         main_frame.query_selector(selector)
       end
 
       # Query for all elements matching the selector
-      # @rbs selector: String
-      # @rbs return: Array[ElementHandle]
+      # @rbs selector: String -- Selector to query
+      # @rbs return: Array[ElementHandle] -- All matching elements
       def query_selector_all(selector)
         main_frame.query_selector_all(selector)
       end
 
       # Evaluate a function on the first element matching the selector
-      # @rbs selector: String
-      # @rbs page_function: String
-      # @rbs *args: untyped
-      # @rbs return: untyped
+      # @rbs selector: String -- Selector to query
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: untyped -- Evaluation result
       def eval_on_selector(selector, page_function, *args)
         main_frame.eval_on_selector(selector, page_function, *args)
       end
 
       # Evaluate a function on all elements matching the selector
-      # @rbs selector: String
-      # @rbs page_function: String
-      # @rbs *args: untyped
-      # @rbs return: untyped
+      # @rbs selector: String -- Selector to query
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: untyped -- Evaluation result
       def eval_on_selector_all(selector, page_function, *args)
         main_frame.eval_on_selector_all(selector, page_function, *args)
       end
 
       # Click an element matching the selector
-      # @rbs selector: String
-      # @rbs button: String
-      # @rbs count: Integer
-      # @rbs delay: Numeric?
-      # @rbs offset: Hash[Symbol, Numeric]?
+      # @rbs selector: String -- Selector to click
+      # @rbs button: String -- Mouse button ('left', 'right', 'middle')
+      # @rbs count: Integer -- Number of clicks
+      # @rbs delay: Numeric? -- Delay between clicks in ms
+      # @rbs offset: Hash[Symbol, Numeric]? -- Click offset from element center
       # @rbs return: void
       def click(selector, button: Mouse::LEFT, count: 1, delay: nil, offset: nil)
         main_frame.click(selector, button: button, count: count, delay: delay, offset: offset)
       end
 
       # Type text into an element matching the selector
-      # @rbs selector: String
-      # @rbs text: String
-      # @rbs delay: Numeric
+      # @rbs selector: String -- Selector to type into
+      # @rbs text: String -- Text to type
+      # @rbs delay: Numeric -- Delay between key presses in ms
       # @rbs return: void
       def type(selector, text, delay: 0)
         main_frame.type(selector, text, delay: delay)
       end
 
       # Hover over an element matching the selector
-      # @rbs selector: String
+      # @rbs selector: String -- Selector to hover
       # @rbs return: void
       def hover(selector)
         main_frame.hover(selector)
       end
 
       # Focus an element matching the selector
-      # @rbs selector: String
+      # @rbs selector: String -- Selector to focus
       # @rbs return: void
       def focus(selector)
         handle = main_frame.query_selector(selector)
@@ -296,13 +296,13 @@ module Puppeteer
       end
 
       # Get the page title
-      # @rbs return: String
+      # @rbs return: String -- Page title
       def title
         evaluate('document.title')
       end
 
       # Get the page URL
-      # @rbs return: String
+      # @rbs return: String -- Page URL
       def url
         @browsing_context.url
       end
@@ -316,19 +316,19 @@ module Puppeteer
       end
 
       # Check if page is closed
-      # @rbs return: bool
+      # @rbs return: bool -- Whether page is closed
       def closed?
         @browsing_context.closed?
       end
 
       # Get the main frame
-      # @rbs return: Frame
+      # @rbs return: Frame -- Main frame
       def main_frame
         @main_frame ||= Frame.from(self, @browsing_context)
       end
 
       # Get the focused frame
-      # @rbs return: Frame
+      # @rbs return: Frame -- Focused frame
       def focused_frame
         assert_not_closed
 
@@ -368,46 +368,46 @@ module Puppeteer
 
       # Get all frames (main frame + all nested child frames)
       # Following Puppeteer's pattern of returning all frames recursively
-      # @rbs return: Array[Frame]
+      # @rbs return: Array[Frame] -- All frames
       def frames
         collect_frames(main_frame)
       end
 
       # Get the mouse instance
-      # @rbs return: Mouse
+      # @rbs return: Mouse -- Mouse instance
       def mouse
         @mouse ||= Mouse.new(@browsing_context)
       end
 
       # Get the keyboard instance
-      # @rbs return: Keyboard
+      # @rbs return: Keyboard -- Keyboard instance
       def keyboard
         @keyboard ||= Keyboard.new(self, @browsing_context)
       end
 
       # Wait for a function to return a truthy value
-      # @rbs page_function: String
-      # @rbs options: Hash[Symbol, untyped]
-      # @rbs *args: untyped
-      # @rbs &block: ((JSHandle) -> void)?
-      # @rbs return: JSHandle
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs options: Hash[Symbol, untyped] -- Wait options (timeout, polling)
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs &block: ((JSHandle) -> void)? -- Optional block called with result
+      # @rbs return: JSHandle -- Handle to the truthy result
       def wait_for_function(page_function, options = {}, *args, &block)
         main_frame.wait_for_function(page_function, options, *args, &block)
       end
 
       # Wait for an element matching the selector to appear in the page
-      # @rbs selector: String
-      # @rbs visible: bool?
-      # @rbs hidden: bool?
-      # @rbs timeout: Numeric?
-      # @rbs &block: ((ElementHandle?) -> void)?
-      # @rbs return: ElementHandle?
+      # @rbs selector: String -- Selector to wait for
+      # @rbs visible: bool? -- Wait for element to be visible
+      # @rbs hidden: bool? -- Wait for element to be hidden
+      # @rbs timeout: Numeric? -- Wait timeout in ms
+      # @rbs &block: ((ElementHandle?) -> void)? -- Optional block called with element
+      # @rbs return: ElementHandle? -- Element or nil if hidden
       def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
         main_frame.wait_for_selector(selector, visible: visible, hidden: hidden, timeout: timeout, &block)
       end
 
       # Set the default timeout for waiting operations (e.g., waitForFunction).
-      # @rbs timeout: Numeric
+      # @rbs timeout: Numeric -- Timeout in ms
       # @rbs return: void
       def set_default_timeout(timeout)
         raise ArgumentError, 'timeout must be a non-negative number' unless timeout.is_a?(Numeric) && timeout >= 0
@@ -416,24 +416,24 @@ module Puppeteer
       end
 
       # Get the current default timeout in milliseconds.
-      # @rbs return: Numeric
+      # @rbs return: Numeric -- Timeout in ms
       def default_timeout
         @timeout_settings.timeout
       end
 
       # Wait for navigation to complete
-      # @rbs timeout: Numeric
-      # @rbs wait_until: String
-      # @rbs &block: (-> void)?
-      # @rbs return: HTTPResponse?
+      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs wait_until: String -- When to consider navigation complete
+      # @rbs &block: (-> void)? -- Optional block to trigger navigation
+      # @rbs return: HTTPResponse? -- Response or nil
       def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
         main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
       end
 
       # Wait for a file chooser to be opened
-      # @rbs timeout: Numeric?
-      # @rbs &block: (-> void)?
-      # @rbs return: FileChooser
+      # @rbs timeout: Numeric? -- Wait timeout in ms
+      # @rbs &block: (-> void)? -- Optional block to trigger file chooser
+      # @rbs return: FileChooser -- File chooser instance
       def wait_for_file_chooser(timeout: nil, &block)
         assert_not_closed
 
@@ -485,9 +485,9 @@ module Puppeteer
 
       # Wait for network to be idle (no more than concurrency connections for idle_time)
       # Based on Puppeteer's waitForNetworkIdle implementation
-      # @rbs idle_time: Numeric
-      # @rbs timeout: Numeric
-      # @rbs concurrency: Integer
+      # @rbs idle_time: Numeric -- Time to wait for idle in ms
+      # @rbs timeout: Numeric -- Wait timeout in ms
+      # @rbs concurrency: Integer -- Max allowed inflight requests
       # @rbs return: void
       def wait_for_network_idle(idle_time: 500, timeout: 30000, concurrency: 0)
         assert_not_closed
@@ -554,8 +554,8 @@ module Puppeteer
       end
 
       # Set viewport size
-      # @rbs width: Integer
-      # @rbs height: Integer
+      # @rbs width: Integer -- Viewport width in pixels
+      # @rbs height: Integer -- Viewport height in pixels
       # @rbs return: void
       def set_viewport(width:, height:)
         @viewport = { width: width, height: height }
@@ -568,7 +568,7 @@ module Puppeteer
       end
 
       # Get current viewport size
-      # @rbs return: Hash[Symbol, Integer]?
+      # @rbs return: Hash[Symbol, Integer]? -- Viewport dimensions
       def viewport
         @viewport
       end
@@ -577,7 +577,7 @@ module Puppeteer
       alias default_timeout= set_default_timeout
 
       # Set JavaScript enabled state
-      # @rbs enabled: bool
+      # @rbs enabled: bool -- Whether JavaScript is enabled
       # @rbs return: void
       def set_javascript_enabled(enabled)
         assert_not_closed
@@ -585,7 +585,7 @@ module Puppeteer
       end
 
       # Check if JavaScript is enabled
-      # @rbs return: bool
+      # @rbs return: bool -- Whether JavaScript is enabled
       def javascript_enabled?
         @browsing_context.javascript_enabled?
       end
@@ -593,8 +593,8 @@ module Puppeteer
       private
 
       # Recursively collect all frames starting from the given frame
-      # @rbs frame: Frame
-      # @rbs return: Array[Frame]
+      # @rbs frame: Frame -- Starting frame
+      # @rbs return: Array[Frame] -- All frames in subtree
       def collect_frames(frame)
         result = [frame]
         frame.child_frames.each do |child|

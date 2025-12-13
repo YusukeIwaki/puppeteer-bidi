@@ -12,9 +12,9 @@ module Puppeteer
       attr_reader :process #: untyped
       attr_reader :default_browser_context #: BrowserContext
 
-      # @rbs connection: Connection
-      # @rbs launcher: BrowserLauncher?
-      # @rbs return: Browser
+      # @rbs connection: Connection -- BiDi connection
+      # @rbs launcher: BrowserLauncher? -- Browser launcher instance
+      # @rbs return: Browser -- Browser instance
       def self.create(connection:, launcher: nil)
         # Create a new BiDi session
         session = Core::Session.from(
@@ -48,10 +48,10 @@ module Puppeteer
         )
       end
 
-      # @rbs connection: Connection
-      # @rbs launcher: BrowserLauncher?
-      # @rbs core_browser: Core::Browser
-      # @rbs session: Core::Session
+      # @rbs connection: Connection -- BiDi connection
+      # @rbs launcher: BrowserLauncher? -- Browser launcher instance
+      # @rbs core_browser: Core::Browser -- Core browser instance
+      # @rbs session: Core::Session -- BiDi session
       # @rbs return: void
       def initialize(connection:, launcher:, core_browser:, session:)
         @connection = connection
@@ -78,8 +78,8 @@ module Puppeteer
       #   }
 
       # Launch a new Firefox browser instance
-      # @rbs **options: launch_options
-      # @rbs return: Browser
+      # @rbs **options: launch_options -- Launch options
+      # @rbs return: Browser -- Browser instance
       def self.launch(**options)
         launcher = BrowserLauncher.new(
           executable_path: options[:executable_path],
@@ -105,8 +105,8 @@ module Puppeteer
       end
 
       # Connect to an existing Firefox browser instance
-      # @rbs ws_endpoint: String
-      # @rbs return: Browser
+      # @rbs ws_endpoint: String -- WebSocket endpoint URL
+      # @rbs return: Browser -- Browser instance
       def self.connect(ws_endpoint)
         transport = Transport.new(ws_endpoint)
         AsyncUtils.async_timeout(30 * 1000, transport.connect).wait
@@ -115,26 +115,26 @@ module Puppeteer
       end
 
       # Get BiDi session status
-      # @rbs return: untyped
+      # @rbs return: untyped -- Session status
       def status
         @connection.async_send_command('session.status').wait
       end
 
       # Create a new page (Puppeteer-like API)
-      # @rbs return: Page
+      # @rbs return: Page -- New page instance
       def new_page
         @default_browser_context.new_page
       end
 
       # Get all pages
-      # @rbs return: Array[Page]
+      # @rbs return: Array[Page] -- All pages
       def pages
         @default_browser_context.pages
       end
 
       # Register event handler
-      # @rbs event: String | Symbol
-      # @rbs &block: (untyped) -> void
+      # @rbs event: String | Symbol -- Event name
+      # @rbs &block: (untyped) -> void -- Event handler
       # @rbs return: void
       def on(event, &block)
         @connection.on(event, &block)
@@ -162,9 +162,9 @@ module Puppeteer
       end
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
-      # @rbs timeout: Integer?
-      # @rbs &predicate: (target) -> boolish
-      # @rbs return: target
+      # @rbs timeout: Integer? -- Timeout in milliseconds (default: 30000)
+      # @rbs &predicate: (target) -> boolish -- Predicate evaluated against each Target
+      # @rbs return: target -- Matching target
       def wait_for_target(timeout: nil, &predicate)
         predicate ||= ->(_target) { true }
         timeout_ms = timeout || 30_000
@@ -256,8 +256,8 @@ module Puppeteer
 
       private
 
-      # @rbs &block: (target) -> void
-      # @rbs return: Enumerator[target, void]
+      # @rbs &block: (target) -> void -- Block to yield each target to
+      # @rbs return: Enumerator[target, void] -- Enumerator of targets
       def each_target(&block)
         return enum_for(:each_target) unless block_given?
         return unless @core_browser
@@ -279,8 +279,8 @@ module Puppeteer
         end
       end
 
-      # @rbs predicate: ^(target) -> boolish
-      # @rbs return: target?
+      # @rbs predicate: ^(target) -> boolish -- Predicate to match targets
+      # @rbs return: target? -- Matching target or nil
       def find_target(predicate)
         each_target do |target|
           return target if predicate.call(target)
@@ -288,8 +288,8 @@ module Puppeteer
         nil
       end
 
-      # @rbs user_context: Core::UserContext
-      # @rbs return: BrowserContext?
+      # @rbs user_context: Core::UserContext -- User context to get browser context for
+      # @rbs return: BrowserContext? -- Browser context or nil
       def browser_context_for(user_context)
         return @browser_contexts[user_context.id] if @browser_contexts.key?(user_context.id)
 
