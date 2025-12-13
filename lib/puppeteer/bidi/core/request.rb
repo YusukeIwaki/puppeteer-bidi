@@ -80,7 +80,7 @@ module Puppeteer
         end
 
         # Get request initiator information
-        # @rbs return: Hash[String, untyped]? -- Initiator info
+        # @rbs return: untyped -- Initiator info (mixed String/Symbol keys)
         def initiator
           initiator_data = @event['initiator']
           return nil unless initiator_data

@@ -7,7 +7,7 @@ module Puppeteer
     # Provides shared lifecycle management for WaitTask instances.
     # https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/Realm.ts
     class Realm
-      attr_reader :task_manager #: TaskManager
+      attr_reader :task_manager #: Puppeteer::Bidi::TaskManager
 
       # @rbs timeout_settings: TimeoutSettings -- Timeout settings
       # @rbs return: void
