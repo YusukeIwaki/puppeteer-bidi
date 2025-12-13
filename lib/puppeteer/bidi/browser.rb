@@ -68,17 +68,12 @@ module Puppeteer
         }
       end
 
-      # @rbs!
-      #   type launch_options = {
-      #     ?executable_path: String,
-      #     ?user_data_dir: String,
-      #     ?headless: bool,
-      #     ?args: Array[String],
-      #     ?timeout: Numeric
-      #   }
-
       # Launch a new Firefox browser instance
-      # @rbs **options: launch_options -- Launch options
+      # @rbs executable_path: String
+      # @rbs user_data_dir: String
+      # @rbs headless: bool
+      # @rbs args: Array[String]
+      # @rbs timeout: Numeric
       # @rbs return: Browser -- Browser instance
       def self.launch(**options)
         launcher = BrowserLauncher.new(
@@ -163,8 +158,8 @@ module Puppeteer
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
       # @rbs timeout: Integer? -- Timeout in milliseconds (default: 30000)
-      # @rbs &predicate: (target) -> boolish -- Predicate evaluated against each Target
-      # @rbs return: target -- Matching target
+      # @rbs &predicate: (BrowserTarget | PageTarget) -> boolish -- Predicate evaluated against each Target
+      # @rbs return: BrowserTarget | PageTarget -- Matching target
       def wait_for_target(timeout: nil, &predicate)
         predicate ||= ->(_target) { true }
         timeout_ms = timeout || 30_000
@@ -256,8 +251,8 @@ module Puppeteer
 
       private
 
-      # @rbs &block: (target) -> void -- Block to yield each target to
-      # @rbs return: Enumerator[target, void] -- Enumerator of targets
+      # @rbs &block: (BrowserTarget | PageTarget) -> void -- Block to yield each target to
+      # @rbs return: Enumerator[BrowserTarget | PageTarget, void] -- Enumerator of targets
       def each_target(&block)
         return enum_for(:each_target) unless block_given?
         return unless @core_browser
@@ -279,8 +274,8 @@ module Puppeteer
         end
       end
 
-      # @rbs predicate: ^(target) -> boolish -- Predicate to match targets
-      # @rbs return: target? -- Matching target or nil
+      # @rbs predicate: ^(BrowserTarget | PageTarget) -> boolish -- Predicate to match targets
+      # @rbs return: (BrowserTarget | PageTarget)? -- Matching target or nil
       def find_target(predicate)
         each_target do |target|
           return target if predicate.call(target)

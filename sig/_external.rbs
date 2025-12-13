@@ -126,9 +126,3 @@ class DateTime
   def to_time: () -> Time
 end
 
-# Puppeteer::Bidi types that rbs-inline doesn't generate correctly
-module Puppeteer
-  module Bidi
-    type target = BrowserTarget | PageTarget | FrameTarget
-  end
-end
