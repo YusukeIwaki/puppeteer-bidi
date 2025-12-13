@@ -158,8 +158,8 @@ module Puppeteer
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
       # @rbs timeout: Integer? -- Timeout in milliseconds (default: 30000)
-      # @rbs &predicate: (BrowserTarget | PageTarget) -> boolish -- Predicate evaluated against each Target
-      # @rbs return: BrowserTarget | PageTarget -- Matching target
+      # @rbs &predicate: (BrowserTarget | PageTarget | FrameTarget) -> boolish -- Predicate evaluated against each Target
+      # @rbs return: BrowserTarget | PageTarget | FrameTarget -- Matching target
       def wait_for_target(timeout: nil, &predicate)
         predicate ||= ->(_target) { true }
         timeout_ms = timeout || 30_000
@@ -251,8 +251,8 @@ module Puppeteer
 
       private
 
-      # @rbs &block: (BrowserTarget | PageTarget) -> void -- Block to yield each target to
-      # @rbs return: Enumerator[BrowserTarget | PageTarget, void] -- Enumerator of targets
+      # @rbs &block: (BrowserTarget | PageTarget | FrameTarget) -> void -- Block to yield each target to
+      # @rbs return: Enumerator[BrowserTarget | PageTarget | FrameTarget, void] -- Enumerator of targets
       def each_target(&block)
         return enum_for(:each_target) unless block_given?
         return unless @core_browser
@@ -274,8 +274,8 @@ module Puppeteer
         end
       end
 
-      # @rbs predicate: ^(BrowserTarget | PageTarget) -> boolish -- Predicate to match targets
-      # @rbs return: (BrowserTarget | PageTarget)? -- Matching target or nil
+      # @rbs predicate: ^(BrowserTarget | PageTarget | FrameTarget) -> boolish -- Predicate to match targets
+      # @rbs return: (BrowserTarget | PageTarget | FrameTarget)? -- Matching target or nil
       def find_target(predicate)
         each_target do |target|
           return target if predicate.call(target)
