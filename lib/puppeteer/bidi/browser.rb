@@ -69,14 +69,18 @@ module Puppeteer
       end
 
       # Launch a new Firefox browser instance
-      # @rbs **options: untyped
+      # @rbs executable_path: String? -- Path to Firefox executable
+      # @rbs user_data_dir: String? -- User data directory for browser profile
+      # @rbs headless: bool -- Run browser in headless mode (default: true)
+      # @rbs args: Array[String] -- Additional command line arguments for Firefox
+      # @rbs timeout: Numeric -- Timeout in seconds for browser launch (default: 30)
       # @rbs return: Browser
-      def self.launch(**options)
+      def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: [], timeout: 30)
         launcher = BrowserLauncher.new(
-          executable_path: options[:executable_path],
-          user_data_dir: options[:user_data_dir],
-          headless: options.fetch(:headless, true),
-          args: options.fetch(:args, [])
+          executable_path: executable_path,
+          user_data_dir: user_data_dir,
+          headless: headless,
+          args: args
         )
 
         ws_endpoint = launcher.launch
@@ -86,7 +90,7 @@ module Puppeteer
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
-        AsyncUtils.async_timeout(options.fetch(:timeout, 30) * 1000, transport.connect).wait
+        AsyncUtils.async_timeout(timeout * 1000, transport.connect).wait
 
         connection = Connection.new(transport)
 
