@@ -108,6 +108,10 @@ end
 - Public methods should have type annotations
 - **Do NOT use `@rbs!` blocks** - RubyMine IDE doesn't recognize them
 - **Use direct union types** instead of type aliases: `BrowserTarget | PageTarget | FrameTarget` not `target`
+- **Do NOT use `**options` in public APIs** - RubyMine shows as `untyped`. Use explicit keyword arguments:
+  - Optional params: `param: nil`
+  - Boolean params with default: `headless: true` or `enabled: false`
+  - Internal/Core layer methods may still use `**options` for flexibility
 
 **Generate RBS files:**
 ```bash
