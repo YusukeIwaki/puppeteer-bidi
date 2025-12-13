@@ -86,14 +86,15 @@ Use [rbs-inline](https://github.com/soutaro/rbs-inline) for type annotations in 
 class Example
   attr_reader :name #: String
 
-  # @rbs name: String
+  # @rbs name: String -- The name to set
   # @rbs return: void
   def initialize(name)
     @name = name
   end
 
-  # @rbs selector: String
-  # @rbs return: ElementHandle?
+  # Query for an element matching the selector
+  # @rbs selector: String -- CSS selector to query
+  # @rbs return: ElementHandle? -- Matching element or nil
   def query_selector(selector)
     # ...
   end
@@ -103,8 +104,10 @@ end
 **Conventions:**
 - Use `A?` for nullable types (not `A | nil`)
 - Use `A | B | nil` for union types with nil
-- Add space around `--` for inline comments: `# @rbs name: String -- the name`
+- **Always include descriptions** with `--` separator: `# @rbs name: String -- the name`
 - Public methods should have type annotations
+- **Do NOT use `@rbs!` blocks** - RubyMine IDE doesn't recognize them
+- **Use direct union types** instead of type aliases: `BrowserTarget | PageTarget | FrameTarget` not `target`
 
 **Generate RBS files:**
 ```bash
@@ -135,7 +138,6 @@ bundle exec steep check    # Run type checker
 2. **`sig/_supplementary.rbs`** - Types rbs-inline cannot generate
    - `extend self` pattern: Add `extend ModuleName` declaration
    - Singleton pattern: Add `extend Singleton::SingletonClassMethods`
-   - Union type aliases that rbs-inline doesn't preserve
 
 **Common Issues:**
 
