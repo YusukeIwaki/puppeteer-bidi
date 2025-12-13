@@ -42,15 +42,15 @@ module Puppeteer
     #   }
 
     # Launch a new browser instance
-    # @rbs **options: launch_options
-    # @rbs return: Browser
+    # @rbs **options: launch_options -- Launch options
+    # @rbs return: Browser -- Browser instance
     def self.launch(**options)
       Browser.launch(**options)
     end
 
     # Connect to an existing browser instance
-    # @rbs ws_endpoint: String
-    # @rbs return: Browser
+    # @rbs ws_endpoint: String -- WebSocket endpoint URL
+    # @rbs return: Browser -- Browser instance
     def self.connect(ws_endpoint)
       Browser.connect(ws_endpoint)
     end
