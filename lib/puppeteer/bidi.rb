@@ -38,15 +38,33 @@ module Puppeteer
     # @rbs headless: bool -- Run browser in headless mode
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
-    # @rbs return: Browser -- Browser instance
-    def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil)
-      Browser.launch(
-        executable_path: executable_path,
-        user_data_dir: user_data_dir,
-        headless: headless,
-        args: args,
-        timeout: timeout
-      )
+    # @rbs block: (Browser -> void)? -- Optional block to execute with the browser instance
+    # @rbs return: Browser? -- Browser instance (if no block given)
+    def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil, &block)
+      if block
+        Sync do
+          begin
+            browser = Browser.launch(
+              executable_path: executable_path,
+              user_data_dir: user_data_dir,
+              headless: headless,
+              args: args,
+              timeout: timeout
+            )
+            block.call(browser)
+          ensure
+            browser&.close
+          end
+        end
+      else
+        Browser.launch(
+          executable_path: executable_path,
+          user_data_dir: user_data_dir,
+          headless: headless,
+          args: args,
+          timeout: timeout
+        )
+      end
     end
 
     # Connect to an existing browser instance
