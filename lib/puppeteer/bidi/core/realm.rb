@@ -20,13 +20,14 @@ module Puppeteer
         end
 
         # Get the target for script execution
-        # @return [Hash] BiDi target descriptor
+        # @rbs return: Hash[Symbol, untyped] -- BiDi target descriptor
         def target
           { realm: @id }
         end
 
         # Disown handles (remove references)
-        # @param handles [Array<String>] Handle IDs to disown
+        # @rbs handles: Array[String] -- Handle IDs to disown
+        # @rbs return: Async::Task[untyped]
         def disown(handles)
           raise RealmDestroyedError, @reason if disposed?
           session.async_send_command('script.disown', {
@@ -36,10 +37,10 @@ module Puppeteer
         end
 
         # Call a function in the realm
-        # @param function_declaration [String] Function source code
-        # @param await_promise [Boolean] Whether to await promise results (Note: different from returnByValue!)
-        # @param options [Hash] Additional options (arguments, serializationOptions, resultOwnership, etc.)
-        # @return [Hash] Evaluation result (with 'type', 'realm', and optionally 'result'/'exceptionDetails')
+        # @rbs function_declaration: String -- Function source code
+        # @rbs await_promise: bool -- Whether to await promise results
+        # @rbs **options: untyped -- Additional options (arguments, serializationOptions, resultOwnership, etc.)
+        # @rbs return: Async::Task[Hash[String, untyped]] -- Evaluation result
         def call_function(function_declaration, await_promise, **options)
           raise RealmDestroyedError, @reason if disposed?
 
@@ -59,10 +60,10 @@ module Puppeteer
         end
 
         # Evaluate an expression in the realm
-        # @param expression [String] JavaScript expression
-        # @param await_promise [Boolean] Whether to await promise results
-        # @param options [Hash] Additional options (serializationOptions, resultOwnership, etc.)
-        # @return [Hash] Evaluation result (with 'type', 'realm', and optionally 'result'/'exceptionDetails')
+        # @rbs expression: String -- JavaScript expression
+        # @rbs await_promise: bool -- Whether to await promise results
+        # @rbs **options: untyped -- Additional options (serializationOptions, resultOwnership, etc.)
+        # @rbs return: Async::Task[Hash[String, untyped]] -- Evaluation result
         def evaluate(expression, await_promise, **options)
           raise RealmDestroyedError, @reason if disposed?
 
@@ -79,7 +80,7 @@ module Puppeteer
         end
 
         # Resolve the CDP execution context ID for this realm
-        # @return [Integer] Execution context ID
+        # @rbs return: Integer -- Execution context ID
         def resolve_execution_context_id
           return @execution_context_id if @execution_context_id
 
@@ -91,7 +92,7 @@ module Puppeteer
         protected
 
         # Abstract method - must be implemented by subclasses
-        # @return [Session] The session for this realm
+        # @rbs return: Session -- The session for this realm
         def session
           raise NotImplementedError, 'Subclasses must implement #session'
         end
@@ -107,9 +108,9 @@ module Puppeteer
       # WindowRealm represents a JavaScript realm in a window or iframe
       class WindowRealm < Realm
         # Create a window realm
-        # @param browsing_context [BrowsingContext] The browsing context
-        # @param sandbox [String, nil] Sandbox name
-        # @return [WindowRealm] New window realm
+        # @rbs browsing_context: BrowsingContext -- The browsing context
+        # @rbs sandbox: String? -- Sandbox name
+        # @rbs return: WindowRealm -- New window realm
         def self.from(browsing_context, sandbox = nil)
           realm = new(browsing_context, sandbox)
           realm.send(:initialize_realm)
@@ -127,19 +128,20 @@ module Puppeteer
 
         # Set the environment (Frame) for this realm
         # This is set by Frame when it's created
-        # @param frame [Frame] The frame environment
+        # @rbs frame: untyped -- The frame environment
+        # @rbs return: void
         def environment=(frame)
           @environment = frame
         end
 
         # Get the environment (Frame) for this realm
-        # @return [Frame] The frame environment
+        # @rbs return: untyped -- The frame environment
         def environment
           @environment
         end
 
         # Override target to use context-based target
-        # @return [Hash] BiDi target descriptor
+        # @rbs return: Hash[Symbol, untyped] -- BiDi target descriptor
         def target
           result = { context: @browsing_context.id }
           result[:sandbox] = @sandbox if @sandbox
@@ -198,10 +200,10 @@ module Puppeteer
       # DedicatedWorkerRealm represents a JavaScript realm in a dedicated worker
       class DedicatedWorkerRealm < Realm
         # Create a dedicated worker realm
-        # @param owner [WindowRealm, DedicatedWorkerRealm, SharedWorkerRealm] Owner realm
-        # @param id [String] Realm ID
-        # @param origin [String] Realm origin
-        # @return [DedicatedWorkerRealm] New dedicated worker realm
+        # @rbs owner: WindowRealm | DedicatedWorkerRealm | SharedWorkerRealm -- Owner realm
+        # @rbs id: String -- Realm ID
+        # @rbs origin: String -- Realm origin
+        # @rbs return: DedicatedWorkerRealm -- New dedicated worker realm
         def self.from(owner, id, origin)
           realm = new(owner, id, origin)
           realm.send(:initialize_realm)
@@ -257,10 +259,10 @@ module Puppeteer
       # SharedWorkerRealm represents a JavaScript realm in a shared worker
       class SharedWorkerRealm < Realm
         # Create a shared worker realm
-        # @param browser [Browser] Browser instance
-        # @param id [String] Realm ID
-        # @param origin [String] Realm origin
-        # @return [SharedWorkerRealm] New shared worker realm
+        # @rbs browser: Browser -- Browser instance
+        # @rbs id: String -- Realm ID
+        # @rbs origin: String -- Realm origin
+        # @rbs return: SharedWorkerRealm -- New shared worker realm
         def self.from(browser, id, origin)
           realm = new(browser, id, origin)
           realm.send(:initialize_realm)

@@ -11,9 +11,9 @@ module Puppeteer
         DEFAULT = 'default'
 
         # Create a user context
-        # @param browser [Browser] Parent browser
-        # @param id [String] Context ID
-        # @return [UserContext] New user context
+        # @rbs browser: Browser -- Parent browser
+        # @rbs id: String -- Context ID
+        # @rbs return: UserContext
         def self.create(browser, id)
           context = new(browser, id)
           context.send(:initialize_context)
@@ -39,16 +39,15 @@ module Puppeteer
         alias disposed? closed?
 
         # Get all browsing contexts in this user context
-        # @return [Array<BrowsingContext>] Top-level browsing contexts
+        # @rbs return: Array[BrowsingContext] -- Top-level browsing contexts
         def browsing_contexts
           @browsing_contexts.values
         end
 
         # Create a new browsing context (tab or window)
-        # @param type [String] 'tab' or 'window'
-        # @param options [Hash] Creation options
-        # @option options [BrowsingContext] :reference_context Reference context
-        # @return [BrowsingContext] New browsing context
+        # @rbs type: String -- 'tab' or 'window'
+        # @rbs reference_context: BrowsingContext? -- Reference context
+        # @rbs return: BrowsingContext -- New browsing context
         def create_browsing_context(type, **options)
           raise UserContextClosedError, @reason if closed?
 
@@ -97,9 +96,8 @@ module Puppeteer
         end
 
         # Get cookies for this user context
-        # @param options [Hash] Cookie filter options
-        # @option options [String] :source_origin Source origin
-        # @return [Array<Hash>] Cookies
+        # @rbs source_origin: String? -- Source origin
+        # @rbs return: Array[Hash[String, untyped]] -- Cookies
         def get_cookies(**options)
           raise UserContextClosedError, @reason if closed?
 
@@ -116,8 +114,9 @@ module Puppeteer
         end
 
         # Set a cookie in this user context
-        # @param cookie [Hash] Cookie data
-        # @option options [String] :source_origin Source origin
+        # @rbs cookie: Hash[String, untyped] -- Cookie data
+        # @rbs source_origin: String? -- Source origin
+        # @rbs return: void
         def set_cookie(cookie, **options)
           raise UserContextClosedError, @reason if closed?
 
@@ -135,9 +134,10 @@ module Puppeteer
         end
 
         # Set permissions for an origin
-        # @param origin [String] Origin URL
-        # @param descriptor [Hash] Permission descriptor
-        # @param state [String] Permission state
+        # @rbs origin: String -- Origin URL
+        # @rbs descriptor: Hash[String, untyped] -- Permission descriptor
+        # @rbs state: String -- Permission state
+        # @rbs return: void
         def set_permissions(origin, descriptor, state)
           raise UserContextClosedError, @reason if closed?
 

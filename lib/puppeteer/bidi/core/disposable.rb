@@ -16,8 +16,8 @@ module Puppeteer
           end
 
           # Add a disposable resource to the stack
-          # @rbs resource: untyped
-          # @rbs return: untyped
+          # @rbs resource: untyped -- Resource that responds to #dispose
+          # @rbs return: untyped -- The resource itself for convenience
           def use(resource)
             raise 'DisposableStack already disposed' if @disposed
             @resources << resource

@@ -9,9 +9,9 @@ module Puppeteer
         include Disposable::DisposableMixin
 
         # Create a user prompt instance
-        # @param browsing_context [BrowsingContext] The browsing context
-        # @param info [Hash] The userPromptOpened event data
-        # @return [UserPrompt] New user prompt instance
+        # @rbs browsing_context: BrowsingContext -- The browsing context
+        # @rbs info: Hash[String, untyped] -- The userPromptOpened event data
+        # @rbs return: UserPrompt -- New user prompt instance
         def self.from(browsing_context, info)
           prompt = new(browsing_context, info)
           prompt.send(:initialize_prompt)
@@ -38,7 +38,7 @@ module Puppeteer
 
         # Check if the prompt has been handled
         # Auto-handled prompts return true immediately
-        # @return [Boolean] Whether the prompt is handled
+        # @rbs return: bool -- Whether the prompt is handled
         def handled?
           handler = @info['handler']
           return true if handler == 'accept' || handler == 'dismiss'
@@ -46,9 +46,9 @@ module Puppeteer
         end
 
         # Handle the user prompt
-        # @param accept [Boolean, nil] Whether to accept the prompt
-        # @param user_text [String, nil] Text to enter (for prompt dialogs)
-        # @return [Hash] Result of handling the prompt
+        # @rbs accept: bool? -- Whether to accept the prompt
+        # @rbs user_text: String? -- Text to enter (for prompt dialogs)
+        # @rbs return: Hash[String, untyped] -- Result of handling the prompt
         def handle(accept: nil, user_text: nil)
           raise UserPromptClosedError, @reason if closed?
 

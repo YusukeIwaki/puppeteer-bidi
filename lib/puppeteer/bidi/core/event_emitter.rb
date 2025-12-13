@@ -14,8 +14,8 @@ module Puppeteer
         end
 
         # Register an event listener
-        # @rbs event: Symbol | String
-        # @rbs &block: (untyped) -> void
+        # @rbs event: Symbol | String -- Event name
+        # @rbs &block: (untyped) -> void -- Event handler
         # @rbs return: void
         def on(event, &block)
           return if @disposed
@@ -23,8 +23,8 @@ module Puppeteer
         end
 
         # Register a one-time event listener
-        # @rbs event: Symbol | String
-        # @rbs &block: (untyped) -> void
+        # @rbs event: Symbol | String -- Event name
+        # @rbs &block: (untyped) -> void -- Event handler
         # @rbs return: void
         def once(event, &block)
           return if @disposed
@@ -36,8 +36,8 @@ module Puppeteer
         end
 
         # Remove an event listener
-        # @rbs event: Symbol | String
-        # @rbs &block: ((untyped) -> void)?
+        # @rbs event: Symbol | String -- Event name
+        # @rbs &block: ((untyped) -> void)? -- Event handler to remove
         # @rbs return: void
         def off(event, &block)
           event_sym = event.to_sym
@@ -49,7 +49,7 @@ module Puppeteer
         end
 
         # Remove all listeners for an event or all events
-        # @rbs event: (Symbol | String)?
+        # @rbs event: (Symbol | String)? -- Event name
         # @rbs return: void
         def remove_all_listeners(event = nil)
           if event
@@ -60,8 +60,8 @@ module Puppeteer
         end
 
         # Emit an event to all registered listeners
-        # @rbs event: Symbol | String
-        # @rbs data: untyped
+        # @rbs event: Symbol | String -- Event name
+        # @rbs data: untyped -- Event data
         # @rbs return: void
         def emit(event, data = nil)
           return if @disposed

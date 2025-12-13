@@ -9,9 +9,9 @@ module Puppeteer
         include Disposable::DisposableMixin
 
         # Create a request instance from a beforeRequestSent event
-        # @param browsing_context [BrowsingContext] The browsing context
-        # @param event [Hash] The beforeRequestSent event data
-        # @return [Request] New request instance
+        # @rbs browsing_context: BrowsingContext -- The browsing context
+        # @rbs event: Hash[String, untyped] -- The beforeRequestSent event data
+        # @rbs return: Request -- New request instance
         def self.from(browsing_context, event)
           request = new(browsing_context, event)
           request.send(:initialize_request)
@@ -33,43 +33,43 @@ module Puppeteer
         end
 
         # Get request ID
-        # @return [String] Request ID
+        # @rbs return: String -- Request ID
         def id
           @event.dig('request', 'request')
         end
 
         # Get request URL
-        # @return [String] Request URL
+        # @rbs return: String -- Request URL
         def url
           @event.dig('request', 'url')
         end
 
         # Get request method
-        # @return [String] Request method (GET, POST, etc.)
+        # @rbs return: String -- Request method (GET, POST, etc.)
         def method
           @event.dig('request', 'method')
         end
 
         # Get request headers
-        # @return [Array<Hash>] Request headers
+        # @rbs return: Array[Hash[String, untyped]] -- Request headers
         def headers
           @event.dig('request', 'headers') || []
         end
 
         # Get navigation ID if this is a navigation request
-        # @return [String, nil] Navigation ID
+        # @rbs return: String? -- Navigation ID
         def navigation
           @event['navigation']
         end
 
         # Get redirect request if this request was redirected
-        # @return [Request, nil] Redirect request
+        # @rbs return: Request? -- Redirect request
         def redirect
           @redirect
         end
 
         # Get the last redirect in the chain
-        # @return [Request, nil] Last redirect request
+        # @rbs return: Request? -- Last redirect request
         def last_redirect
           redirect_request = @redirect
           while redirect_request
@@ -80,7 +80,7 @@ module Puppeteer
         end
 
         # Get request initiator information
-        # @return [Hash, nil] Initiator info
+        # @rbs return: Hash[String, untyped]? -- Initiator info
         def initiator
           initiator_data = @event['initiator']
           return nil unless initiator_data
@@ -93,41 +93,42 @@ module Puppeteer
         end
 
         # Check if the request is blocked
-        # @return [Boolean] Whether the request is blocked
+        # @rbs return: bool -- Whether the request is blocked
         def blocked?
           @event['isBlocked'] == true
         end
 
         # Get resource type (non-standard)
-        # @return [String, nil] Resource type
+        # @rbs return: String? -- Resource type
         def resource_type
           @event.dig('request', 'goog:resourceType')
         end
 
         # Get POST data (non-standard)
-        # @return [String, nil] POST data
+        # @rbs return: String? -- POST data
         def post_data
           @event.dig('request', 'goog:postData')
         end
 
         # Check if request has POST data
-        # @return [Boolean] Whether request has POST data
+        # @rbs return: bool -- Whether request has POST data
         def has_post_data?
           (@event.dig('request', 'bodySize') || 0) > 0
         end
 
         # Get timing information
-        # @return [Hash] Timing info
+        # @rbs return: Hash[String, untyped] -- Timing info
         def timing
           @event.dig('request', 'timings') || {}
         end
 
         # Continue the request with optional modifications
-        # @param url [String, nil] Modified URL
-        # @param method [String, nil] Modified method
-        # @param headers [Array<Hash>, nil] Modified headers
-        # @param cookies [Array<Hash>, nil] Modified cookies
-        # @param body [Hash, nil] Modified body
+        # @rbs url: String? -- Modified URL
+        # @rbs method: String? -- Modified method
+        # @rbs headers: Array[Hash[String, untyped]]? -- Modified headers
+        # @rbs cookies: Array[Hash[String, untyped]]? -- Modified cookies
+        # @rbs body: Hash[String, untyped]? -- Modified body
+        # @rbs return: untyped
         def continue_request(url: nil, method: nil, headers: nil, cookies: nil, body: nil)
           params = { request: id }
           params[:url] = url if url
@@ -145,10 +146,11 @@ module Puppeteer
         end
 
         # Provide a response for the request
-        # @param status_code [Integer, nil] Response status code
-        # @param reason_phrase [String, nil] Response reason phrase
-        # @param headers [Array<Hash>, nil] Response headers
-        # @param body [Hash, nil] Response body
+        # @rbs status_code: Integer? -- Response status code
+        # @rbs reason_phrase: String? -- Response reason phrase
+        # @rbs headers: Array[Hash[String, untyped]]? -- Response headers
+        # @rbs body: Hash[String, untyped]? -- Response body
+        # @rbs return: untyped
         def provide_response(status_code: nil, reason_phrase: nil, headers: nil, body: nil)
           params = { request: id }
           params[:statusCode] = status_code if status_code
@@ -160,7 +162,7 @@ module Puppeteer
         end
 
         # Fetch POST data for the request
-        # @return [String, nil] POST data
+        # @rbs return: String? -- POST data
         def fetch_post_data
           return nil unless has_post_data?
           return @request_body_promise if @request_body_promise
@@ -181,7 +183,7 @@ module Puppeteer
         end
 
         # Get response content
-        # @return [String] Response content as binary string
+        # @rbs return: String -- Response content as binary string
         def response_content
           return @response_content_promise if @response_content_promise
 
@@ -206,8 +208,9 @@ module Puppeteer
         end
 
         # Continue with authentication
-        # @param action [String] 'provideCredentials', 'default', or 'cancel'
-        # @param credentials [Hash, nil] Credentials hash with username and password
+        # @rbs action: String -- 'provideCredentials', 'default', or 'cancel'
+        # @rbs credentials: Hash[String, untyped]? -- Credentials hash with username and password
+        # @rbs return: untyped
         def continue_with_auth(action:, credentials: nil)
           params = {
             request: id,

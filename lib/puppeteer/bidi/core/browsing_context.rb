@@ -9,12 +9,12 @@ module Puppeteer
         include Disposable::DisposableMixin
 
         # Create a browsing context
-        # @param user_context [UserContext] Parent user context
-        # @param parent [BrowsingContext, nil] Parent browsing context
-        # @param id [String] Context ID
-        # @param url [String] Initial URL
-        # @param original_opener [String, nil] Original opener context ID
-        # @return [BrowsingContext] New browsing context
+        # @rbs user_context: UserContext -- Parent user context
+        # @rbs parent: BrowsingContext? -- Parent browsing context
+        # @rbs id: String -- Context ID
+        # @rbs url: String -- Initial URL
+        # @rbs original_opener: String? -- Original opener context ID
+        # @rbs return: BrowsingContext -- New browsing context
         def self.from(user_context, parent, id, url, original_opener)
           context = new(user_context, parent, id, url, original_opener)
           context.send(:initialize_context)
@@ -51,25 +51,25 @@ module Puppeteer
         alias disposed? closed?
 
         # Get the current URL
-        # @return [String] Current URL
+        # @rbs return: String -- Current URL
         def url
           @url
         end
 
         # Get child browsing contexts
-        # @return [Array<BrowsingContext>] Child contexts
+        # @rbs return: Array[BrowsingContext] -- Child contexts
         def children
           @children.values
         end
 
         # Get all realms in this context
-        # @return [Array<WindowRealm>] All realms
+        # @rbs return: Array[WindowRealm] -- All realms
         def realms
           [@default_realm] + @realms.values
         end
 
         # Get the top-level browsing context
-        # @return [BrowsingContext] Top-level context
+        # @rbs return: BrowsingContext -- Top-level context
         def top
           context = self
           while context.parent
@@ -85,8 +85,9 @@ module Puppeteer
         end
 
         # Navigate to a URL
-        # @param url [String] URL to navigate to
-        # @param wait [String, nil] Wait condition ('none', 'interactive', 'complete')
+        # @rbs url: String -- URL to navigate to
+        # @rbs wait: String? -- Wait condition ('none', 'interactive', 'complete')
+        # @rbs return: Async::Task[untyped]
         def navigate(url, wait: nil)
           Async do
             raise BrowsingContextClosedError, @reason if closed?
@@ -99,15 +100,16 @@ module Puppeteer
         end
 
         # Reload the page
-        # @param options [Hash] Reload options
+        # @rbs **options: untyped -- Reload options
+        # @rbs return: Async::Task[untyped]
         def reload(**options)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('browsingContext.reload', options.merge(context: @id))
         end
 
         # Capture a screenshot
-        # @param options [Hash] Screenshot options
-        # @return [Async::Task<String>] Base64-encoded image data
+        # @rbs **options: untyped -- Screenshot options
+        # @rbs return: Async::Task[String] -- Base64-encoded image data
         def capture_screenshot(**options)
           raise BrowsingContextClosedError, @reason if closed?
           Async do
@@ -117,8 +119,8 @@ module Puppeteer
         end
 
         # Print to PDF
-        # @param options [Hash] Print options
-        # @return [Async::Task<String>] Base64-encoded PDF data
+        # @rbs **options: untyped -- Print options
+        # @rbs return: Async::Task[String] -- Base64-encoded PDF data
         def print(**options)
           raise BrowsingContextClosedError, @reason if closed?
           Async do
@@ -128,7 +130,8 @@ module Puppeteer
         end
 
         # Close this browsing context
-        # @param prompt_unload [Boolean] Whether to prompt before unload
+        # @rbs prompt_unload: bool -- Whether to prompt before unload
+        # @rbs return: Async::Task[void]
         def close(prompt_unload: false)
           raise BrowsingContextClosedError, @reason if closed?
 
@@ -164,7 +167,8 @@ module Puppeteer
         end
 
         # Traverse history
-        # @param delta [Integer] Number of steps to go back (negative) or forward (positive)
+        # @rbs delta: Integer -- Number of steps to go back (negative) or forward (positive)
+        # @rbs return: Async::Task[untyped]
         def traverse_history(delta)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('browsingContext.traverseHistory', {
@@ -174,21 +178,24 @@ module Puppeteer
         end
 
         # Handle a user prompt
-        # @param options [Hash] Prompt handling options
+        # @rbs **options: untyped -- Prompt handling options
+        # @rbs return: Async::Task[untyped]
         def handle_user_prompt(**options)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('browsingContext.handleUserPrompt', options.merge(context: @id))
         end
 
         # Set viewport
-        # @param options [Hash] Viewport options
+        # @rbs **options: untyped -- Viewport options
+        # @rbs return: Async::Task[untyped]
         def set_viewport(**options)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('browsingContext.setViewport', options.merge(context: @id))
         end
 
         # Perform input actions
-        # @param actions [Array<Hash>] Input actions
+        # @rbs actions: Array[Hash[String, untyped]] -- Input actions
+        # @rbs return: Async::Task[untyped]
         def perform_actions(actions)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('input.performActions', {
@@ -204,7 +211,8 @@ module Puppeteer
         end
 
         # Set cache behavior
-        # @param cache_behavior [String] 'default' or 'bypass'
+        # @rbs cache_behavior: String -- 'default' or 'bypass'
+        # @rbs return: Async::Task[untyped]
         def set_cache_behavior(cache_behavior)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('network.setCacheBehavior', {
@@ -214,8 +222,8 @@ module Puppeteer
         end
 
         # Create a sandboxed window realm
-        # @param sandbox [String] Sandbox name
-        # @return [WindowRealm] New realm
+        # @rbs sandbox: String -- Sandbox name
+        # @rbs return: WindowRealm -- New realm
         def create_window_realm(sandbox)
           raise BrowsingContextClosedError, @reason if closed?
           realm = WindowRealm.from(self, sandbox)
@@ -226,9 +234,9 @@ module Puppeteer
         end
 
         # Add a preload script to this context
-        # @param function_declaration [String] JavaScript function
-        # @param options [Hash] Script options
-        # @return [String] Script ID
+        # @rbs function_declaration: String -- JavaScript function
+        # @rbs **options: untyped -- Script options
+        # @rbs return: Async::Task[String] -- Script ID
         def add_preload_script(function_declaration, **options)
           raise BrowsingContextClosedError, @reason if closed?
           user_context.browser.add_preload_script(
@@ -238,15 +246,16 @@ module Puppeteer
         end
 
         # Remove a preload script
-        # @param script [String] Script ID
+        # @rbs script: String -- Script ID
+        # @rbs return: Async::Task[untyped]
         def remove_preload_script(script)
           raise BrowsingContextClosedError, @reason if closed?
           user_context.browser.remove_preload_script(script)
         end
 
         # Add network intercept
-        # @param options [Hash] Intercept options
-        # @return [String] Intercept ID
+        # @rbs **options: untyped -- Intercept options
+        # @rbs return: String -- Intercept ID
         def add_intercept(**options)
           raise BrowsingContextClosedError, @reason if closed?
           result = session.async_send_command('network.addIntercept', options.merge(contexts: [@id]))
@@ -254,8 +263,8 @@ module Puppeteer
         end
 
         # Get cookies
-        # @param options [Hash] Cookie filter options
-        # @return [Array<Hash>] Cookies
+        # @rbs **options: untyped -- Cookie filter options
+        # @rbs return: Array[Hash[String, untyped]] -- Cookies
         def get_cookies(**options)
           raise BrowsingContextClosedError, @reason if closed?
           params = options.dup
@@ -268,7 +277,8 @@ module Puppeteer
         end
 
         # Set a cookie
-        # @param cookie [Hash] Cookie data
+        # @rbs cookie: Hash[String, untyped] -- Cookie data
+        # @rbs return: Async::Task[untyped]
         def set_cookie(cookie)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('storage.setCookie', {
@@ -281,7 +291,8 @@ module Puppeteer
         end
 
         # Delete cookies
-        # @param cookie_filters [Array<Hash>] Cookie filters
+        # @rbs *cookie_filters: Hash[String, untyped] -- Cookie filters
+        # @rbs return: void
         def delete_cookie(*cookie_filters)
           raise BrowsingContextClosedError, @reason if closed?
           cookie_filters.each do |filter|
@@ -296,7 +307,8 @@ module Puppeteer
         end
 
         # Set geolocation override
-        # @param options [Hash] Geolocation options
+        # @rbs **options: untyped -- Geolocation options
+        # @rbs return: Async::Task[untyped]
         def set_geolocation_override(**options)
           raise BrowsingContextClosedError, @reason if closed?
           raise 'Missing coordinates' unless options[:coordinates]
@@ -308,7 +320,8 @@ module Puppeteer
         end
 
         # Set timezone override
-        # @param timezone_id [String, nil] Timezone ID
+        # @rbs timezone_id: String? -- Timezone ID
+        # @rbs return: Async::Task[untyped]
         def set_timezone_override(timezone_id = nil)
           raise BrowsingContextClosedError, @reason if closed?
 
@@ -322,8 +335,9 @@ module Puppeteer
         end
 
         # Set files on an input element
-        # @param element [Hash] Element reference
-        # @param files [Array<String>] File paths
+        # @rbs element: Hash[String, untyped] -- Element reference
+        # @rbs files: Array[String] -- File paths
+        # @rbs return: Async::Task[untyped]
         def set_files(element, files)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('input.setFiles', {
@@ -334,9 +348,9 @@ module Puppeteer
         end
 
         # Locate nodes in the context
-        # @param locator [Hash] Node locator
-        # @param start_nodes [Array<Hash>] Starting nodes
-        # @return [Array<Hash>] Located nodes
+        # @rbs locator: Hash[String, untyped] -- Node locator
+        # @rbs start_nodes: Array[Hash[String, untyped]] -- Starting nodes
+        # @rbs return: Array[Hash[String, untyped]] -- Located nodes
         def locate_nodes(locator, start_nodes = [])
           raise BrowsingContextClosedError, @reason if closed?
           params = {
@@ -350,7 +364,8 @@ module Puppeteer
         end
 
         # Set JavaScript enabled state
-        # @param enabled [Boolean] Whether JavaScript is enabled
+        # @rbs enabled: bool -- Whether JavaScript is enabled
+        # @rbs return: Async::Task[void]
         def set_javascript_enabled(enabled)
           Async do
             raise BrowsingContextClosedError, @reason if closed?
@@ -363,20 +378,22 @@ module Puppeteer
         end
 
         # Check if JavaScript is enabled
-        # @return [Boolean] Whether JavaScript is enabled
+        # @rbs return: bool -- Whether JavaScript is enabled
         def javascript_enabled?
           @emulation_state[:javascript_enabled]
         end
 
         # Subscribe to events for this context
-        # @param events [Array<String>] Event names
+        # @rbs events: Array[String] -- Event names
+        # @rbs return: void
         def subscribe(events)
           raise BrowsingContextClosedError, @reason if closed?
           session.subscribe(events, [@id])
         end
 
         # Add interception for this context
-        # @param events [Array<String>] Event names
+        # @rbs events: Array[String] -- Event names
+        # @rbs return: void
         def add_interception(events)
           raise BrowsingContextClosedError, @reason if closed?
           session.subscribe(events, [@id])
