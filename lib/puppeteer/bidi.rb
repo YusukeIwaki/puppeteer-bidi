@@ -33,14 +33,20 @@ require "puppeteer/bidi/browser"
 module Puppeteer
   module Bidi
     # Launch a new browser instance
-    # @rbs executable_path: String
-    # @rbs user_data_dir: String
-    # @rbs headless: bool
-    # @rbs args: Array[String]
-    # @rbs timeout: Numeric
+    # @rbs executable_path: String? -- Path to browser executable
+    # @rbs user_data_dir: String? -- Path to user data directory
+    # @rbs headless: bool -- Run browser in headless mode
+    # @rbs args: Array[String]? -- Additional browser arguments
+    # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs return: Browser -- Browser instance
-    def self.launch(**options)
-      Browser.launch(**options)
+    def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil)
+      Browser.launch(
+        executable_path: executable_path,
+        user_data_dir: user_data_dir,
+        headless: headless,
+        args: args,
+        timeout: timeout
+      )
     end
 
     # Connect to an existing browser instance
