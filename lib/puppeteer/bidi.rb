@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 require "puppeteer/bidi/version"
 require "puppeteer/bidi/errors"
@@ -31,17 +32,16 @@ require "puppeteer/bidi/browser"
 
 module Puppeteer
   module Bidi
-
     # Launch a new browser instance
-    # @param options [Hash] Launch options
-    # @return [Browser] Browser instance
+    # @rbs **options: untyped
+    # @rbs return: Browser
     def self.launch(**options)
       Browser.launch(**options)
     end
 
     # Connect to an existing browser instance
-    # @param ws_endpoint [String] WebSocket endpoint URL
-    # @return [Browser] Browser instance
+    # @rbs ws_endpoint: String
+    # @rbs return: Browser
     def self.connect(ws_endpoint)
       Browser.connect(ws_endpoint)
     end

@@ -1,12 +1,16 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
     # JSHandle represents a reference to a JavaScript object
     # Based on Puppeteer's BidiJSHandle implementation
     class JSHandle
-      attr_reader :realm
+      attr_reader :realm #: Core::Realm
 
+      # @rbs remote_value: Hash[String, untyped]
+      # @rbs realm: Core::Realm
+      # @rbs return: void
       def initialize(realm, remote_value)
         @realm = realm
         @remote_value = remote_value
@@ -14,9 +18,9 @@ module Puppeteer
       end
 
       # Factory method to create JSHandle from remote value
-      # @param remote_value [Hash] BiDi RemoteValue
-      # @param realm [Core::Realm] Associated realm
-      # @return [JSHandle, ElementHandle] Appropriate handle type
+      # @rbs remote_value: Hash[String, untyped]
+      # @rbs realm: Core::Realm
+      # @rbs return: JSHandle | ElementHandle
       def self.from(remote_value, realm)
         if remote_value['type'] == 'node'
           ElementHandle.new(realm, remote_value)
@@ -26,24 +30,25 @@ module Puppeteer
       end
 
       # Get the remote value (BiDi Script.RemoteValue)
-      # @return [Hash] BiDi RemoteValue
+      # @rbs return: Hash[String, untyped]
       def remote_value
         @remote_value
       end
 
       # Get the remote object (alias for remote_value)
-      # @return [Hash] BiDi RemoteValue
+      # @rbs return: Hash[String, untyped]
       def remote_object
         @remote_value
       end
 
       # Check if handle has been disposed
-      # @return [Boolean] Whether handle is disposed
+      # @rbs return: bool
       def disposed?
         @disposed
       end
 
       # Dispose this handle by releasing the remote object
+      # @rbs return: void
       def dispose
         return if @disposed
 
@@ -55,15 +60,15 @@ module Puppeteer
       end
 
       # Get the handle ID (handle or sharedId)
-      # @return [String, nil] Handle ID
+      # @rbs return: String?
       def id
         @remote_value['handle'] || @remote_value['sharedId']
       end
 
       # Evaluate JavaScript function with this handle as the first argument
-      # @param script [String] JavaScript function to evaluate
-      # @param *args [Array] Additional arguments
-      # @return [Object] Deserialized result
+      # @rbs script: String
+      # @rbs *args: untyped
+      # @rbs return: untyped
       def evaluate(script, *args)
         assert_not_disposed
 
@@ -82,9 +87,9 @@ module Puppeteer
       end
 
       # Evaluate JavaScript function and return a handle to the result
-      # @param script [String] JavaScript function to evaluate
-      # @param *args [Array] Additional arguments
-      # @return [JSHandle] Handle to the result
+      # @rbs script: String
+      # @rbs *args: untyped
+      # @rbs return: JSHandle
       def evaluate_handle(script, *args)
         assert_not_disposed
 
@@ -104,8 +109,8 @@ module Puppeteer
       end
 
       # Get a property of the object
-      # @param property_name [String] Property name to get
-      # @return [JSHandle] Handle to the property value
+      # @rbs property_name: String
+      # @rbs return: JSHandle
       def get_property(property_name)
         assert_not_disposed
 
@@ -128,7 +133,7 @@ module Puppeteer
       end
 
       # Get all properties of the object
-      # @return [Hash<String, JSHandle>] Map of property names to handles
+      # @rbs return: Hash[String, JSHandle]
       def get_properties
         assert_not_disposed
 
@@ -207,7 +212,7 @@ module Puppeteer
       end
 
       # Convert this handle to a JSON-serializable value
-      # @return [Object] Ruby object (Hash, Array, String, Number, etc.)
+      # @rbs return: untyped
       def json_value
         assert_not_disposed
 
@@ -217,7 +222,7 @@ module Puppeteer
       end
 
       # Convert to ElementHandle if this is an element
-      # @return [ElementHandle, nil] ElementHandle if element, nil otherwise
+      # @rbs return: ElementHandle?
       def as_element
         return nil unless @remote_value['type'] == 'node'
 
@@ -241,14 +246,14 @@ module Puppeteer
       end
 
       # Check if this is a primitive value
-      # @return [Boolean] True if primitive
+      # @rbs return: bool
       def primitive_value?
         type = @remote_value['type']
         %w[string number bigint boolean undefined null].include?(type)
       end
 
       # String representation of this handle
-      # @return [String] Formatted string
+      # @rbs return: String
       def to_s
         return 'JSHandle@disposed' if @disposed
 
@@ -268,12 +273,14 @@ module Puppeteer
       private
 
       # Check if this handle has been disposed and raise error if so
-      # @raise [JSHandleDisposedError] If handle is disposed
+      # @rbs return: void
       def assert_not_disposed
         raise JSHandleDisposedError if @disposed
       end
 
       # Handle evaluation exceptions
+      # @rbs result: Hash[String, untyped]
+      # @rbs return: void
       def handle_evaluation_exception(result)
         exception_details = result['exceptionDetails']
         return unless exception_details

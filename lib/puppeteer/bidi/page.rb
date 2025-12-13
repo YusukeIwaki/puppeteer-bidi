@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 require 'base64'
 require 'fileutils'
@@ -8,10 +9,15 @@ module Puppeteer
     # Page represents a single page/tab in the browser
     # This is a high-level wrapper around Core::BrowsingContext
     class Page
-      DEFAULT_TIMEOUT = 30_000
+      DEFAULT_TIMEOUT = 30_000 #: Integer
 
-      attr_reader :browsing_context, :browser_context, :timeout_settings
+      attr_reader :browsing_context #: Core::BrowsingContext
+      attr_reader :browser_context #: BrowserContext
+      attr_reader :timeout_settings #: TimeoutSettings
 
+      # @rbs browser_context: BrowserContext
+      # @rbs browsing_context: Core::BrowsingContext
+      # @rbs return: void
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
         @browsing_context = browsing_context
@@ -23,37 +29,41 @@ module Puppeteer
       # Following Puppeteer's trustedEmitter pattern
 
       # Register an event listener
-      # @param event [Symbol, String] Event name (e.g., :frameattached, :framedetached, :framenavigated)
-      # @param block [Proc] Event handler
+      # @rbs event: Symbol | String
+      # @rbs &block: (untyped) -> void
+      # @rbs return: void
       def on(event, &block)
         @emitter.on(event, &block)
       end
 
       # Register a one-time event listener
-      # @param event [Symbol, String] Event name
-      # @param block [Proc] Event handler
+      # @rbs event: Symbol | String
+      # @rbs &block: (untyped) -> void
+      # @rbs return: void
       def once(event, &block)
         @emitter.once(event, &block)
       end
 
       # Remove an event listener
-      # @param event [Symbol, String] Event name
-      # @param block [Proc] Event handler to remove
+      # @rbs event: Symbol | String
+      # @rbs &block: (untyped) -> void
+      # @rbs return: void
       def off(event, &block)
         @emitter.off(event, &block)
       end
 
       # Emit an event to all registered listeners
-      # @param event [Symbol, String] Event name
-      # @param data [Object] Event data
+      # @rbs event: Symbol | String
+      # @rbs data: untyped
+      # @rbs return: void
       def emit(event, data = nil)
         @emitter.emit(event, data)
       end
 
       # Navigate to a URL
-      # @param url [String] URL to navigate to
-      # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded', 'networkidle')
-      # @return [HTTPResponse, nil] Main response
+      # @rbs url: String
+      # @rbs wait_until: String
+      # @rbs return: HTTPResponse?
       def goto(url, wait_until: 'load')
         assert_not_closed
 
@@ -61,19 +71,20 @@ module Puppeteer
       end
 
       # Set page content
-      # @param html [String] HTML content to set
-      # @param wait_until [String] When to consider content set ('load', 'domcontentloaded')
+      # @rbs html: String
+      # @rbs wait_until: String
+      # @rbs return: void
       def set_content(html, wait_until: 'load')
         main_frame.set_content(html, wait_until: wait_until)
       end
 
       # Take a screenshot
-      # @param path [String, nil] Path to save the screenshot
-      # @param type [String] Screenshot type ('png' or 'jpeg')
-      # @param full_page [Boolean] Whether to take a screenshot of the full scrollable page
-      # @param clip [Hash, nil] Clipping region {x:, y:, width:, height:}
-      # @param capture_beyond_viewport [Boolean] Capture screenshot beyond the viewport (default: true)
-      # @return [String] Base64-encoded image data
+      # @rbs path: String?
+      # @rbs type: String
+      # @rbs full_page: bool
+      # @rbs clip: Hash[Symbol, Numeric]?
+      # @rbs capture_beyond_viewport: bool
+      # @rbs return: String
       def screenshot(path: nil, type: 'png', full_page: false, clip: nil, capture_beyond_viewport: true)
         assert_not_closed
 
@@ -196,79 +207,83 @@ module Puppeteer
       end
 
       # Evaluate JavaScript in the page context
-      # @param script [String] JavaScript to evaluate (expression or function)
-      # @param *args [Array] Arguments to pass to the function (if script is a function)
-      # @return [Object] Result of evaluation
+      # @rbs script: String
+      # @rbs *args: untyped
+      # @rbs return: untyped
       def evaluate(script, *args)
         main_frame.evaluate(script, *args)
       end
 
       # Evaluate JavaScript and return a handle to the result
-      # @param script [String] JavaScript to evaluate (expression or function)
-      # @param *args [Array] Arguments to pass to the function (if script is a function)
-      # @return [JSHandle] Handle to the result
+      # @rbs script: String
+      # @rbs *args: untyped
+      # @rbs return: JSHandle
       def evaluate_handle(script, *args)
         main_frame.evaluate_handle(script, *args)
       end
 
       # Query for an element matching the selector
-      # @param selector [String] CSS selector
-      # @return [ElementHandle, nil] Element handle if found, nil otherwise
+      # @rbs selector: String
+      # @rbs return: ElementHandle?
       def query_selector(selector)
         main_frame.query_selector(selector)
       end
 
       # Query for all elements matching the selector
-      # @param selector [String] CSS selector
-      # @return [Array<ElementHandle>] Array of element handles
+      # @rbs selector: String
+      # @rbs return: Array[ElementHandle]
       def query_selector_all(selector)
         main_frame.query_selector_all(selector)
       end
 
       # Evaluate a function on the first element matching the selector
-      # @param selector [String] CSS selector
-      # @param page_function [String] JavaScript function to evaluate
-      # @param *args [Array] Arguments to pass to the function
-      # @return [Object] Result of evaluation
+      # @rbs selector: String
+      # @rbs page_function: String
+      # @rbs *args: untyped
+      # @rbs return: untyped
       def eval_on_selector(selector, page_function, *args)
         main_frame.eval_on_selector(selector, page_function, *args)
       end
 
       # Evaluate a function on all elements matching the selector
-      # @param selector [String] CSS selector
-      # @param page_function [String] JavaScript function to evaluate
-      # @param *args [Array] Arguments to pass to the function
-      # @return [Object] Result of evaluation
+      # @rbs selector: String
+      # @rbs page_function: String
+      # @rbs *args: untyped
+      # @rbs return: untyped
       def eval_on_selector_all(selector, page_function, *args)
         main_frame.eval_on_selector_all(selector, page_function, *args)
       end
 
       # Click an element matching the selector
-      # @param selector [String] CSS selector
-      # @param button [String] Mouse button ('left', 'right', 'middle')
-      # @param count [Integer] Number of clicks (1, 2, 3)
-      # @param delay [Numeric] Delay between mousedown and mouseup in milliseconds
-      # @param offset [Hash] Click offset {x:, y:} relative to element center
+      # @rbs selector: String
+      # @rbs button: String
+      # @rbs count: Integer
+      # @rbs delay: Numeric?
+      # @rbs offset: Hash[Symbol, Numeric]?
+      # @rbs return: void
       def click(selector, button: Mouse::LEFT, count: 1, delay: nil, offset: nil)
         main_frame.click(selector, button: button, count: count, delay: delay, offset: offset)
       end
 
       # Type text into an element matching the selector
-      # @param selector [String] CSS selector
-      # @param text [String] Text to type
-      # @param delay [Numeric] Delay between key presses in milliseconds
+      # @rbs selector: String
+      # @rbs text: String
+      # @rbs delay: Numeric
+      # @rbs return: void
       def type(selector, text, delay: 0)
         main_frame.type(selector, text, delay: delay)
       end
 
       # Hover over an element matching the selector
-      # @param selector [String] CSS selector
+      # @rbs selector: String
+      # @rbs return: void
       def hover(selector)
         main_frame.hover(selector)
       end
 
       # Focus an element matching the selector
-      # @param selector [String] CSS selector
+      # @rbs selector: String
+      # @rbs return: void
       def focus(selector)
         handle = main_frame.query_selector(selector)
         raise SelectorNotFoundError, selector unless handle
@@ -281,18 +296,19 @@ module Puppeteer
       end
 
       # Get the page title
-      # @return [String] Page title
+      # @rbs return: String
       def title
         evaluate('document.title')
       end
 
       # Get the page URL
-      # @return [String] Current URL
+      # @rbs return: String
       def url
         @browsing_context.url
       end
 
       # Close the page
+      # @rbs return: void
       def close
         return if closed?
 
@@ -300,19 +316,19 @@ module Puppeteer
       end
 
       # Check if page is closed
-      # @return [Boolean] Whether the page is closed
+      # @rbs return: bool
       def closed?
         @browsing_context.closed?
       end
 
       # Get the main frame
-      # @return [Frame] Main frame
+      # @rbs return: Frame
       def main_frame
         @main_frame ||= Frame.from(self, @browsing_context)
       end
 
       # Get the focused frame
-      # @return [Frame] Focused frame (may be an iframe if one has focus)
+      # @rbs return: Frame
       def focused_frame
         assert_not_closed
 
@@ -352,46 +368,47 @@ module Puppeteer
 
       # Get all frames (main frame + all nested child frames)
       # Following Puppeteer's pattern of returning all frames recursively
-      # @return [Array<Frame>] All frames
+      # @rbs return: Array[Frame]
       def frames
         collect_frames(main_frame)
       end
 
       # Get the mouse instance
-      # @return [Mouse] Mouse instance
+      # @rbs return: Mouse
       def mouse
         @mouse ||= Mouse.new(@browsing_context)
       end
 
       # Get the keyboard instance
-      # @return [Keyboard] Keyboard instance
+      # @rbs return: Keyboard
       def keyboard
         @keyboard ||= Keyboard.new(self, @browsing_context)
       end
 
       # Wait for a function to return a truthy value
-      # @param page_function [String] JavaScript function to evaluate
-      # @param options [Hash] Options for waiting
-      # @option options [String, Numeric] :polling Polling strategy ('raf', 'mutation', or interval in ms)
-      # @option options [Numeric] :timeout Timeout in milliseconds (default: 30000)
-      # @param args [Array] Arguments to pass to the function
-      # @return [JSHandle] Handle to the function's return value
+      # @rbs page_function: String
+      # @rbs options: Hash[Symbol, untyped]
+      # @rbs *args: untyped
+      # @rbs &block: ((JSHandle) -> void)?
+      # @rbs return: JSHandle
       def wait_for_function(page_function, options = {}, *args, &block)
         main_frame.wait_for_function(page_function, options, *args, &block)
       end
 
       # Wait for an element matching the selector to appear in the page
-      # @param selector [String] CSS selector
-      # @param visible [Boolean] Wait for element to be visible
-      # @param hidden [Boolean] Wait for element to be hidden or not found
-      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
-      # @return [ElementHandle, nil] Element handle if found, nil if hidden option was used and element disappeared
+      # @rbs selector: String
+      # @rbs visible: bool?
+      # @rbs hidden: bool?
+      # @rbs timeout: Numeric?
+      # @rbs &block: ((ElementHandle?) -> void)?
+      # @rbs return: ElementHandle?
       def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
         main_frame.wait_for_selector(selector, visible: visible, hidden: hidden, timeout: timeout, &block)
       end
 
       # Set the default timeout for waiting operations (e.g., waitForFunction).
-      # @param timeout [Numeric] Timeout in milliseconds (0 disables the timeout)
+      # @rbs timeout: Numeric
+      # @rbs return: void
       def set_default_timeout(timeout)
         raise ArgumentError, 'timeout must be a non-negative number' unless timeout.is_a?(Numeric) && timeout >= 0
 
@@ -399,25 +416,24 @@ module Puppeteer
       end
 
       # Get the current default timeout in milliseconds.
-      # @return [Numeric]
+      # @rbs return: Numeric
       def default_timeout
         @timeout_settings.timeout
       end
 
       # Wait for navigation to complete
-      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
-      # @param wait_until [String] When to consider navigation succeeded ('load', 'domcontentloaded')
-      # @yield Optional block to execute that triggers navigation
-      # @return [HTTPResponse, nil] Main response (nil for fragment navigation or history API)
+      # @rbs timeout: Numeric
+      # @rbs wait_until: String
+      # @rbs &block: (-> void)?
+      # @rbs return: HTTPResponse?
       def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
         main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
       end
 
       # Wait for a file chooser to be opened
-      # @param timeout [Numeric, nil] Timeout in milliseconds (default: use default timeout, 0 for no timeout)
-      # @yield Block to execute that triggers the file chooser (e.g., clicking a file input)
-      # @return [FileChooser] The file chooser that was opened
-      # @raise [TimeoutError] If timeout expires before file chooser is opened
+      # @rbs timeout: Numeric?
+      # @rbs &block: (-> void)?
+      # @rbs return: FileChooser
       def wait_for_file_chooser(timeout: nil, &block)
         assert_not_closed
 
@@ -469,10 +485,10 @@ module Puppeteer
 
       # Wait for network to be idle (no more than concurrency connections for idle_time)
       # Based on Puppeteer's waitForNetworkIdle implementation
-      # @param idle_time [Numeric] Time in milliseconds to wait for network to be idle (default: 500)
-      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
-      # @param concurrency [Integer] Maximum number of inflight network connections (0 or 2, default: 0)
-      # @return [void]
+      # @rbs idle_time: Numeric
+      # @rbs timeout: Numeric
+      # @rbs concurrency: Integer
+      # @rbs return: void
       def wait_for_network_idle(idle_time: 500, timeout: 30000, concurrency: 0)
         assert_not_closed
 
@@ -538,8 +554,9 @@ module Puppeteer
       end
 
       # Set viewport size
-      # @param width [Integer] Viewport width
-      # @param height [Integer] Viewport height
+      # @rbs width: Integer
+      # @rbs height: Integer
+      # @rbs return: void
       def set_viewport(width:, height:)
         @viewport = { width: width, height: height }
         @browsing_context.set_viewport(
@@ -551,7 +568,7 @@ module Puppeteer
       end
 
       # Get current viewport size
-      # @return [Hash, nil] Current viewport {width:, height:} or nil
+      # @rbs return: Hash[Symbol, Integer]?
       def viewport
         @viewport
       end
@@ -560,15 +577,15 @@ module Puppeteer
       alias default_timeout= set_default_timeout
 
       # Set JavaScript enabled state
-      # @param enabled [Boolean] Whether JavaScript is enabled
-      # @note Changes take effect on next navigation
+      # @rbs enabled: bool
+      # @rbs return: void
       def set_javascript_enabled(enabled)
         assert_not_closed
         @browsing_context.set_javascript_enabled(enabled).wait
       end
 
       # Check if JavaScript is enabled
-      # @return [Boolean] Whether JavaScript is enabled
+      # @rbs return: bool
       def javascript_enabled?
         @browsing_context.javascript_enabled?
       end
@@ -576,8 +593,8 @@ module Puppeteer
       private
 
       # Recursively collect all frames starting from the given frame
-      # @param frame [Frame] Starting frame
-      # @return [Array<Frame>] All frames including the starting frame and its descendants
+      # @rbs frame: Frame
+      # @rbs return: Array[Frame]
       def collect_frames(frame)
         result = [frame]
         frame.child_frames.each do |child|
@@ -587,7 +604,7 @@ module Puppeteer
       end
 
       # Check if this page is closed and raise error if so
-      # @raise [PageClosedError] If page is closed
+      # @rbs return: void
       def assert_not_closed
         raise PageClosedError if closed?
       end
