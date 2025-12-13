@@ -32,17 +32,12 @@ require "puppeteer/bidi/browser"
 
 module Puppeteer
   module Bidi
-    # @rbs!
-    #   type launch_options = {
-    #     ?executable_path: String,
-    #     ?user_data_dir: String,
-    #     ?headless: bool,
-    #     ?args: Array[String],
-    #     ?timeout: Numeric
-    #   }
-
     # Launch a new browser instance
-    # @rbs **options: launch_options -- Launch options
+    # @rbs executable_path: String
+    # @rbs user_data_dir: String
+    # @rbs headless: bool
+    # @rbs args: Array[String]
+    # @rbs timeout: Numeric
     # @rbs return: Browser -- Browser instance
     def self.launch(**options)
       Browser.launch(**options)

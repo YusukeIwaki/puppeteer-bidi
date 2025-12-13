@@ -3,9 +3,6 @@
 
 module Puppeteer
   module Bidi
-    # Target type alias: BrowserTarget | PageTarget | FrameTarget
-    # (defined in sig/puppeteer/bidi/target.rbs)
-
     class BrowserTarget
       # @rbs browser: Browser
       # @rbs return: void
