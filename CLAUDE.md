@@ -70,6 +70,49 @@ This project uses **Async (Fiber-based)**, NOT concurrent-ruby (Thread-based).
 - Follow RuboCop guidelines
 - Class names: `PascalCase`, Methods: `snake_case`, Constants: `SCREAMING_SNAKE_CASE`
 
+### Type Annotations (rbs-inline)
+
+Use [rbs-inline](https://github.com/soutaro/rbs-inline) for type annotations in Ruby source files.
+
+**Setup:**
+- Add `# rbs_inline: enabled` magic comment at the top of the file
+- Use Doc style syntax for type annotations
+
+**Example:**
+```ruby
+# frozen_string_literal: true
+# rbs_inline: enabled
+
+class Example
+  attr_reader :name #: String
+
+  # @rbs name: String
+  # @rbs return: void
+  def initialize(name)
+    @name = name
+  end
+
+  # @rbs selector: String
+  # @rbs return: ElementHandle?
+  def query_selector(selector)
+    # ...
+  end
+end
+```
+
+**Conventions:**
+- Use `A?` for nullable types (not `A | nil`)
+- Use `A | B | nil` for union types with nil
+- Add space around `--` for inline comments: `# @rbs name: String -- the name`
+- Public methods should have type annotations
+
+**Generate RBS files:**
+```bash
+bundle exec rake rbs  # Generates sig/**/*.rbs
+```
+
+**Note:** `sig/` directory is gitignored. RBS files are generated automatically during `rake build`.
+
 ### Testing
 
 - Use RSpec for unit and integration tests
@@ -114,6 +157,25 @@ See the [CLAUDE/](CLAUDE/) directory for detailed implementation guides:
 - **[Testing Strategy](CLAUDE/testing_strategy.md)** - Test organization and optimization
 - **[RSpec pending vs skip](CLAUDE/rspec_pending_vs_skip.md)** - Documenting limitations
 - **[Test Server Routes](CLAUDE/test_server_routes.md)** - Dynamic route handling
+
+## Releasing
+
+To release a new version:
+
+1. Update the version number in `lib/puppeteer/bidi/version.rb`
+2. Commit the change and push to main
+3. Create and push a version tag:
+   ```bash
+   git tag 1.2.3
+   git push origin 1.2.3
+   ```
+
+GitHub Actions will automatically build and publish the gem to RubyGems. Supported tag formats:
+- `1.2.3` - stable release
+- `1.2.3.alpha1` - alpha release
+- `1.2.3.beta2` - beta release
+
+**Note:** `RUBYGEMS_API_KEY` must be configured in repository secrets.
 
 ## References
 
