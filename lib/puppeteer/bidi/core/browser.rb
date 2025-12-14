@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -9,8 +10,8 @@ module Puppeteer
         include Disposable::DisposableMixin
 
         # Create a browser instance from a session
-        # @param session [Session] BiDi session
-        # @return [Browser] Browser instance
+        # @rbs session: Session -- BiDi session
+        # @rbs return: Async::Task[Browser] -- Browser instance
         def self.from(session)
           browser = new(session)
           Async do
@@ -44,18 +45,19 @@ module Puppeteer
         alias disposed? disconnected?
 
         # Get the default user context
-        # @return [UserContext] Default user context
+        # @rbs return: UserContext? -- Default user context
         def default_user_context
           @user_contexts[UserContext::DEFAULT]
         end
 
         # Get all user contexts
-        # @return [Array<UserContext>] All user contexts
+        # @rbs return: Array[UserContext] -- All user contexts
         def user_contexts
           @user_contexts.values
         end
 
         # Close the browser
+        # @rbs return: Async::Task[void]
         def close
           Async do
             return if @closed
@@ -69,11 +71,9 @@ module Puppeteer
         end
 
         # Add a preload script to the browser
-        # @param function_declaration [String] JavaScript function to preload
-        # @param options [Hash] Preload script options
-        # @option options [Array<BrowsingContext>] :contexts Contexts to apply to
-        # @option options [String] :sandbox Sandbox name
-        # @return [String] Script ID
+        # @rbs function_declaration: String -- JavaScript function to preload
+        # @rbs **options: untyped -- Preload script options
+        # @rbs return: Async::Task[String] -- Script ID
         def add_preload_script(function_declaration, **options)
           raise BrowserDisconnectedError, @reason if disconnected?
 
@@ -90,16 +90,16 @@ module Puppeteer
         end
 
         # Remove a preload script
-        # @param script [String] Script ID
+        # @rbs script: String -- Script ID
+        # @rbs return: Async::Task[untyped]
         def remove_preload_script(script)
           raise BrowserDisconnectedError, @reason if disconnected?
           @session.async_send_command('script.removePreloadScript', { script: script })
         end
 
         # Create a new user context
-        # @param options [Hash] User context options
-        # @option options [Hash] :proxy Proxy configuration
-        # @return [UserContext] New user context
+        # @rbs **options: untyped -- User context options
+        # @rbs return: Async::Task[UserContext] -- New user context
         def create_user_context(**options)
           raise BrowserDisconnectedError, @reason if disconnected?
 
@@ -122,7 +122,8 @@ module Puppeteer
         end
 
         # Remove a network intercept
-        # @param intercept [String] Intercept ID
+        # @rbs intercept: String -- Intercept ID
+        # @rbs return: Async::Task[untyped]
         def remove_intercept(intercept)
           raise BrowserDisconnectedError, @reason if disconnected?
           @session.async_send_command('network.removeIntercept', { intercept: intercept })

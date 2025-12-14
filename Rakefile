@@ -10,3 +10,12 @@ require "rubocop/rake_task"
 RuboCop::RakeTask.new
 
 task default: %i[spec rubocop]
+
+# Generate RBS files from rbs-inline annotations
+desc "Generate RBS files with rbs-inline"
+task :rbs do
+  sh "bundle", "exec", "rbs-inline", "--output=sig", "lib"
+end
+
+# Run rbs-inline before building the gem
+Rake::Task[:build].enhance([:rbs])

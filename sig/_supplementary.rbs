@@ -1,0 +1,20 @@
+# Supplementary type declarations for types that rbs-inline cannot generate
+# This file is NOT auto-generated and should be manually maintained
+
+# AsyncUtils uses `extend self` to make instance methods callable as singleton methods
+module Puppeteer
+  module Bidi
+    module AsyncUtils
+      extend AsyncUtils
+    end
+  end
+end
+
+# QueryHandler uses Singleton pattern
+module Puppeteer
+  module Bidi
+    class QueryHandler
+      extend Singleton::SingletonClassMethods
+    end
+  end
+end

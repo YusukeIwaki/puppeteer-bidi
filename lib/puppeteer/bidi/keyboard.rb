@@ -1,10 +1,14 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
     # Keyboard class for keyboard input operations
     # Based on Puppeteer's BidiKeyboard implementation
     class Keyboard
+      # @rbs page: Page -- Page instance
+      # @rbs browsing_context: Core::BrowsingContext -- Browsing context
+      # @rbs return: void
       def initialize(page, browsing_context)
         @page = page
         @browsing_context = browsing_context
@@ -12,9 +16,10 @@ module Puppeteer
       end
 
       # Press key down
-      # @param key [String] Key name (e.g., 'a', 'Enter', 'ArrowLeft')
-      # @param text [String, nil] Text to insert (for CDP compatibility, not used in BiDi)
-      # @param commands [Array<String>, nil] Commands to trigger (for CDP compatibility, not used in BiDi)
+      # @rbs key: String -- Key name (e.g., 'a', 'Enter', 'ArrowLeft')
+      # @rbs text: String? -- Text to insert (for CDP compatibility, not used in BiDi)
+      # @rbs commands: Array[String]? -- Commands to trigger (for CDP compatibility, not used in BiDi)
+      # @rbs return: void
       def down(key, text: nil, commands: nil)
         # Note: text and commands parameters exist for CDP compatibility but are not used in BiDi
         actions = [{
@@ -27,7 +32,8 @@ module Puppeteer
       end
 
       # Release key
-      # @param key [String] Key name
+      # @rbs key: String -- Key name
+      # @rbs return: void
       def up(key)
         actions = [{
           type: 'keyUp',
@@ -39,10 +45,11 @@ module Puppeteer
       end
 
       # Press and release a key
-      # @param key [String] Key name
-      # @param delay [Numeric, nil] Delay between keydown and keyup in milliseconds
-      # @param text [String, nil] Text to insert (for CDP compatibility, not used in BiDi)
-      # @param commands [Array<String>, nil] Commands to trigger (for CDP compatibility, not used in BiDi)
+      # @rbs key: String -- Key name
+      # @rbs delay: Numeric? -- Delay between keydown and keyup in milliseconds
+      # @rbs text: String? -- Text to insert (for CDP compatibility, not used in BiDi)
+      # @rbs commands: Array[String]? -- Commands to trigger (for CDP compatibility, not used in BiDi)
+      # @rbs return: void
       def press(key, delay: nil, text: nil, commands: nil)
         # Note: text and commands parameters exist for CDP compatibility but are not used in BiDi
         actions = [{ type: 'keyDown', value: get_bidi_key_value(key) }]
@@ -60,8 +67,9 @@ module Puppeteer
       end
 
       # Type text (types each character with keydown/keyup events)
-      # @param text [String] Text to type
-      # @param delay [Numeric] Delay between each character in milliseconds
+      # @rbs text: String -- Text to type
+      # @rbs delay: Numeric -- Delay between each character in milliseconds
+      # @rbs return: void
       def type(text, delay: 0)
         actions = []
 
@@ -84,7 +92,8 @@ module Puppeteer
       end
 
       # Send character directly (bypasses keyboard events, uses execCommand)
-      # @param char [String] Character to send
+      # @rbs char: String -- Character to send
+      # @rbs return: void
       def send_character(char)
         # Validate: cannot send more than 1 character
         # Measures the number of code points rather than UTF-16 code units
@@ -106,8 +115,8 @@ module Puppeteer
       private
 
       # Convert key name to BiDi protocol value
-      # @param key [String] Key name
-      # @return [String] BiDi key value (Unicode character or escape sequence)
+      # @rbs key: String -- Key name
+      # @rbs return: String -- BiDi key value (Unicode character or escape sequence)
       def get_bidi_key_value(key)
         # Normalize line breaks
         normalized_key = case key
@@ -251,6 +260,8 @@ module Puppeteer
       end
 
       # Perform input actions via BiDi
+      # @rbs action_list: Array[Hash[Symbol, untyped]] -- List of key actions
+      # @rbs return: void
       def perform_actions(action_list)
         @browsing_context.perform_actions([
           {

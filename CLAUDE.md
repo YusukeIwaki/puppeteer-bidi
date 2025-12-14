@@ -70,6 +70,99 @@ This project uses **Async (Fiber-based)**, NOT concurrent-ruby (Thread-based).
 - Follow RuboCop guidelines
 - Class names: `PascalCase`, Methods: `snake_case`, Constants: `SCREAMING_SNAKE_CASE`
 
+### Type Annotations (rbs-inline)
+
+Use [rbs-inline](https://github.com/soutaro/rbs-inline) for type annotations in Ruby source files.
+
+**Setup:**
+- Add `# rbs_inline: enabled` magic comment at the top of the file
+- Use Doc style syntax for type annotations
+
+**Example:**
+```ruby
+# frozen_string_literal: true
+# rbs_inline: enabled
+
+class Example
+  attr_reader :name #: String
+
+  # @rbs name: String -- The name to set
+  # @rbs return: void
+  def initialize(name)
+    @name = name
+  end
+
+  # Query for an element matching the selector
+  # @rbs selector: String -- CSS selector to query
+  # @rbs return: ElementHandle? -- Matching element or nil
+  def query_selector(selector)
+    # ...
+  end
+end
+```
+
+**Conventions:**
+- Use `A?` for nullable types (not `A | nil`)
+- Use `A | B | nil` for union types with nil
+- **Always include descriptions** with `--` separator: `# @rbs name: String -- the name`
+- Public methods should have type annotations
+- **Do NOT use `@rbs!` blocks** - RubyMine IDE doesn't recognize them
+- **Use direct union types** instead of type aliases: `BrowserTarget | PageTarget | FrameTarget` not `target`
+- **Do NOT use `**options` in public APIs** - RubyMine shows as `untyped`. Use explicit keyword arguments:
+  - Optional params: `param: nil`
+  - Boolean params with default: `headless: true` or `enabled: false`
+  - Internal/Core layer methods may still use `**options` for flexibility
+
+**Generate RBS files:**
+```bash
+bundle exec rake rbs  # Generates sig/**/*.rbs
+```
+
+**Note:** `sig/` directory is gitignored. RBS files are generated automatically during `rake build`.
+
+### Type Checking with Steep
+
+Run type checking locally:
+```bash
+bundle exec rake rbs       # Generate RBS files first
+bundle exec steep check    # Run type checker
+```
+
+**Steepfile Configuration:**
+- Currently configured with lenient `:hint` level diagnostics for gradual typing
+- As type coverage improves, change to `:warning` or `:error` in `Steepfile`
+
+**Special RBS Files (manually maintained, NOT gitignored):**
+
+1. **`sig/_external.rbs`** - External dependency stubs
+   - Types for async gem (`Async`, `Kernel#Async`, `Kernel#Sync`, `Async::Task`, etc.)
+   - Standard library extensions (`Dir.mktmpdir`, `Time.parse`)
+   - Third-party types (`Singleton`, `Protocol::WebSocket`)
+
+2. **`sig/_supplementary.rbs`** - Types rbs-inline cannot generate
+   - `extend self` pattern: Add `extend ModuleName` declaration
+   - Singleton pattern: Add `extend Singleton::SingletonClassMethods`
+
+**Common Issues:**
+
+1. **Type alias must be lowercase**: In RBS, `type target = ...` not `type Target = ...`
+
+2. **`extend self` not recognized**: Add to `sig/_supplementary.rbs`:
+   ```rbs
+   module Foo
+     extend Foo  # Makes instance methods callable as singleton methods
+   end
+   ```
+
+3. **Singleton pattern**: Add to `sig/_supplementary.rbs`:
+   ```rbs
+   class Bar
+     extend Singleton::SingletonClassMethods
+   end
+   ```
+
+4. **Missing external types**: Add stubs to `sig/_external.rbs`
+
 ### Testing
 
 - Use RSpec for unit and integration tests
@@ -114,6 +207,25 @@ See the [CLAUDE/](CLAUDE/) directory for detailed implementation guides:
 - **[Testing Strategy](CLAUDE/testing_strategy.md)** - Test organization and optimization
 - **[RSpec pending vs skip](CLAUDE/rspec_pending_vs_skip.md)** - Documenting limitations
 - **[Test Server Routes](CLAUDE/test_server_routes.md)** - Dynamic route handling
+
+## Releasing
+
+To release a new version:
+
+1. Update the version number in `lib/puppeteer/bidi/version.rb`
+2. Commit the change and push to main
+3. Create and push a version tag:
+   ```bash
+   git tag 1.2.3
+   git push origin 1.2.3
+   ```
+
+GitHub Actions will automatically build and publish the gem to RubyGems. Supported tag formats:
+- `1.2.3` - stable release
+- `1.2.3.alpha1` - alpha release
+- `1.2.3.beta2` - beta release
+
+**Note:** `RUBYGEMS_API_KEY` must be configured in repository secrets.
 
 ## References
 

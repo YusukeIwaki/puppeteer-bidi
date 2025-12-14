@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -8,8 +9,8 @@ module Puppeteer
         include Disposable::DisposableMixin
 
         # Create a navigation instance
-        # @param browsing_context [BrowsingContext] The browsing context
-        # @return [Navigation] New navigation instance
+        # @rbs browsing_context: BrowsingContext -- The browsing context
+        # @rbs return: Navigation -- New navigation instance
         def self.from(browsing_context)
           navigation = new(browsing_context)
           navigation.send(:initialize_navigation)
@@ -28,7 +29,7 @@ module Puppeteer
         end
 
         # Get the nested navigation if any
-        # @return [Navigation, nil] Nested navigation
+        # @rbs return: Navigation? -- Nested navigation
         def navigation
           @navigation
         end

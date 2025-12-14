@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -8,14 +9,15 @@ module Puppeteer
       module Disposable
         # DisposableStack manages multiple disposable resources
         class DisposableStack
+          # @rbs return: void
           def initialize
             @disposed = false
-            @resources = []
+            @resources = [] #: Array[untyped]
           end
 
           # Add a disposable resource to the stack
-          # @param resource [Object] Resource that responds to #dispose
-          # @return [Object] The resource itself for convenience
+          # @rbs resource: untyped -- Resource that responds to #dispose
+          # @rbs return: untyped -- The resource itself for convenience
           def use(resource)
             raise 'DisposableStack already disposed' if @disposed
             @resources << resource
@@ -23,6 +25,7 @@ module Puppeteer
           end
 
           # Dispose all resources in reverse order (LIFO)
+          # @rbs return: void
           def dispose
             return if @disposed
             @disposed = true
@@ -39,6 +42,7 @@ module Puppeteer
             @resources.clear
           end
 
+          # @rbs return: bool
           def disposed?
             @disposed
           end
@@ -46,12 +50,14 @@ module Puppeteer
 
         # Module to be included in classes that need disposal
         module DisposableMixin
+          # @rbs return: void
           def dispose
             return if @disposed
             @disposed = true
             perform_dispose
           end
 
+          # @rbs return: bool
           def disposed?
             @disposed ||= false
           end
@@ -59,6 +65,7 @@ module Puppeteer
           protected
 
           # Override this method to perform cleanup
+          # @rbs return: void
           def perform_dispose
             # Default implementation does nothing
           end

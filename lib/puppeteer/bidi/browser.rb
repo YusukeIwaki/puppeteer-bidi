@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 require 'async'
 require 'async/promise'
@@ -7,8 +8,13 @@ module Puppeteer
   module Bidi
     # Browser represents a browser instance with BiDi connection
     class Browser
-      attr_reader :connection, :process, :default_browser_context
+      attr_reader :connection #: Connection
+      attr_reader :process #: untyped
+      attr_reader :default_browser_context #: BrowserContext
 
+      # @rbs connection: Connection -- BiDi connection
+      # @rbs launcher: BrowserLauncher? -- Browser launcher instance
+      # @rbs return: Browser -- Browser instance
       def self.create(connection:, launcher: nil)
         # Create a new BiDi session
         session = Core::Session.from(
@@ -42,6 +48,11 @@ module Puppeteer
         )
       end
 
+      # @rbs connection: Connection -- BiDi connection
+      # @rbs launcher: BrowserLauncher? -- Browser launcher instance
+      # @rbs core_browser: Core::Browser -- Core browser instance
+      # @rbs session: Core::Session -- BiDi session
+      # @rbs return: void
       def initialize(connection:, launcher:, core_browser:, session:)
         @connection = connection
         @launcher = launcher
@@ -58,18 +69,18 @@ module Puppeteer
       end
 
       # Launch a new Firefox browser instance
-      # @param options [Hash] Launch options
-      # @option options [String] :executable_path Path to Firefox executable
-      # @option options [Boolean] :headless Run in headless mode (default: true)
-      # @option options [Array<String>] :args Additional arguments
-      # @option options [String] :user_data_dir User data directory
-      # @return [Browser] Browser instance
-      def self.launch(**options)
+      # @rbs executable_path: String? -- Path to browser executable
+      # @rbs user_data_dir: String? -- Path to user data directory
+      # @rbs headless: bool -- Run browser in headless mode
+      # @rbs args: Array[String]? -- Additional browser arguments
+      # @rbs timeout: Numeric? -- Launch timeout in seconds
+      # @rbs return: Browser -- Browser instance
+      def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil)
         launcher = BrowserLauncher.new(
-          executable_path: options[:executable_path],
-          user_data_dir: options[:user_data_dir],
-          headless: options.fetch(:headless, true),
-          args: options.fetch(:args, [])
+          executable_path: executable_path,
+          user_data_dir: user_data_dir,
+          headless: headless,
+          args: args || []
         )
 
         ws_endpoint = launcher.launch
@@ -79,7 +90,7 @@ module Puppeteer
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
-        AsyncUtils.async_timeout(options.fetch(:timeout, 30) * 1000, transport.connect).wait
+        AsyncUtils.async_timeout((timeout || 30) * 1000, transport.connect).wait
 
         connection = Connection.new(transport)
 
@@ -88,31 +99,44 @@ module Puppeteer
         browser
       end
 
+      # Connect to an existing Firefox browser instance
+      # @rbs ws_endpoint: String -- WebSocket endpoint URL
+      # @rbs return: Browser -- Browser instance
+      def self.connect(ws_endpoint)
+        transport = Transport.new(ws_endpoint)
+        AsyncUtils.async_timeout(30 * 1000, transport.connect).wait
+        connection = Connection.new(transport)
+        create(connection: connection, launcher: nil)
+      end
+
       # Get BiDi session status
+      # @rbs return: untyped -- Session status
       def status
-        @connection.send_command('session.status')
+        @connection.async_send_command('session.status').wait
       end
 
       # Create a new page (Puppeteer-like API)
-      # @return [Page] New page instance
+      # @rbs return: Page -- New page instance
       def new_page
         @default_browser_context.new_page
       end
 
       # Get all pages
-      # @return [Array<Page>] All pages
+      # @rbs return: Array[Page] -- All pages
       def pages
         @default_browser_context.pages
       end
 
       # Register event handler
-      # @param event [String] Event name
-      # @param block [Proc] Event handler
+      # @rbs event: String | Symbol -- Event name
+      # @rbs &block: (untyped) -> void -- Event handler
+      # @rbs return: void
       def on(event, &block)
         @connection.on(event, &block)
       end
 
       # Close the browser
+      # @rbs return: void
       def close
         return if @closed
 
@@ -127,16 +151,15 @@ module Puppeteer
         @launcher&.kill
       end
 
+      # @rbs return: bool
       def closed?
         @closed
       end
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
-      # @param timeout [Integer, nil] Timeout in milliseconds (default: 30000).
-      # @yield [target] Predicate evaluated against each Target (defaults to truthy).
-      # @return [Target] Matching target.
-      # @raise [TimeoutError] When timeout is reached without a match.
-      # @raise [Core::BrowserDisconnectedError] When browser disconnects before match.
+      # @rbs timeout: Integer? -- Timeout in milliseconds (default: 30000)
+      # @rbs &predicate: (BrowserTarget | PageTarget | FrameTarget) -> boolish -- Predicate evaluated against each Target
+      # @rbs return: BrowserTarget | PageTarget | FrameTarget -- Matching target
       def wait_for_target(timeout: nil, &predicate)
         predicate ||= ->(_target) { true }
         timeout_ms = timeout || 30_000
@@ -221,13 +244,16 @@ module Puppeteer
       end
 
       # Wait for browser process to exit
+      # @rbs return: void
       def wait_for_exit
         @launcher&.wait
       end
 
       private
 
-      def each_target
+      # @rbs &block: (BrowserTarget | PageTarget | FrameTarget) -> void -- Block to yield each target to
+      # @rbs return: Enumerator[BrowserTarget | PageTarget | FrameTarget, void] -- Enumerator of targets
+      def each_target(&block)
         return enum_for(:each_target) unless block_given?
         return unless @core_browser
 
@@ -248,6 +274,8 @@ module Puppeteer
         end
       end
 
+      # @rbs predicate: ^(BrowserTarget | PageTarget | FrameTarget) -> boolish -- Predicate to match targets
+      # @rbs return: (BrowserTarget | PageTarget | FrameTarget)? -- Matching target or nil
       def find_target(predicate)
         each_target do |target|
           return target if predicate.call(target)
@@ -255,6 +283,8 @@ module Puppeteer
         nil
       end
 
+      # @rbs user_context: Core::UserContext -- User context to get browser context for
+      # @rbs return: BrowserContext? -- Browser context or nil
       def browser_context_for(user_context)
         return @browser_contexts[user_context.id] if @browser_contexts.key?(user_context.id)
 

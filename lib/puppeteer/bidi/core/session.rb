@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -9,9 +10,9 @@ module Puppeteer
         include Disposable::DisposableMixin
 
         # Create a new session from an existing connection
-        # @param connection [Puppeteer::Bidi::Connection] The BiDi connection
-        # @param capabilities [Hash] Session capabilities
-        # @return [Session] New session instance
+        # @rbs connection: Puppeteer::Bidi::Connection -- The BiDi connection
+        # @rbs capabilities: Hash[String, untyped] -- Session capabilities
+        # @rbs return: Async::Task[Session]
         def self.from(connection:, capabilities:)
           Async do
             result = connection.async_send_command('session.new', { capabilities: capabilities }).wait
@@ -45,17 +46,18 @@ module Puppeteer
         alias disposed? ended?
 
         # Send a BiDi command through this session
-        # @param method [String] BiDi method name
-        # @param params [Hash] Command parameters
-        # @return [Hash] Command result
+        # @rbs method: String -- BiDi method name
+        # @rbs params: Hash[String | Symbol, untyped] -- Command parameters
+        # @rbs return: Async::Task[Hash[String, untyped]]
         def async_send_command(method, params = {})
           raise SessionEndedError, @reason if ended?
           @connection.async_send_command(method, params)
         end
 
         # Subscribe to BiDi events
-        # @param events [Array<String>] Event names to subscribe to
-        # @param contexts [Array<String>, nil] Context IDs (optional)
+        # @rbs events: Array[String] -- Event names to subscribe to
+        # @rbs contexts: Array[String]? -- Context IDs (optional)
+        # @rbs return: Async::Task[untyped]
         def subscribe(events, contexts = nil)
           raise SessionEndedError, @reason if ended?
           params = { events: events }
@@ -64,8 +66,9 @@ module Puppeteer
         end
 
         # Add intercepts (same as subscribe but for interception events)
-        # @param events [Array<String>] Event names to intercept
-        # @param contexts [Array<String>, nil] Context IDs (optional)
+        # @rbs events: Array[String] -- Event names to intercept
+        # @rbs contexts: Array[String]? -- Context IDs (optional)
+        # @rbs return: Async::Task[untyped]
         def add_intercepts(events, contexts = nil)
           subscribe(events, contexts)
         end
@@ -75,7 +78,7 @@ module Puppeteer
           return if ended?
 
           begin
-            send_command('session.end', {})
+            async_send_command('session.end', {}).wait
           ensure
             dispose_session('Session ended')
           end
