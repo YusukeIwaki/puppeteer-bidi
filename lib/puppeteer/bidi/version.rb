@@ -2,6 +2,6 @@
 
 module Puppeteer
   module Bidi
-    VERSION = "0.0.1.beta7"
+    VERSION = "0.0.1.beta9"
   end
 end
