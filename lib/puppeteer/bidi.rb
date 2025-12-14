@@ -40,14 +40,14 @@ module Puppeteer
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
-    def self.launch_with_sync(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil, &block)
+    def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil, &block)
       unless block
         raise ArgumentError, 'Block is required for launch_with_sync'
       end
 
       Sync do
         begin
-          browser = launch(
+          browser = launch_browser_instance(
             executable_path: executable_path,
             user_data_dir: user_data_dir,
             headless: headless,
@@ -68,7 +68,7 @@ module Puppeteer
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs return: Browser -- Browser instance (if no block given)
-    def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil)
+    def self.launch_browser_instance(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil)
       Browser.launch(
         executable_path: executable_path,
         user_data_dir: user_data_dir,

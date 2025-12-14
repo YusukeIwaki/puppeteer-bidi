@@ -74,7 +74,7 @@ end
 # In spec_helper.rb
 config.before(:suite) do
   if RSpec.configuration.files_to_run.any? { |f| f.include?('spec/integration') }
-    $shared_browser = Puppeteer::Bidi.launch(headless: headless_mode?)
+    $shared_browser = Puppeteer::Bidi.launch_browser_instance(headless: headless_mode?)
     $shared_test_server = TestServer::Server.new
     $shared_test_server.start
   end
