@@ -145,6 +145,12 @@ module Puppeteer
               end
             end
 
+            # Create promise to wait for closed event
+            # This ensures we don't return until the context is actually closed
+            closed_promise = Async::Promise.new
+            closed_listener = ->(_) { closed_promise.resolve(nil) }
+            once(:closed, &closed_listener)
+
             # Send close command
             # Note: For non-top-level contexts (iframes), this may fail with
             # "Browsing context ... is not top-level" error, which is expected
@@ -153,7 +159,7 @@ module Puppeteer
               session.async_send_command('browsingContext.close', {
                 context: @id,
                 promptUnload: prompt_unload
-              })
+              }).wait
             rescue Connection::ProtocolError => e
               # Ignore "not top-level" errors for iframe contexts
               # This happens when parent context closes and BiDi auto-closes children
@@ -163,6 +169,9 @@ module Puppeteer
               end
               raise unless e.message.include?('is not top-level')
             end
+
+            # Wait for the closed event to ensure state is updated
+            closed_promise.wait
           end
         end
 
