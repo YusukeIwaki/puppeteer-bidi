@@ -54,84 +54,81 @@ gem 'puppeteer-bidi'
 require 'puppeteer/bidi'
 
 # Launch Firefox with BiDi protocol
-browser = Puppeteer::Bidi.launch(headless: false)
+Puppeteer::Bidi.launch(headless: false) do |browser|
+  # Create a new page
+  page = browser.new_page
 
-# Create a new page
-page = browser.new_page
+  # Set viewport size
+  page.set_viewport(width: 1280, height: 720)
 
-# Set viewport size
-page.set_viewport(width: 1280, height: 720)
+  # Navigate to a URL
+  page.goto('https://example.com')
 
-# Navigate to a URL
-page.goto('https://example.com')
+  # Take a screenshot
+  page.screenshot(path: 'screenshot.png')
 
-# Take a screenshot
-page.screenshot(path: 'screenshot.png')
+  # Take a full page screenshot
+  page.screenshot(path: 'fullpage.png', full_page: true)
 
-# Take a full page screenshot
-page.screenshot(path: 'fullpage.png', full_page: true)
+  # Screenshot with clipping
+  page.screenshot(
+    path: 'clip.png',
+    clip: { x: 0, y: 0, width: 100, height: 100 }
+  )
 
-# Screenshot with clipping
-page.screenshot(
-  path: 'clip.png',
-  clip: { x: 0, y: 0, width: 100, height: 100 }
-)
+  # Evaluate JavaScript expressions
+  title = page.evaluate('document.title')
+  puts "Page title: #{title}"
 
-# Evaluate JavaScript expressions
-title = page.evaluate('document.title')
-puts "Page title: #{title}"
+  # Evaluate JavaScript functions with arguments
+  sum = page.evaluate('(a, b) => a + b', 3, 4)
+  puts "Sum: #{sum}"  # => 7
 
-# Evaluate JavaScript functions with arguments
-sum = page.evaluate('(a, b) => a + b', 3, 4)
-puts "Sum: #{sum}"  # => 7
+  # Access frame and evaluate
+  frame = page.main_frame
+  result = frame.evaluate('() => window.innerWidth')
 
-# Access frame and evaluate
-frame = page.main_frame
-result = frame.evaluate('() => window.innerWidth')
+  # Query selectors
+  section = page.query_selector('section')
+  divs = page.query_selector_all('div')
 
-# Query selectors
-section = page.query_selector('section')
-divs = page.query_selector_all('div')
+  # Evaluate on selectors (convenience methods)
+  # Equivalent to Puppeteer's $eval and $$eval
+  id = page.eval_on_selector('section', 'e => e.id')
+  count = page.eval_on_selector_all('div', 'divs => divs.length')
 
-# Evaluate on selectors (convenience methods)
-# Equivalent to Puppeteer's $eval and $$eval
-id = page.eval_on_selector('section', 'e => e.id')
-count = page.eval_on_selector_all('div', 'divs => divs.length')
+  # Set page content
+  page.set_content('<h1>Hello, World!</h1>')
 
-# Set page content
-page.set_content('<h1>Hello, World!</h1>')
+  # Wait for navigation (Async/Fiber-based, no race conditions)
+  # Block pattern - executes code and waits for resulting navigation
+  response = page.wait_for_navigation do
+    page.click('a#navigation-link')
+  end
 
-# Wait for navigation (Async/Fiber-based, no race conditions)
-# Block pattern - executes code and waits for resulting navigation
-response = page.wait_for_navigation do
-  page.click('a#navigation-link')
+  # Wait for fragment navigation (#hash changes)
+  page.wait_for_navigation do
+    page.click('a[href="#section"]')
+  end  # => nil (fragment navigation returns nil)
+
+  # Wait for History API navigation
+  page.wait_for_navigation do
+    page.evaluate('history.pushState({}, "", "/new-url")')
+  end  # => nil (History API returns nil)
+
+  # Wait with different conditions
+  page.wait_for_navigation(wait_until: 'domcontentloaded') do
+    page.click('a')
+  end
+
+  # User input simulation
+  page.click('button#submit')
+  page.type('input[name="email"]', 'user@example.com', delay: 100)
+  page.focus('textarea')
+
+  # Close the page
+  page.close
 end
-
-# Wait for fragment navigation (#hash changes)
-page.wait_for_navigation do
-  page.click('a[href="#section"]')
-end  # => nil (fragment navigation returns nil)
-
-# Wait for History API navigation
-page.wait_for_navigation do
-  page.evaluate('history.pushState({}, "", "/new-url")')
-end  # => nil (History API returns nil)
-
-# Wait with different conditions
-page.wait_for_navigation(wait_until: 'domcontentloaded') do
-  page.click('a')
-end
-
-# User input simulation
-page.click('button#submit')
-page.type('input[name="email"]', 'user@example.com', delay: 100)
-page.focus('textarea')
-
-# Close the page
-page.close
-
-# Close the browser
-browser.close
 ```
 
 ### Low-Level BiDi API
@@ -140,30 +137,27 @@ browser.close
 require 'puppeteer/bidi'
 
 # Launch Firefox with BiDi protocol
-browser = Puppeteer::Bidi.launch(headless: false)
+Puppeteer::Bidi.launch(headless: false) do |browser|
+  # Create a new browsing context (tab)
+  result = browser.new_context(type: 'tab')
+  context_id = result['context']
 
-# Create a new browsing context (tab)
-result = browser.new_context(type: 'tab')
-context_id = result['context']
+  # Navigate to a URL
+  browser.navigate(
+    context: context_id,
+    url: 'https://example.com',
+    wait: 'complete'
+  )
 
-# Navigate to a URL
-browser.navigate(
-  context: context_id,
-  url: 'https://example.com',
-  wait: 'complete'
-)
-
-# Close the browsing context
-browser.close_context(context_id)
-
-# Close the browser
-browser.close
+  # Close the browsing context
+  browser.close_context(context_id)
+end
 ```
 
 ### Launch Options
 
 ```ruby
-browser = Puppeteer::Bidi.launch(
+Puppeteer::Bidi.launch(
   headless: true,              # Run in headless mode (default: true)
   executable_path: '/path/to/firefox',  # Path to Firefox executable (optional)
   user_data_dir: '/path/to/profile',    # User data directory (optional)
@@ -176,26 +170,26 @@ browser = Puppeteer::Bidi.launch(
 ```ruby
 require 'puppeteer/bidi'
 
-browser = Puppeteer::Bidi.launch(headless: false)
+Puppeteer::Bidi.launch(headless: false) do |browser|
+  # Subscribe to BiDi events
+  browser.subscribe([
+    'browsingContext.navigationStarted',
+    'browsingContext.navigationComplete'
+  ])
 
-# Subscribe to BiDi events
-browser.subscribe([
-  'browsingContext.navigationStarted',
-  'browsingContext.navigationComplete'
-])
+  # Register event handlers
+  browser.on('browsingContext.navigationStarted') do |params|
+    puts "Navigation started: #{params['url']}"
+  end
 
-# Register event handlers
-browser.on('browsingContext.navigationStarted') do |params|
-  puts "Navigation started: #{params['url']}"
+  browser.on('browsingContext.navigationComplete') do |params|
+    puts "Navigation completed: #{params['url']}"
+  end
+
+  # Create context and navigate
+  result = browser.new_context(type: 'tab')
+  browser.navigate(context: result['context'], url: 'https://example.com')
 end
-
-browser.on('browsingContext.navigationComplete') do |params|
-  puts "Navigation completed: #{params['url']}"
-end
-
-# Create context and navigate
-result = browser.new_context(type: 'tab')
-browser.navigate(context: result['context'], url: 'https://example.com')
 ```
 
 ### Connecting to Existing Browser
@@ -219,47 +213,47 @@ The Core layer provides a structured API over BiDi protocol:
 require 'puppeteer/bidi'
 
 # Launch browser and access connection
-browser = Puppeteer::Bidi.launch(headless: false)
+Puppeteer::Bidi.launch(headless: false) do |browser|
+  # Create Core layer objects
+  session_info = { 'sessionId' => 'default-session', 'capabilities' => {} }
+  session = Puppeteer::Bidi::Core::Session.new(browser.connection, session_info)
+  core_browser = Puppeteer::Bidi::Core::Browser.from(session)
+  session.browser = core_browser
 
-# Create Core layer objects
-session_info = { 'sessionId' => 'default-session', 'capabilities' => {} }
-session = Puppeteer::Bidi::Core::Session.new(browser.connection, session_info)
-core_browser = Puppeteer::Bidi::Core::Browser.from(session)
-session.browser = core_browser
+  # Get default user context
+  context = core_browser.default_user_context
 
-# Get default user context
-context = core_browser.default_user_context
+  # Create browsing context with Core API
+  browsing_context = context.create_browsing_context('tab')
 
-# Create browsing context with Core API
-browsing_context = context.create_browsing_context('tab')
+  # Subscribe to events
+  browsing_context.on(:load) do
+    puts "Page loaded!"
+  end
 
-# Subscribe to events
-browsing_context.on(:load) do
-  puts "Page loaded!"
+  browsing_context.subscribe(['browsingContext.load'])
+
+  # Navigate
+  browsing_context.navigate('https://example.com', wait: 'complete')
+
+  # Evaluate JavaScript
+  result = browsing_context.default_realm.evaluate('document.title', true)
+  puts "Title: #{result['value']}"
+
+  # Take screenshot
+  image_data = browsing_context.capture_screenshot(format: 'png')
+
+  # Error handling with custom exceptions
+  begin
+    browsing_context.navigate('https://example.com')
+  rescue Puppeteer::Bidi::Core::BrowsingContextClosedError => e
+    puts "Context was closed: #{e.reason}"
+  end
+
+  # Clean up
+  browsing_context.close
+  core_browser.close
 end
-
-browsing_context.subscribe(['browsingContext.load'])
-
-# Navigate
-browsing_context.navigate('https://example.com', wait: 'complete')
-
-# Evaluate JavaScript
-result = browsing_context.default_realm.evaluate('document.title', true)
-puts "Title: #{result['value']}"
-
-# Take screenshot
-image_data = browsing_context.capture_screenshot(format: 'png')
-
-# Error handling with custom exceptions
-begin
-  browsing_context.navigate('https://example.com')
-rescue Puppeteer::Bidi::Core::BrowsingContextClosedError => e
-  puts "Context was closed: #{e.reason}"
-end
-
-# Clean up
-browsing_context.close
-core_browser.close
 ```
 
 For more details on the Core layer, see `lib/puppeteer/bidi/core/README.md`.
@@ -467,7 +461,18 @@ This gem aims to provide a Ruby-friendly API that closely mirrors the original P
 
 After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+To install this gem onto your local machine, run `bundle exec rake install`.
+
+### Type Annotations
+
+This gem includes RBS type definitions generated by [rbs-inline](https://github.com/soutaro/rbs-inline). Type checking is performed with [Steep](https://github.com/soutaro/steep).
+
+```bash
+bundle exec rake rbs       # Generate RBS files
+bundle exec steep check    # Run type checker
+```
+
+For development guidelines on type annotations, see `CLAUDE.md`.
 
 ## Contributing
 

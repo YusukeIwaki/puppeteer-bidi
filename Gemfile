@@ -9,4 +9,7 @@ gem "chunky_png"
 gem "rackup"
 gem "rake"
 gem "rspec"
+gem "rbs-inline"
 gem "rubocop"
+
+gem "steep", group: :development

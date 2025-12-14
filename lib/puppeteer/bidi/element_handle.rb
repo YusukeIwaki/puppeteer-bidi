@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -18,17 +19,17 @@ module Puppeteer
       BoxModel = Data.define(:content, :padding, :border, :margin, :width, :height)
 
       # Factory method to create ElementHandle from remote value
-      # @param remote_value [Hash] BiDi RemoteValue
-      # @param realm [Core::Realm] Associated realm
-      # @return [ElementHandle] ElementHandle instance
+      # @rbs remote_value: Hash[String, untyped] -- BiDi RemoteValue
+      # @rbs realm: Core::Realm -- Associated realm
+      # @rbs return: ElementHandle -- ElementHandle instance
       def self.from(remote_value, realm)
         new(realm, remote_value)
       end
 
       # Query for a descendant element matching the selector
       # Supports CSS selectors and prefixed selectors (xpath/, text/, aria/, pierce/)
-      # @param selector [String] Selector (CSS or prefixed)
-      # @return [ElementHandle, nil] Element handle if found, nil otherwise
+      # @rbs selector: String -- Selector to query
+      # @rbs return: ElementHandle? -- Matching element or nil
       def query_selector(selector)
         assert_not_disposed
 
@@ -38,8 +39,8 @@ module Puppeteer
 
       # Query for all descendant elements matching the selector
       # Supports CSS selectors and prefixed selectors (xpath/, text/, aria/, pierce/)
-      # @param selector [String] Selector (CSS or prefixed)
-      # @return [Array<ElementHandle>] Array of element handles
+      # @rbs selector: String -- Selector to query
+      # @rbs return: Array[ElementHandle] -- All matching elements
       def query_selector_all(selector)
         assert_not_disposed
 
@@ -48,10 +49,10 @@ module Puppeteer
       end
 
       # Evaluate a function on the first element matching the selector
-      # @param selector [String] CSS selector
-      # @param page_function [String] JavaScript function to evaluate
-      # @param *args [Array] Arguments to pass to the function
-      # @return [Object] Result of evaluation
+      # @rbs selector: String -- Selector to query
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: untyped -- Evaluation result
       def eval_on_selector(selector, page_function, *args)
         assert_not_disposed
 
@@ -66,10 +67,10 @@ module Puppeteer
       end
 
       # Evaluate a function on all elements matching the selector
-      # @param selector [String] CSS selector
-      # @param page_function [String] JavaScript function to evaluate
-      # @param *args [Array] Arguments to pass to the function
-      # @return [Object] Result of evaluation
+      # @rbs selector: String -- Selector to query
+      # @rbs page_function: String -- JavaScript function to evaluate
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: untyped -- Evaluation result
       def eval_on_selector_all(selector, page_function, *args)
         assert_not_disposed
 
@@ -101,21 +102,23 @@ module Puppeteer
       end
 
       # Wait for an element matching the selector to appear as a descendant of this element
-      # @param selector [String] CSS selector
-      # @param visible [Boolean] Wait for element to be visible
-      # @param hidden [Boolean] Wait for element to be hidden or not found
-      # @param timeout [Numeric] Timeout in milliseconds (default: 30000)
-      # @return [ElementHandle, nil] Element handle if found, nil if hidden option was used and element disappeared
+      # @rbs selector: String -- Selector to wait for
+      # @rbs visible: bool? -- Wait for element to be visible
+      # @rbs hidden: bool? -- Wait for element to be hidden
+      # @rbs timeout: Numeric? -- Wait timeout in ms
+      # @rbs &block: ((ElementHandle?) -> void)? -- Optional block called with element
+      # @rbs return: ElementHandle? -- Element or nil if hidden
       def wait_for_selector(selector, visible: nil, hidden: nil, timeout: nil, &block)
         result = QueryHandler.instance.get_query_handler_and_selector(selector)
         result.query_handler.new.wait_for(self, result.updated_selector, visible: visible, hidden: hidden, polling: result.polling, timeout: timeout, &block)
       end
 
       # Click the element
-      # @param button [String] Mouse button
-      # @param count [Integer] Number of clicks
-      # @param delay [Numeric] Delay between mousedown and mouseup
-      # @param offset [Hash] Click offset {x:, y:} relative to element center
+      # @rbs button: String -- Mouse button ('left', 'right', 'middle')
+      # @rbs count: Integer -- Number of clicks
+      # @rbs delay: Numeric? -- Delay between clicks in ms
+      # @rbs offset: Hash[Symbol, Numeric]? -- Click offset from element center
+      # @rbs return: void
       def click(button: 'left', count: 1, delay: nil, offset: nil)
         assert_not_disposed
 
@@ -126,8 +129,9 @@ module Puppeteer
       end
 
       # Type text into the element
-      # @param text [String] Text to type
-      # @param delay [Numeric] Delay between key presses in milliseconds
+      # @rbs text: String -- Text to type
+      # @rbs delay: Numeric -- Delay between key presses in ms
+      # @rbs return: void
       def type(text, delay: 0)
         assert_not_disposed
 
@@ -141,9 +145,10 @@ module Puppeteer
       end
 
       # Press a key on the element
-      # @param key [String] Key name (e.g., 'Enter', 'a', 'ArrowLeft')
-      # @param delay [Numeric] Delay between keydown and keyup in milliseconds
-      # @param text [String, nil] Text parameter (for CDP compatibility, ignored in BiDi)
+      # @rbs key: String -- Key to press
+      # @rbs delay: Numeric? -- Delay between keydown and keyup in ms
+      # @rbs text: String? -- Text to send with key press
+      # @rbs return: void
       def press(key, delay: nil, text: nil)
         assert_not_disposed
 
@@ -158,14 +163,14 @@ module Puppeteer
 
       # Get the frame this element belongs to
       # Following Puppeteer's pattern: realm.environment
-      # @return [Frame] The frame containing this element
+      # @rbs return: Frame -- Owning frame
       def frame
         @realm.environment
       end
 
       # Get the content frame for iframe/frame elements
       # Returns the frame that the iframe/frame element refers to
-      # @return [Frame, nil] The content frame, or nil if not an iframe/frame
+      # @rbs return: Frame? -- Content frame or nil
       def content_frame
         assert_not_disposed
 
@@ -199,7 +204,7 @@ module Puppeteer
       # - It has computed styles
       # - Its visibility is not 'hidden' or 'collapse'
       # - Its bounding box is not empty (width > 0 AND height > 0)
-      # @return [Boolean] True if visible
+      # @rbs return: bool -- Whether element is visible
       def visible?
         check_visibility(true)
       end
@@ -209,16 +214,15 @@ module Puppeteer
       # - It has no computed styles
       # - Its visibility is 'hidden' or 'collapse'
       # - Its bounding box is empty (width == 0 OR height == 0)
-      # @return [Boolean] True if hidden
+      # @rbs return: bool -- Whether element is hidden
       def hidden?
         check_visibility(false)
       end
 
       # Convert the current handle to the given element type
       # Validates that the element matches the expected tag name
-      # @param tag_name [String] The expected tag name (e.g., 'div', 'a', 'input')
-      # @return [ElementHandle] Self if tag name matches
-      # @raise [RuntimeError] If the element doesn't match the expected tag name
+      # @rbs tag_name: String -- Expected tag name
+      # @rbs return: ElementHandle -- This element if matching
       def to_element(tag_name)
         assert_not_disposed
 
@@ -229,6 +233,7 @@ module Puppeteer
       end
 
       # Focus the element
+      # @rbs return: void
       def focus
         assert_not_disposed
 
@@ -237,6 +242,7 @@ module Puppeteer
 
       # Hover over the element
       # Scrolls element into view if needed and moves mouse to element center
+      # @rbs return: void
       def hover
         assert_not_disposed
 
@@ -247,7 +253,8 @@ module Puppeteer
 
       # Upload files to this element (for <input type="file">)
       # Following Puppeteer's implementation: ElementHandle.uploadFile -> Frame.setFiles
-      # @param files [Array<String>] File paths to upload
+      # @rbs *files: String -- File paths to upload
+      # @rbs return: void
       def upload_file(*files)
         assert_not_disposed
 
@@ -264,7 +271,7 @@ module Puppeteer
       end
 
       # Get the remote value as a SharedReference for BiDi commands
-      # @return [Hash] SharedReference with sharedId
+      # @rbs return: Hash[Symbol, String] -- SharedReference for BiDi
       def remote_value_as_shared_reference
         if @remote_value['sharedId']
           { sharedId: @remote_value['sharedId'] }
@@ -274,6 +281,7 @@ module Puppeteer
       end
 
       # Scroll element into view if needed
+      # @rbs return: void
       def scroll_into_view_if_needed
         assert_not_disposed
 
@@ -284,6 +292,7 @@ module Puppeteer
       end
 
       # Scroll element into view
+      # @rbs return: void
       def scroll_into_view
         assert_not_disposed
 
@@ -291,8 +300,8 @@ module Puppeteer
       end
 
       # Check if element is intersecting the viewport
-      # @param threshold [Numeric] Intersection threshold (0.0 to 1.0)
-      # @return [Boolean] True if intersecting
+      # @rbs threshold: Numeric -- Intersection ratio threshold
+      # @rbs return: bool -- Whether element intersects viewport
       def intersecting_viewport?(threshold: 0)
         assert_not_disposed
 
@@ -312,8 +321,8 @@ module Puppeteer
       end
 
       # Get clickable point for the element
-      # @param offset [Hash, nil] Offset {x:, y:} from element top-left corner
-      # @return [Point] Point with x and y coordinates
+      # @rbs offset: Hash[Symbol, Numeric]? -- Offset from element center
+      # @rbs return: Point -- Clickable point coordinates
       def clickable_point(offset: nil)
         assert_not_disposed
 
@@ -335,7 +344,7 @@ module Puppeteer
 
       # Get the bounding box of the element
       # Uses getBoundingClientRect() to get the element's position and size
-      # @return [BoundingBox, nil] Bounding box or nil if not visible
+      # @rbs return: BoundingBox? -- Bounding box or nil if not visible
       def bounding_box
         assert_not_disposed
 
@@ -363,7 +372,7 @@ module Puppeteer
       end
 
       # Get the box model of the element (content, padding, border, margin)
-      # @return [BoxModel, nil] Box model or nil if not visible
+      # @rbs return: BoxModel? -- Box model or nil if not visible
       def box_model
         assert_not_disposed
 
@@ -456,7 +465,7 @@ module Puppeteer
       # Uses getClientRects() to handle wrapped/multi-line elements correctly
       # Following Puppeteer's implementation:
       # https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/ElementHandle.ts#clickableBox
-      # @return [Hash, nil] Box {x:, y:, width:, height:}
+      # @rbs return: Hash[Symbol, Numeric]? -- Clickable box or nil
       def clickable_box
         assert_not_disposed
 
@@ -499,7 +508,8 @@ module Puppeteer
 
       # Intersect bounding boxes with frame viewport boundaries
       # Modifies boxes in-place to clip them to visible area
-      # @param boxes [Array<Hash>] Array of boxes with {x:, y:, width:, height:}
+      # @rbs boxes: Array[Hash[String, Numeric]] -- Bounding boxes to clip
+      # @rbs return: void
       def intersect_bounding_boxes_with_frame(boxes)
         # Get document dimensions using element's evaluate (which handles deserialization)
         dimensions = evaluate(<<~JS)
@@ -522,9 +532,10 @@ module Puppeteer
 
       # Intersect a single bounding box with given width/height boundaries
       # Modifies box in-place
-      # @param box [Hash] Box with {x:, y:, width:, height:}
-      # @param width [Numeric] Boundary width
-      # @param height [Numeric] Boundary height
+      # @rbs box: Hash[String, Numeric] -- Box to clip
+      # @rbs width: Numeric -- Viewport width
+      # @rbs height: Numeric -- Viewport height
+      # @rbs return: void
       def intersect_bounding_box(box, width, height)
         # Clip width
         box['width'] = [
@@ -548,8 +559,8 @@ module Puppeteer
       end
 
       # Check element visibility
-      # @param visible [Boolean] True to check if visible, false to check if hidden
-      # @return [Boolean] Result of visibility check
+      # @rbs visible: bool -- Expected visibility state
+      # @rbs return: bool -- Whether element matches visibility state
       def check_visibility(visible)
         assert_not_disposed
 
@@ -581,7 +592,7 @@ module Puppeteer
       end
 
       # String representation includes element type
-      # @return [String] Formatted string
+      # @rbs return: String -- String representation
       def to_s
         return 'ElementHandle@disposed' if disposed?
         'ElementHandle@node'

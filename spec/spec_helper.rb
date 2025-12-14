@@ -40,7 +40,7 @@ RSpec.configure do |config|
   config.before(:suite) do
     if RSpec.configuration.files_to_run.any? { |f| f.include?('spec/integration') }
       headless = !%w[0 false].include?(ENV['HEADLESS'])
-      $shared_browser = Puppeteer::Bidi.launch(headless: headless)
+      $shared_browser = Puppeteer::Bidi.launch_browser_instance(headless: headless)
       $shared_test_server = TestServer::Server.new
       $shared_test_server.start
       puts "\n[Test Suite] Browser and server started (will be reused across tests)"
@@ -82,10 +82,9 @@ RSpec.configure do |config|
     # Use with_test_state for better performance
     def with_browser(**options)
       options[:headless] = headless_mode?
-      browser = Puppeteer::Bidi.launch(**options)
-      yield(browser)
-    ensure
-      browser&.close
+      Puppeteer::Bidi.launch(**options) do |browser|
+        yield(browser)
+      end
     end
 
     # Optimized helper - reuses shared browser, creates new page per test

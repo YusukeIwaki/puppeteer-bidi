@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 require 'async'
 require 'async/promise'
@@ -11,23 +12,25 @@ module Puppeteer
       class TimeoutError < Error; end
       class ProtocolError < Error; end
 
-      DEFAULT_TIMEOUT = 30_000 # 30 seconds in milliseconds
+      DEFAULT_TIMEOUT = 30_000 #: Integer -- 30 seconds in milliseconds
 
+      # @rbs transport: Transport
+      # @rbs return: void
       def initialize(transport)
         @transport = transport
         @next_id = 1
-        @pending_commands = {}
-        @event_listeners = {}
+        @pending_commands = {} #: Hash[Integer, Hash[Symbol, untyped]]
+        @event_listeners = {} #: Hash[String, Array[^(untyped) -> void]]
         @closed = false
 
         setup_transport_handlers
       end
 
       # Send a BiDi command and wait for response
-      # @param method [String] BiDi method name (e.g., 'browsingContext.navigate')
-      # @param params [Hash] Command parameters
-      # @param timeout [Integer] Timeout in milliseconds
-      # @return [Hash] Command result
+      # @rbs method: String
+      # @rbs params: Hash[String | Symbol, untyped]
+      # @rbs timeout: Integer
+      # @rbs return: Async::Task[Hash[String, untyped]]
       def async_send_command(method, params = {}, timeout: DEFAULT_TIMEOUT)
         raise ProtocolError, 'Connection is closed' if @closed
 
@@ -81,14 +84,18 @@ module Puppeteer
       end
 
       # Subscribe to BiDi events
-      # @param event [String] Event name (e.g., 'browsingContext.navigationStarted')
-      # @param block [Proc] Event handler
+      # @rbs event: String
+      # @rbs &block: (untyped) -> void
+      # @rbs return: void
       def on(event, &block)
         @event_listeners[event] ||= []
         @event_listeners[event] << block
       end
 
       # Unsubscribe from BiDi events
+      # @rbs event: String
+      # @rbs &block: ((untyped) -> void)?
+      # @rbs return: void
       def off(event, &block)
         return unless @event_listeners[event]
 
@@ -100,6 +107,7 @@ module Puppeteer
       end
 
       # Close the connection
+      # @rbs return: void
       def close
         return if @closed
 
@@ -114,18 +122,21 @@ module Puppeteer
         @transport.close
       end
 
+      # @rbs return: bool
       def closed?
         @closed
       end
 
       private
 
+      # @rbs return: Integer
       def next_id
         id = @next_id
         @next_id += 1
         id
       end
 
+      # @rbs return: void
       def setup_transport_handlers
         @transport.on_message do |message|
           handle_message(message)
@@ -136,6 +147,8 @@ module Puppeteer
         end
       end
 
+      # @rbs message: Hash[String, untyped]
+      # @rbs return: void
       def handle_message(message)
         # Response to a command (has 'id' field)
         if message['id']
@@ -148,6 +161,8 @@ module Puppeteer
         end
       end
 
+      # @rbs message: Hash[String, untyped]
+      # @rbs return: void
       def handle_response(message)
         id = message['id']
         pending = @pending_commands.delete(id)
@@ -161,6 +176,8 @@ module Puppeteer
         pending[:promise].resolve(message)
       end
 
+      # @rbs message: Hash[String, untyped]
+      # @rbs return: void
       def handle_event(message)
         method = message['method']
         params = message['params'] || {}

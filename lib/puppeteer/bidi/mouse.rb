@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 module Puppeteer
   module Bidi
@@ -6,12 +7,14 @@ module Puppeteer
     # Based on Puppeteer's BidiMouse implementation
     class Mouse
       # Mouse button constants
-      LEFT = 'left'
-      RIGHT = 'right'
-      MIDDLE = 'middle'
-      BACK = 'back'
-      FORWARD = 'forward'
+      LEFT = 'left' #: String
+      RIGHT = 'right' #: String
+      MIDDLE = 'middle' #: String
+      BACK = 'back' #: String
+      FORWARD = 'forward' #: String
 
+      # @rbs browsing_context: Core::BrowsingContext -- Browsing context
+      # @rbs return: void
       def initialize(browsing_context)
         @browsing_context = browsing_context
         @x = 0
@@ -19,9 +22,10 @@ module Puppeteer
       end
 
       # Move mouse to coordinates
-      # @param x [Numeric] X coordinate
-      # @param y [Numeric] Y coordinate
-      # @param steps [Integer] Number of intermediate steps (for smooth movement)
+      # @rbs x: Numeric -- X coordinate
+      # @rbs y: Numeric -- Y coordinate
+      # @rbs steps: Integer -- Number of intermediate steps (for smooth movement)
+      # @rbs return: void
       def move(x, y, steps: 1)
         from_x = @x
         from_y = @y
@@ -46,7 +50,8 @@ module Puppeteer
       end
 
       # Press mouse button down
-      # @param button [String] Mouse button ('left', 'right', 'middle', 'back', 'forward')
+      # @rbs button: String -- Mouse button ('left', 'right', 'middle', 'back', 'forward')
+      # @rbs return: void
       def down(button: LEFT)
         actions = [{
           type: 'pointerDown',
@@ -56,7 +61,8 @@ module Puppeteer
       end
 
       # Release mouse button
-      # @param button [String] Mouse button
+      # @rbs button: String -- Mouse button
+      # @rbs return: void
       def up(button: LEFT)
         actions = [{
           type: 'pointerUp',
@@ -66,11 +72,12 @@ module Puppeteer
       end
 
       # Click at coordinates
-      # @param x [Numeric] X coordinate
-      # @param y [Numeric] Y coordinate
-      # @param button [String] Mouse button
-      # @param count [Integer] Number of clicks (1 for single, 2 for double, 3 for triple)
-      # @param delay [Numeric] Delay between down and up in milliseconds
+      # @rbs x: Numeric -- X coordinate
+      # @rbs y: Numeric -- Y coordinate
+      # @rbs button: String -- Mouse button
+      # @rbs count: Integer -- Number of clicks (1 for single, 2 for double, 3 for triple)
+      # @rbs delay: Numeric? -- Delay between down and up in milliseconds
+      # @rbs return: void
       def click(x, y, button: LEFT, count: 1, delay: nil)
         actions = []
 
@@ -113,8 +120,9 @@ module Puppeteer
       end
 
       # Scroll using mouse wheel
-      # @param delta_x [Numeric] Horizontal scroll amount
-      # @param delta_y [Numeric] Vertical scroll amount
+      # @rbs delta_x: Numeric -- Horizontal scroll amount
+      # @rbs delta_y: Numeric -- Vertical scroll amount
+      # @rbs return: void
       def wheel(delta_x: 0, delta_y: 0)
         @browsing_context.perform_actions([
           {
@@ -135,6 +143,7 @@ module Puppeteer
 
       # Reset mouse state
       # Resets position to origin and releases all pressed buttons
+      # @rbs return: void
       def reset
         @x = 0
         @y = 0
@@ -144,6 +153,8 @@ module Puppeteer
       private
 
       # Convert mouse button name to BiDi button number
+      # @rbs button: String -- Mouse button name
+      # @rbs return: Integer -- BiDi button number
       def button_to_bidi(button)
         case button
         when LEFT then 0
@@ -156,6 +167,8 @@ module Puppeteer
       end
 
       # Perform input actions via BiDi
+      # @rbs action_list: Array[Hash[Symbol, untyped]] -- List of pointer actions
+      # @rbs return: void
       def perform_actions(action_list)
         @browsing_context.perform_actions([
           {

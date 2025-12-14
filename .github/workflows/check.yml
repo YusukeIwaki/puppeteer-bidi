@@ -59,3 +59,25 @@ jobs:
       - name: Run RuboCop
         run: bundle exec rubocop
         continue-on-error: true
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Generate RBS files
+        run: bundle exec rake rbs
+
+      - name: Validate RBS syntax
+        run: rbs -I sig parse sig/**/*.rbs
+
+      - name: Run Steep type check
+        run: bundle exec steep check

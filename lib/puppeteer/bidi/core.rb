@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+# rbs_inline: enabled
 
 # Core module provides low-level BiDi protocol abstractions
 # This layer sits above the WebSocket transport and provides

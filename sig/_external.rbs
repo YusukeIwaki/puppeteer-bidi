@@ -1,0 +1,128 @@
+# External dependencies stub definitions
+# These types are from external gems and standard library extensions
+
+# Async gem adds these methods to Kernel
+module Kernel
+  def Async: [T] () { (Async::Task[T]) -> T } -> Async::Task[T]
+  def Sync: [T] () { () -> T } -> T
+end
+
+module Async
+  def self.call: [T] () { () -> T } -> Task[T]
+
+  class Task[T]
+    def wait: () -> T
+    def sleep: (Numeric) -> void
+    def stop: () -> void
+    def with_timeout: [U] (Numeric) { () -> U } -> U
+  end
+
+  class Promise[T]
+    def initialize: () -> void
+    def wait: () -> T
+    def resolve: (T) -> void
+    def reject: (Exception) -> void
+    def resolved?: () -> bool
+  end
+
+  class TimeoutError < StandardError
+  end
+
+  class Stop < Exception
+  end
+
+  class Barrier
+    def initialize: () -> void
+    def async: () { () -> untyped } -> void
+    def wait: () -> void
+    def stop: () -> void
+  end
+
+  module HTTP
+    class Client
+    end
+
+    class Endpoint
+      def self.parse: (String) -> Endpoint
+    end
+
+    module Protocol
+      module HTTP1
+        class Client
+        end
+      end
+    end
+  end
+
+  class WebSocket
+    class Client
+    end
+
+    class Connection
+      def write: (untyped) -> void
+      def read: () -> untyped
+      def close: () -> void
+    end
+  end
+end
+
+class Thread
+  class Mutex
+    def synchronize: [T] () { () -> T } -> T
+  end
+end
+
+module Protocol
+  module WebSocket
+    class TextMessage
+      attr_reader buffer: String
+    end
+
+    class BinaryMessage
+    end
+
+    class CloseFrame
+    end
+
+    class PingFrame
+    end
+
+    class PongFrame
+    end
+  end
+end
+
+# Open3 extensions
+module Open3
+  def self.popen3: (*String) -> [IO, IO, IO, Thread]
+end
+
+# Singleton module
+module Singleton
+  def self.included: (Class) -> void
+
+  module SingletonClassMethods
+    def instance: () -> instance
+  end
+end
+
+# Dir extensions (tmpdir library)
+class Dir
+  def self.mktmpdir: (String) -> String
+                   | (String) { (String) -> untyped } -> untyped
+end
+
+# Time extensions (time library)
+class Time
+  def self.parse: (String) -> Time
+end
+
+# Date/DateTime extensions
+class Date
+  def to_time: () -> Time
+end
+
+class DateTime
+  def to_time: () -> Time
+end
+
