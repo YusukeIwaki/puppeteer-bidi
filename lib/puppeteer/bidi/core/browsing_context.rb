@@ -136,42 +136,34 @@ module Puppeteer
           raise BrowsingContextClosedError, @reason if closed?
 
           Async do
-            # Close all children first
+            # Close all children first (matches Puppeteer's implementation)
             children.each do |child|
-              begin
-                child.close(prompt_unload: prompt_unload).wait
-              rescue BrowsingContextClosedError
-                # Child already closed (e.g., iframe removed mid-operation)
-              end
+              child.close(prompt_unload: prompt_unload).wait
+            rescue BrowsingContextClosedError
+              # Child already closed
             end
 
-            # Create promise to wait for closed event
-            # This ensures we don't return until the context is actually closed
+            # Ensure page.closed? is true and that the context has been removed
+            # from parent registries once this call returns.
+            # Register listener BEFORE sending close command to avoid race condition.
             closed_promise = Async::Promise.new
             closed_listener = ->(_) { closed_promise.resolve(nil) }
-            once(:closed, &closed_listener)
+            on(:closed, &closed_listener)
 
-            # Send close command
-            # Note: For non-top-level contexts (iframes), this may fail with
-            # "Browsing context ... is not top-level" error, which is expected
-            # because parent closure automatically closes children in BiDi protocol
             begin
               session.async_send_command('browsingContext.close', {
                 context: @id,
                 promptUnload: prompt_unload
               }).wait
+              # Wait for :closed event to ensure state is updated
+              closed_promise.wait
             rescue Connection::ProtocolError => e
-              # Ignore "not top-level" errors for iframe contexts
-              # This happens when parent context closes and BiDi auto-closes children
-              # The error message is in format: "BiDi error (browsingContext.close): Browsing context with id ... is not top-level"
-              if ENV['DEBUG_BIDI_COMMAND']
-                puts "[BiDi] Close error for context #{@id}: #{e.message.inspect}"
-              end
+              # "is not top-level" error occurs for iframes - they are closed
+              # automatically when parent closes, so we don't need to wait
               raise unless e.message.include?('is not top-level')
+            ensure
+              off(:closed, &closed_listener)
             end
-
-            # Wait for the closed event to ensure state is updated
-            closed_promise.wait
           end
         end
 
