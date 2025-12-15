@@ -28,7 +28,15 @@ module Puppeteer
       # Get all pages in this context
       # @rbs return: Array[Page] -- All pages
       def pages
-        @pages.values
+        return [] if closed?
+
+        # Return pages for all currently-known top-level browsing contexts.
+        # Browsing contexts are synchronized from `browsingContext.getTree` during browser/session
+        # initialization, so this allows `Puppeteer::Bidi.connect` to expose existing pages without
+        # requiring an explicit enumeration via `wait_for_target`.
+        @user_context.browsing_contexts
+                     .reject(&:disposed?)
+                     .map { |browsing_context| page_for(browsing_context) }
       end
 
       # Get or create a Page for the given browsing context

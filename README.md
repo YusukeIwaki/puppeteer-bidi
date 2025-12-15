@@ -196,13 +196,24 @@ end
 
 ```ruby
 # Connect to an already running Firefox instance with BiDi
-browser = Puppeteer::Bidi.connect('ws://localhost:9222/session')
+Puppeteer::Bidi.connect('ws://localhost:9222/session') do |browser|
+  # Use the browser
+  status = browser.status
+  puts "Connected to browser: #{status.inspect}"
+end
+```
 
-# Use the browser
-status = browser.status
-puts "Connected to browser: #{status.inspect}"
+You can also disconnect without closing the browser process, then reconnect later:
 
-browser.close
+```ruby
+browser = Puppeteer::Bidi.launch_browser_instance(headless: true)
+ws_endpoint = browser.ws_endpoint
+browser.disconnect
+
+Puppeteer::Bidi.connect(ws_endpoint) do |reconnected|
+  # Use the reconnected browser
+  puts "Reconnected to browser"
+end
 ```
 
 ### Using Core Layer (Advanced)
@@ -299,6 +310,7 @@ Integration tests in `spec/integration/` demonstrate real-world usage by launchi
 **Integration Tests**: 136 examples covering end-to-end functionality
 
 - **Evaluation Tests** (`evaluation_spec.rb`): 23 tests ported from Puppeteer
+
   - JavaScript expression and function evaluation
   - Argument serialization (numbers, arrays, objects, special values)
   - Result deserialization (NaN, Infinity, -0, Maps)
@@ -307,6 +319,7 @@ Integration tests in `spec/integration/` demonstrate real-world usage by launchi
   - Frame.evaluate functionality
 
 - **Screenshot Tests** (`screenshot_spec.rb`): 12 tests ported from Puppeteer
+
   - Basic screenshots and clipping regions
   - Full page screenshots with viewport management
   - Parallel execution across single/multiple pages
@@ -315,6 +328,7 @@ Integration tests in `spec/integration/` demonstrate real-world usage by launchi
   - All tests use golden image comparison with tolerance for cross-platform compatibility
 
 - **Navigation Tests** (`navigation_spec.rb`): 8 tests ported from Puppeteer
+
   - Full page navigation with HTTPResponse
   - Fragment navigation (#hash changes)
   - History API navigation (pushState, replaceState, back, forward)
@@ -322,6 +336,7 @@ Integration tests in `spec/integration/` demonstrate real-world usage by launchi
   - Async/Fiber-based concurrent navigation waiting
 
 - **Click Tests** (`click_spec.rb`): 20 tests ported from Puppeteer
+
   - Element clicking (buttons, links, SVG, checkboxes)
   - Scrolling and viewport handling
   - Wrapped element clicks (multi-line text)
@@ -342,6 +357,7 @@ This project is in early development. The API may change as the implementation p
 ### Implemented Features
 
 #### High-Level Page API (`lib/puppeteer/bidi/`)
+
 Puppeteer-compatible API for browser automation:
 
 - ✅ **Browser**: Browser instance management
@@ -377,6 +393,7 @@ Puppeteer-compatible API for browser automation:
   - ✅ Special key support
 
 #### Screenshot Features
+
 Comprehensive screenshot functionality with 12 passing tests:
 
 - ✅ Basic screenshots
@@ -388,6 +405,7 @@ Comprehensive screenshot functionality with 12 passing tests:
 - ✅ Base64 encoding
 
 #### Foundation Layer
+
 - ✅ Browser launching with Firefox
 - ✅ BiDi protocol connection (WebSocket-based)
 - ✅ WebSocket transport with async/await support
@@ -395,6 +413,7 @@ Comprehensive screenshot functionality with 12 passing tests:
 - ✅ Event subscription and handling
 
 #### Core Layer (`lib/puppeteer/bidi/core/`)
+
 A low-level object-oriented abstraction over the WebDriver BiDi protocol:
 
 - ✅ **Infrastructure**: EventEmitter, Disposable, Custom Exceptions
@@ -406,6 +425,7 @@ A low-level object-oriented abstraction over the WebDriver BiDi protocol:
 - ✅ **User Interaction**: UserPrompt handling (alert/confirm/prompt)
 
 #### BiDi Operations
+
 - ✅ Browsing context management (create/close tabs/windows)
 - ✅ Page navigation with wait conditions
 - ✅ JavaScript evaluation (`script.evaluate`, `script.callFunction`)
@@ -439,6 +459,7 @@ end
 ```
 
 Available custom exceptions:
+
 - `JSHandleDisposedError` - JSHandle or ElementHandle is disposed
 - `PageClosedError` - Page is closed
 - `FrameDetachedError` - Frame is detached

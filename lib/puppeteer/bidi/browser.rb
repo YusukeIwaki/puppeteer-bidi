@@ -11,31 +11,24 @@ module Puppeteer
       attr_reader :connection #: Connection
       attr_reader :process #: untyped
       attr_reader :default_browser_context #: BrowserContext
+      attr_reader :ws_endpoint #: String?
 
       # @rbs connection: Connection -- BiDi connection
       # @rbs launcher: BrowserLauncher? -- Browser launcher instance
+      # @rbs ws_endpoint: String? -- WebSocket endpoint URL
       # @rbs return: Browser -- Browser instance
-      def self.create(connection:, launcher: nil)
+      def self.create(connection:, launcher: nil, ws_endpoint: nil)
         # Create a new BiDi session
         session = Core::Session.from(
           connection: connection,
           capabilities: {
             alwaysMatch: {
               acceptInsecureCerts: false,
+              unhandledPromptBehavior: { default: 'ignore' },
               webSocketUrl: true,
             },
           },
         ).wait
-
-        # Subscribe to BiDi modules before creating browser
-        subscribe_modules = %w[
-          browsingContext
-          network
-          log
-          script
-          input
-        ]
-        session.subscribe(subscribe_modules).wait
 
         core_browser = Core::Browser.from(session).wait
         session.browser = core_browser
@@ -45,6 +38,7 @@ module Puppeteer
           launcher: launcher,
           core_browser: core_browser,
           session: session,
+          ws_endpoint: ws_endpoint,
         )
       end
 
@@ -52,13 +46,16 @@ module Puppeteer
       # @rbs launcher: BrowserLauncher? -- Browser launcher instance
       # @rbs core_browser: Core::Browser -- Core browser instance
       # @rbs session: Core::Session -- BiDi session
+      # @rbs ws_endpoint: String? -- WebSocket endpoint URL
       # @rbs return: void
-      def initialize(connection:, launcher:, core_browser:, session:)
+      def initialize(connection:, launcher:, core_browser:, session:, ws_endpoint:)
         @connection = connection
         @launcher = launcher
         @closed = false
+        @disconnected = false
         @core_browser = core_browser
         @session = session
+        @ws_endpoint = ws_endpoint
 
         # Create default browser context
         default_user_context = @core_browser.default_user_context
@@ -87,6 +84,7 @@ module Puppeteer
 
         # Create transport and connection
         transport = Transport.new(ws_endpoint)
+        ws_endpoint = transport.url
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
@@ -94,19 +92,29 @@ module Puppeteer
 
         connection = Connection.new(transport)
 
-        browser = create(connection: connection, launcher: launcher)
-        target = browser.wait_for_target { |target| target.type == 'page' }
+        browser = create(connection: connection, launcher: launcher, ws_endpoint: ws_endpoint)
+        _target = browser.wait_for_target { |target| target.type == 'page' }
         browser
       end
 
       # Connect to an existing Firefox browser instance
       # @rbs ws_endpoint: String -- WebSocket endpoint URL
+      # @rbs timeout: Numeric? -- Connect timeout in seconds
       # @rbs return: Browser -- Browser instance
-      def self.connect(ws_endpoint)
+      def self.connect(ws_endpoint, timeout: nil)
         transport = Transport.new(ws_endpoint)
-        AsyncUtils.async_timeout(30 * 1000, transport.connect).wait
+        ws_endpoint = transport.url
+        timeout_ms = ((timeout || 30) * 1000).to_i
+        AsyncUtils.async_timeout(timeout_ms, transport.connect).wait
         connection = Connection.new(transport)
-        create(connection: connection, launcher: nil)
+
+        # Verify that this endpoint speaks WebDriver BiDi (and is ready) before creating a new session.
+        status = connection.async_send_command('session.status', {}, timeout: timeout_ms).wait
+        unless status.is_a?(Hash) && status['ready'] == true
+          raise Error, "WebDriver BiDi endpoint is not ready: #{status.inspect}"
+        end
+
+        create(connection: connection, launcher: nil, ws_endpoint: ws_endpoint)
       end
 
       # Get BiDi session status
@@ -124,6 +132,8 @@ module Puppeteer
       # Get all pages
       # @rbs return: Array[Page] -- All pages
       def pages
+        return [] if @closed || @disconnected
+
         @default_browser_context.pages
       end
 
@@ -143,17 +153,48 @@ module Puppeteer
         @closed = true
 
         begin
-          @connection.close
+          begin
+            @connection.async_send_command('browser.close', {}).wait
+          rescue StandardError => e
+            debug_error(e)
+          ensure
+            @connection.close
+          end
         rescue => e
-          warn "Error closing connection: #{e.message}"
+          debug_error(e)
         end
 
         @launcher&.kill
       end
 
+      # Disconnect from the browser (does not close the browser process).
+      # @rbs return: void
+      def disconnect
+        return if @closed || @disconnected
+
+        @disconnected = true
+
+        begin
+          @session.end_session
+        rescue StandardError => e
+          debug_error(e)
+        ensure
+          begin
+            @connection.close
+          rescue StandardError => e
+            debug_error(e)
+          end
+        end
+      end
+
       # @rbs return: bool
       def closed?
         @closed
+      end
+
+      # @rbs return: bool
+      def disconnected?
+        @disconnected
       end
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
@@ -250,6 +291,12 @@ module Puppeteer
       end
 
       private
+
+      def debug_error(error)
+        return unless ENV['DEBUG_BIDI_COMMAND']
+
+        warn(error.full_message)
+      end
 
       # @rbs &block: (BrowserTarget | PageTarget | FrameTarget) -> void -- Block to yield each target to
       # @rbs return: Enumerator[BrowserTarget | PageTarget | FrameTarget, void] -- Enumerator of targets

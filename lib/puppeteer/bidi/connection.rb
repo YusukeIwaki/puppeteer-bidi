@@ -68,14 +68,21 @@ module Puppeteer
               puts "[BiDi] Response for #{method}: #{result.inspect}"
             end
 
-            if result['error']
-              # BiDi error format: { "error": "error_type", "message": "detailed message", ... }
-              error_type = result['error']
-              error_message = result['message'] || error_type
-              raise ProtocolError, "BiDi error (#{method}): #{error_message}"
+            unless result.is_a?(Hash) && result.key?('type')
+              raise ProtocolError, "Protocol Error. Message is not in BiDi protocol format: #{result.inspect}"
             end
 
-            result['result']
+            case result['type']
+            when 'success'
+              result['result']
+            when 'error'
+              # BiDi error format: { "type": "error", "error": "...", "message": "...", ... }
+              error_type = result['error'] || 'unknown error'
+              error_message = result['message'] || error_type
+              raise ProtocolError, "BiDi error (#{method}): #{error_message}"
+            else
+              raise ProtocolError, "Protocol Error. Unexpected BiDi message type: #{result['type'].inspect}"
+            end
           rescue Async::TimeoutError
             @pending_commands.delete(id)
             raise TimeoutError, "Timeout waiting for #{method} (#{timeout}ms)"
