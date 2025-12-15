@@ -42,6 +42,15 @@ RSpec.describe 'Page' do
       end
     end
 
+    it 'should close pages with iframes' do
+      with_test_state do |browser:, **|
+        new_page = browser.new_page
+        new_page.set_content('<iframe srcdoc="<p>hello</p>"></iframe>')
+        Puppeteer::Bidi::AsyncUtils.async_timeout(3000) { new_page.close }.wait
+        expect(new_page.closed?).to be true
+      end
+    end
+
     it 'should run beforeunload if asked for' do
       pending 'Page.close runBeforeUnload option not implemented'
 
