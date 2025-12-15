@@ -132,6 +132,8 @@ module Puppeteer
       # Get all pages
       # @rbs return: Array[Page] -- All pages
       def pages
+        return [] if @closed || @disconnected
+
         @default_browser_context.pages
       end
 
@@ -188,6 +190,11 @@ module Puppeteer
       # @rbs return: bool
       def closed?
         @closed
+      end
+
+      # @rbs return: bool
+      def disconnected?
+        @disconnected
       end
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
