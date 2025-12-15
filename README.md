@@ -205,6 +205,17 @@ puts "Connected to browser: #{status.inspect}"
 browser.close
 ```
 
+You can also disconnect without closing the browser process, then reconnect later:
+
+```ruby
+browser = Puppeteer::Bidi.launch_browser_instance(headless: true)
+ws_endpoint = browser.ws_endpoint
+browser.disconnect
+
+reconnected = Puppeteer::Bidi.connect(ws_endpoint)
+reconnected.close
+```
+
 ### Using Core Layer (Advanced)
 
 The Core layer provides a structured API over BiDi protocol:

@@ -80,9 +80,22 @@ module Puppeteer
 
     # Connect to an existing browser instance
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
-    # @rbs return: Browser -- Browser instance
-    def self.connect(ws_endpoint)
-      Browser.connect(ws_endpoint)
+    # @rbs timeout: Numeric? -- Connect timeout in seconds
+    # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
+    # @rbs return: untyped
+    def self.connect(ws_endpoint, timeout: nil, &block)
+      if block
+        Sync do
+          begin
+            browser = Browser.connect(ws_endpoint, timeout: timeout)
+            block.call(browser)
+          ensure
+            browser&.close
+          end
+        end
+      else
+        Browser.connect(ws_endpoint, timeout: timeout)
+      end
     end
   end
 end
