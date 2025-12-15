@@ -136,12 +136,11 @@ module Puppeteer
           raise BrowsingContextClosedError, @reason if closed?
 
           Async do
-            # Close all children first (matches Puppeteer's implementation)
-            children.each do |child|
-              child.close(prompt_unload: prompt_unload).wait
-            rescue BrowsingContextClosedError
-              # Child already closed
+            # Close all children first (matches Puppeteer's Promise.all pattern)
+            child_close_tasks = children.map do |child|
+              -> { child.close(prompt_unload: prompt_unload).wait rescue BrowsingContextClosedError }
             end
+            AsyncUtils.promise_all(*child_close_tasks).wait unless child_close_tasks.empty?
 
             # Ensure page.closed? is true and that the context has been removed
             # from parent registries once this call returns.
