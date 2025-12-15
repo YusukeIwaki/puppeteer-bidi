@@ -15,6 +15,7 @@ module Puppeteer
 
       # @rbs connection: Connection -- BiDi connection
       # @rbs launcher: BrowserLauncher? -- Browser launcher instance
+      # @rbs ws_endpoint: String? -- WebSocket endpoint URL
       # @rbs return: Browser -- Browser instance
       def self.create(connection:, launcher: nil, ws_endpoint: nil)
         # Create a new BiDi session
@@ -25,8 +26,6 @@ module Puppeteer
               acceptInsecureCerts: false,
               unhandledPromptBehavior: { default: 'ignore' },
               webSocketUrl: true,
-              'goog:prerenderingDisabled': true,
-              'goog:disableNetworkDurableMessages': true,
             },
           },
         ).wait
