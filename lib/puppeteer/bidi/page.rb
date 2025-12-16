@@ -590,7 +590,135 @@ module Puppeteer
         @browsing_context.javascript_enabled?
       end
 
+      # Navigate backward in history
+      # @rbs wait_until: String -- When to consider navigation complete
+      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs return: HTTPResponse? -- Response or nil
+      def go_back(wait_until: 'load', timeout: 30000)
+        go(-1, wait_until: wait_until, timeout: timeout)
+      end
+
+      # Navigate forward in history
+      # @rbs wait_until: String -- When to consider navigation complete
+      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs return: HTTPResponse? -- Response or nil
+      def go_forward(wait_until: 'load', timeout: 30000)
+        go(1, wait_until: wait_until, timeout: timeout)
+      end
+
       private
+
+      # Navigate history by delta.
+      #
+      # In Firefox, BFCache restores may emit `browsingContext.navigationStarted`
+      # without firing `domContentLoaded` / `load`. We treat such navigations as
+      # completed if we don't observe a navigation request shortly after start.
+      # @rbs delta: Integer -- Steps to go back (negative) or forward (positive)
+      # @rbs wait_until: String -- When to consider navigation complete
+      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs return: HTTPResponse? -- Response or nil
+      def go(delta, wait_until:, timeout:)
+        assert_not_closed
+
+        load_event = wait_until == 'domcontentloaded' ? :dom_content_loaded : :load
+
+        started_promise = Async::Promise.new
+        load_promise = Async::Promise.new
+        navigation_request_promise = Async::Promise.new
+
+        navigation_id = nil
+        navigation_url = nil
+
+        session = @browsing_context.user_context.browser.session
+
+        history_listener = proc do
+          started_promise.resolve(:history_updated) unless started_promise.resolved?
+        end
+
+        fragment_listener = proc do
+          started_promise.resolve(:fragment_navigated) unless started_promise.resolved?
+        end
+
+        nav_started_listener = proc do |info|
+          next unless info['context'] == @browsing_context.id
+
+          navigation_id = info['navigation']
+          navigation_url = info['url']
+          started_promise.resolve(:navigation_started) unless started_promise.resolved?
+        end
+
+        request_listener = proc do |data|
+          request = data[:request]
+          next unless navigation_id
+          next unless request&.navigation == navigation_id
+
+          navigation_request_promise.resolve(nil) unless navigation_request_promise.resolved?
+        end
+
+        load_listener = proc do
+          load_promise.resolve(nil) unless load_promise.resolved?
+        end
+
+        closed_listener = proc do
+          started_promise.reject(PageClosedError.new) unless started_promise.resolved?
+        end
+
+        begin
+          session.on('browsingContext.navigationStarted', &nav_started_listener)
+          @browsing_context.on(:history_updated, &history_listener)
+          @browsing_context.on(:fragment_navigated, &fragment_listener)
+          @browsing_context.on(:request, &request_listener)
+          @browsing_context.once(load_event, &load_listener)
+          @browsing_context.once(:closed, &closed_listener)
+
+          @browsing_context.traverse_history(delta).wait
+        rescue Connection::ProtocolError => e
+          # "History entry with delta X not found" - at history edge
+          return nil if e.message.include?('not found')
+          raise
+        end
+
+        begin
+          # If nothing starts soon, assume we're at the history edge.
+          start_timeout_ms = [timeout.to_i, 500].min
+          start_type = AsyncUtils.async_timeout(start_timeout_ms, started_promise).wait
+        rescue Async::TimeoutError
+          return nil
+        end
+
+        case start_type
+        when :history_updated, :fragment_navigated
+          nil
+        when :navigation_started
+          # Determine BFCache restore (no navigation request) vs full navigation.
+          begin
+            AsyncUtils.async_timeout(200, navigation_request_promise).wait
+
+            begin
+              AsyncUtils.async_timeout(timeout, load_promise).wait
+            rescue Async::TimeoutError
+              raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
+            end
+
+            HTTPResponse.new(url: @browsing_context.url, status: 200)
+          rescue Async::TimeoutError
+            # No navigation request observed: treat as BFCache restore.
+            @browsing_context.instance_variable_set(:@url, navigation_url) if navigation_url
+            @browsing_context.navigation&.dispose unless @browsing_context.navigation&.disposed?
+
+            HTTPResponse.new(url: navigation_url || @browsing_context.url, status: 200)
+          end
+        else
+          nil
+        end
+      ensure
+        session.off('browsingContext.navigationStarted', &nav_started_listener)
+        @browsing_context.off(:history_updated, &history_listener)
+        @browsing_context.off(:fragment_navigated, &fragment_listener)
+        @browsing_context.off(:request, &request_listener)
+        @browsing_context.off(load_event, &load_listener)
+        @browsing_context.off(:closed, &closed_listener)
+      end
 
       # Recursively collect all frames starting from the given frame
       # @rbs frame: Frame -- Starting frame

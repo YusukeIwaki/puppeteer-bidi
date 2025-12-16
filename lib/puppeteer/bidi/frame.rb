@@ -367,6 +367,12 @@ module Puppeteer
         # Track navigation type for response creation
         navigation_type = nil  # :full_page, :fragment, or :history
         navigation_obj = nil  # The navigation object we're waiting for
+        load_listener_registered = false
+
+        # Define load_listener upfront to satisfy type checker
+        load_listener = proc do
+          promise.resolve(:full_page) unless promise.resolved?
+        end
 
         # Helper to set up navigation listeners
         setup_navigation_listeners = proc do |navigation|
@@ -389,8 +395,9 @@ module Puppeteer
           end
 
           # Also listen for load/domcontentloaded events to complete navigation
-          @browsing_context.once(load_event) do
-            promise.resolve(:full_page) unless promise.resolved?
+          unless load_listener_registered
+            @browsing_context.once(load_event, &load_listener)
+            load_listener_registered = true
           end
         end
 
@@ -474,6 +481,7 @@ module Puppeteer
           @browsing_context.off(:history_updated, &history_listener)
           @browsing_context.off(:fragment_navigated, &fragment_listener)
           @browsing_context.off(:closed, &closed_listener)
+          @browsing_context.off(load_event, &load_listener) if load_listener_registered
         end
       end
 
