@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out Puppeteer (fetch-depth: 0)
+      - name: "Check out Puppeteer (fetch-depth: 0)"
         uses: actions/checkout@v4
         with:
           repository: puppeteer/puppeteer
