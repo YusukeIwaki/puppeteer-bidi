@@ -189,6 +189,10 @@ module Puppeteer
         method = message['method']
         params = message['params'] || {}
 
+        if ENV['DEBUG_BIDI_COMMAND']
+          puts "[BiDi] Event #{method}: #{params.inspect}"
+        end
+
         listeners = @event_listeners[method]
         return unless listeners
 
