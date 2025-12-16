@@ -9,6 +9,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  api_coverage:
+    name: API Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Check out Puppeteer (fetch-depth: 0)"
+        uses: actions/checkout@v4
+        with:
+          repository: puppeteer/puppeteer
+          path: development/puppeteer
+          fetch-depth: 0
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Determine Puppeteer commit
+        id: puppeteer
+        run: echo "sha=$(git -C development/puppeteer rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Puppeteer API cache
+        uses: actions/cache@v4
+        with:
+          path: development/cache
+          key: puppeteer-api-${{ steps.puppeteer.outputs.sha }}
+
+      - name: Generate API_COVERAGE.md
+        run: bundle exec ruby development/generate_api_coverage.rb --puppeteer-dir development/puppeteer --cache-dir development/cache --output API_COVERAGE.md
+
+      - name: Ensure API_COVERAGE.md is up to date
+        run: git diff --exit-code API_COVERAGE.md
+
   rspec:
     name: RSpec (${{ matrix.ruby-version }})
     runs-on: ubuntu-latest

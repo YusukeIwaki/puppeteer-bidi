@@ -7,6 +7,10 @@
 /spec/reports/
 /tmp/
 
+# Development-time artifacts (API coverage generator)
+/development/cache/
+/development/puppeteer/
+
 # rspec failure tracking
 .rspec_status
 
