@@ -757,11 +757,12 @@ RSpec.describe 'Page' do
   end
 
   describe 'Page.setContent' do
+    expected_output = '<html><head></head><body><div>hello</div></body></html>'
+
     it 'should work' do
       with_test_state do |page:, **|
         page.set_content('<div>hello</div>')
-        result = page.evaluate('() => document.body.innerHTML')
-        expect(result).to eq('<div>hello</div>')
+        expect(page.content).to eq(expected_output)
       end
     end
 
@@ -769,12 +770,7 @@ RSpec.describe 'Page' do
       with_test_state do |page:, **|
         doctype = '<!DOCTYPE html>'
         page.set_content("#{doctype}<div>hello</div>")
-        result = page.evaluate(<<~JS)
-          () => {
-            return document.doctype.name;
-          }
-        JS
-        expect(result).to eq('html')
+        expect(page.content).to eq("#{doctype}#{expected_output}")
       end
     end
 
@@ -782,12 +778,7 @@ RSpec.describe 'Page' do
       with_test_state do |page:, **|
         doctype = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">'
         page.set_content("#{doctype}<div>hello</div>")
-        result = page.evaluate(<<~JS)
-          () => {
-            return document.doctype.name;
-          }
-        JS
-        expect(result).to eq('html')
+        expect(page.content).to eq("#{doctype}#{expected_output}")
       end
     end
 
@@ -1225,8 +1216,6 @@ RSpec.describe 'Page' do
 
   describe 'Page.reload' do
     it 'should work' do
-      pending 'Page.reload not implemented'
-
       with_test_state do |page:, server:, **|
         page.goto(server.empty_page)
         page.evaluate('() => { window._foo = 10; }')
