@@ -307,6 +307,31 @@ module Puppeteer
         @browsing_context.url
       end
 
+      # Get the full HTML contents of the page, including the DOCTYPE.
+      # @rbs return: String -- Full HTML contents
+      def content
+        assert_not_closed
+
+        # Port of Puppeteer's Frame.content().
+        # https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/api/Frame.ts
+        main_frame.evaluate(<<~JS)
+          () => {
+            let content = '';
+            for (const node of document.childNodes) {
+              switch (node) {
+                case document.documentElement:
+                  content += document.documentElement.outerHTML;
+                  break;
+                default:
+                  content += new XMLSerializer().serializeToString(node);
+                  break;
+              }
+            }
+            return content;
+          }
+        JS
+      end
+
       # Close the page
       # @rbs return: void
       def close
@@ -325,6 +350,22 @@ module Puppeteer
       # @rbs return: Frame -- Main frame
       def main_frame
         @main_frame ||= Frame.from(self, @browsing_context)
+      end
+
+      # Reloads the page.
+      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs wait_until: String | Array[String] -- When to consider navigation complete
+      # @rbs ignore_cache: bool -- Whether to ignore the browser cache
+      # @rbs return: HTTPResponse? -- Response or nil
+      def reload(timeout: 30000, wait_until: 'load', ignore_cache: false)
+        assert_not_closed
+
+        reload_options = {}
+        reload_options[:ignoreCache] = true if ignore_cache
+
+        wait_for_navigation(timeout: timeout, wait_until: wait_until) do
+          @browsing_context.reload(**reload_options).wait
+        end
       end
 
       # Get the focused frame
