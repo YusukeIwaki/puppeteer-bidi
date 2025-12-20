@@ -472,8 +472,8 @@ RSpec.describe "Request interception" do
         page.set_request_interception(true)
         requests = []
         page.on(:request) do |request|
-          request.continue
           requests << request unless is_favicon?(request)
+          request.continue
         end
         data_url = "data:text/html,<div>yo</div>"
         response = page.goto(data_url)
