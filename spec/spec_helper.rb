@@ -27,10 +27,12 @@ RSpec.configure do |config|
   rspec_around_suite_patch = Module.new do
     def with_suite_hooks(...)
       puts "\n[Test Suite] Starting..."
+      result = nil
       Sync do |parent|
-        super(...)
+        result = super(...)
         parent.reactor.print_hierarchy
       end
+      result
     end
   end
   RSpec::Core::Configuration.prepend(rspec_around_suite_patch)
