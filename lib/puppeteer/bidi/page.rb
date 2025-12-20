@@ -965,13 +965,13 @@ module Puppeteer
               raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
             end
 
-            HTTPResponse.new(url: @browsing_context.url, status: 200)
+            HTTPResponse.for_bfcache(url: @browsing_context.url)
           rescue Async::TimeoutError
             # No navigation request observed: treat as BFCache restore.
             @browsing_context.instance_variable_set(:@url, navigation_url) if navigation_url
             @browsing_context.navigation&.dispose unless @browsing_context.navigation&.disposed?
 
-            HTTPResponse.new(url: navigation_url || @browsing_context.url, status: 200)
+            HTTPResponse.for_bfcache(url: navigation_url || @browsing_context.url)
           end
         else
           nil

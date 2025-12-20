@@ -22,10 +22,25 @@ module Puppeteer
         response
       end
 
+      # Create a synthetic response for BFCache restoration
+      # @rbs url: String -- Response URL
+      # @rbs status: Integer -- HTTP status code
+      # @rbs return: HTTPResponse
+      def self.for_bfcache(url:, status: 200)
+        data = {
+          "url" => url,
+          "status" => status,
+          "statusText" => "OK",
+          "headers" => [],
+          "fromCache" => true
+        }
+        new(data: data, request: nil)
+      end
+
       attr_reader :request
 
       # @rbs data: Hash[String, untyped] -- BiDi response data
-      # @rbs request: HTTPRequest -- Associated request
+      # @rbs request: HTTPRequest? -- Associated request (nil for BFCache)
       # @rbs return: void
       def initialize(data:, request:)
         @data = data
