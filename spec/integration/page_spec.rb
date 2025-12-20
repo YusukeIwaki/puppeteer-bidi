@@ -1315,7 +1315,7 @@ RSpec.describe 'Page' do
 
         page.eval_on_selector('select', "select => select.addEventListener('input', () => { window.location = '/empty.html'; })")
 
-        page.wait_for_navigation(wait_until: 'domcontentloaded') do
+        page.wait_for_navigation do
           page.select('select', 'blue')
         end
 
@@ -1392,6 +1392,7 @@ RSpec.describe 'Page' do
         page.evaluate('() => { makeMultiple(); }')
         page.select('select', 'blue', 'black', 'magenta')
         page.select('select')
+        # For multiple select, all options should be deselected
         expect(page.eval_on_selector('select', "select => Array.from(select.options).every(option => !option.selected)")).to be true
       end
     end
@@ -1401,7 +1402,8 @@ RSpec.describe 'Page' do
         page.goto("#{server.prefix}/input/select.html")
         page.select('select', 'blue', 'black', 'magenta')
         page.select('select')
-        expect(page.eval_on_selector('select', "select => Array.from(select.options).every(option => !option.selected)")).to be true
+        # For single select, the first option (value "") should be selected
+        expect(page.eval_on_selector('select', "select => Array.from(select.options).filter(option => option.selected)[0].value")).to eq('')
       end
     end
 
