@@ -80,6 +80,10 @@ RSpec.configure do |config|
       !%w[0 false].include?(ENV['HEADLESS'])
     end
 
+    def linux?
+      RUBY_PLATFORM.include?('linux')
+    end
+
     # Legacy helper - launches a new browser for each call
     # Use with_test_state for better performance
     def with_browser(**options)
