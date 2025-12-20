@@ -20,13 +20,18 @@ jobs:
         id: puppeteer_ref
         run: echo "ref=$(cat development/puppeteer_revision.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: "Check out Puppeteer (fetch-depth: 0)"
+      - name: "Check out Puppeteer (sparse docs)"
         uses: actions/checkout@v4
         with:
           repository: puppeteer/puppeteer
           path: development/puppeteer
-          fetch-depth: 0
           ref: ${{ steps.puppeteer_ref.outputs.ref }}
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            docs/api.md
+            docs/api/
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
