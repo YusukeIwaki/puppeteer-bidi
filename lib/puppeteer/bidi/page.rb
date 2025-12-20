@@ -837,6 +837,20 @@ module Puppeteer
         ).wait
       end
 
+      # Set user agent
+      # @rbs user_agent: String? -- User agent string or nil to restore original
+      # @rbs user_agent_metadata: Hash[Symbol, untyped]? -- Not supported in BiDi-only mode
+      # @rbs return: void
+      def set_user_agent(user_agent, user_agent_metadata = nil)
+        assert_not_closed
+
+        if user_agent_metadata
+          raise UnsupportedOperationError, "userAgentMetadata is not supported in BiDi-only mode"
+        end
+
+        @browsing_context.set_user_agent(user_agent).wait
+      end
+
       # Get current viewport size
       # @rbs return: Hash[Symbol, Integer]? -- Viewport dimensions
       def viewport

@@ -123,6 +123,12 @@ module Puppeteer
         @connection.async_send_command('session.status').wait
       end
 
+      # Get the browser's original user agent
+      # @rbs return: String -- User agent string
+      def user_agent
+        @session.capabilities["userAgent"]
+      end
+
       # Create a new page (Puppeteer-like API)
       # @rbs return: Page -- New page instance
       def new_page

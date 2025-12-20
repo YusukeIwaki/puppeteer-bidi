@@ -657,8 +657,6 @@ RSpec.describe 'Page' do
 
   describe 'Page.setUserAgent' do
     it 'should work' do
-      pending 'Page.setUserAgent not implemented'
-
       with_test_state do |page:, server:, **|
         expect(page.evaluate('() => navigator.userAgent')).to include('Mozilla')
 
@@ -671,8 +669,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should work for subframes' do
-      pending 'Page.setUserAgent not implemented'
-
       with_test_state do |page:, server:, **|
         expect(page.evaluate('() => navigator.userAgent')).to include('Mozilla')
 
@@ -685,8 +681,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should emulate device user-agent' do
-      pending 'Page.setUserAgent not implemented'
-
       with_test_state do |page:, server:, **|
         page.goto("#{server.prefix}/mobile.html")
         expect(page.evaluate('() => navigator.userAgent')).not_to include('iPhone')
@@ -698,7 +692,7 @@ RSpec.describe 'Page' do
     end
 
     it 'should work with additional userAgentMetadata' do
-      pending 'Page.setUserAgent not implemented'
+      skip "userAgentMetadata not supported in BiDi-only mode"
 
       with_test_state do |page:, server:, **|
         page.set_user_agent('MockBrowser', {
@@ -730,8 +724,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should restore original user agent' do
-      pending 'Page.setUserAgent not implemented'
-
       with_test_state do |page:, server:, **|
         original = page.evaluate('() => navigator.userAgent')
         page.set_user_agent('NewAgent')
