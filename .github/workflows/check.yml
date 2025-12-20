@@ -84,6 +84,12 @@ jobs:
         env:
           HEADLESS: true
 
+      - name: Run integration tests (headful, xvfb)
+        if: matrix.ruby-version == '3.4'
+        run: FIREFOX_PATH=`which firefox` xvfb-run --server-args="-screen 0 1024x768x24" bundle exec rspec spec/integration/
+        env:
+          HEADLESS: "false"
+
   rubocop:
     name: RuboCop
     runs-on: ubuntu-latest
