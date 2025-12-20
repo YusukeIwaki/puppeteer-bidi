@@ -240,6 +240,53 @@ module Puppeteer
         evaluate('element => element.focus()')
       end
 
+      # Select options on a <select> element
+      # Triggers 'change' and 'input' events once all options are selected.
+      # If not a select element, throws an error.
+      # @rbs *values: String -- Option values to select
+      # @rbs return: Array[String] -- Actually selected option values
+      def select(*values)
+        assert_not_disposed
+
+        # Validate all values are strings
+        values.each_with_index do |value, index|
+          unless value.is_a?(String)
+            raise ArgumentError, "Values must be strings. Found value of type #{value.class} at index #{index}"
+          end
+        end
+
+        # Use isolated realm to avoid user modifications to global objects (like Event).
+        realm = frame.isolated_realm
+        adopted_element = realm.adopt_handle(self)
+
+        begin
+          adopted_element.evaluate(<<~JS, values)
+            (element, values) => {
+              if (!(element instanceof HTMLSelectElement)) {
+                throw new Error('Element is not a <select> element.');
+              }
+
+              const options = Array.from(element.options);
+              element.value = undefined;
+
+              for (const option of options) {
+                option.selected = values.includes(option.value);
+                if (option.selected && !element.multiple) {
+                  break;
+                }
+              }
+
+              element.dispatchEvent(new Event('input', {bubbles: true}));
+              element.dispatchEvent(new Event('change', {bubbles: true}));
+
+              return options.filter(option => option.selected).map(option => option.value);
+            }
+          JS
+        ensure
+          adopted_element&.dispose
+        end
+      end
+
       # Hover over the element
       # Scrolls element into view if needed and moves mouse to element center
       # @rbs return: void

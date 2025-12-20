@@ -199,6 +199,24 @@ module Puppeteer
         end
       end
 
+      # Select options on a <select> element matching the selector
+      # Triggers 'change' and 'input' events once all options are selected.
+      # @rbs selector: String -- Selector for <select> element
+      # @rbs *values: String -- Option values to select
+      # @rbs return: Array[String] -- Actually selected option values
+      def select(selector, *values)
+        assert_not_detached
+
+        handle = query_selector(selector)
+        raise SelectorNotFoundError, selector unless handle
+
+        begin
+          handle.select(*values)
+        ensure
+          handle.dispose
+        end
+      end
+
       # Get the frame URL
       # @rbs return: String -- Current URL
       def url
