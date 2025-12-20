@@ -72,7 +72,12 @@ module Puppeteer
       # @rbs return: void
       def off(event, &block)
         if event.to_sym == :request && block
-          wrapper = @request_handlers.delete(block)
+          # WeakMap#delete was added in Ruby 3.3, so we need to handle older versions
+          wrapper = if @request_handlers.respond_to?(:delete)
+                      @request_handlers.delete(block)
+                    else
+                      @request_handlers[block]
+                    end
           return @emitter.off(event, &(wrapper || block))
         end
 
