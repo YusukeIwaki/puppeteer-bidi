@@ -91,7 +91,7 @@ jobs:
 
       - name: Run integration tests (headful, xvfb)
         if: matrix.ruby-version == '3.4'
-        run: xvfb-run --server-args="-screen 0 1024x768x24" FIREFOX_PATH=`which firefox` bundle exec rspec spec/integration/
+        run: FIREFOX_PATH=`which firefox` xvfb-run --server-args="-screen 0 1024x768x24" bundle exec rspec spec/integration/
         env:
           HEADLESS: "false"
 
