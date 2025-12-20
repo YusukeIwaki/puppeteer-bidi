@@ -7,6 +7,16 @@ require 'timeout'
 require_relative 'support/test_server'
 require_relative 'support/golden_comparator'
 
+module TestShortInspect
+  def inspect
+    "#<#{self.class} 0x#{object_id.to_s(16)}>"
+  end
+end
+
+Puppeteer::Bidi::BrowserContext.prepend(TestShortInspect)
+Puppeteer::Bidi::Page.prepend(TestShortInspect)
+Puppeteer::Bidi::HTTPRequest.prepend(TestShortInspect)
+
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
   config.example_status_persistence_file_path = ".rspec_status"
@@ -30,7 +40,7 @@ RSpec.configure do |config|
       result = nil
       Sync do |parent|
         result = super(...)
-        parent.reactor.print_hierarchy
+        parent.reactor.print_hierarchy if ENV['DEBUG_ASYNC_HIERARCHY']
       end
       result
     end
