@@ -85,6 +85,13 @@ jobs:
         id: firefox
         run: |
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            if [ -n "${RUNNER_TOOL_CACHE:-}" ]; then
+              nightly_bin="$(find "$RUNNER_TOOL_CACHE/firefox/latest-nightly" -path "*/Contents/MacOS/firefox" -print -quit 2>/dev/null)"
+              if [ -n "$nightly_bin" ] && [ -x "$nightly_bin" ]; then
+                echo "path=$nightly_bin" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
             if [ -x "/Applications/Firefox Nightly.app/Contents/MacOS/firefox" ]; then
               echo "path=/Applications/Firefox Nightly.app/Contents/MacOS/firefox" >> "$GITHUB_OUTPUT"
               exit 0
@@ -92,11 +99,15 @@ jobs:
             if command -v firefox >/dev/null 2>&1; then
               firefox_bin="$(command -v firefox)"
               case "$firefox_bin" in
-                *"Firefox Nightly.app"*)
+                *"Firefox Nightly.app"*|*"latest-nightly"*)
                   echo "path=$firefox_bin" >> "$GITHUB_OUTPUT"
                   exit 0
                   ;;
               esac
+              if "$firefox_bin" --version | grep -qiE "nightly|a1"; then
+                echo "path=$firefox_bin" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
             fi
             echo "Firefox Nightly binary not found on macOS runner" >&2
             exit 1
