@@ -4,6 +4,7 @@
 require "base64"
 require "fileutils"
 require "uri"
+require "async/semaphore"
 
 module Puppeteer
   module Bidi
@@ -24,6 +25,7 @@ module Puppeteer
         @browsing_context = browsing_context
         @timeout_settings = TimeoutSettings.new(DEFAULT_TIMEOUT)
         @emitter = Core::EventEmitter.new
+        @request_interception_semaphore = Async::Semaphore.new(1)
         @request_handlers = begin
           ObjectSpace::WeakMap.new
         rescue NameError
@@ -94,6 +96,9 @@ module Puppeteer
       def credentials
         @credentials
       end
+
+      # @rbs return: Async::Semaphore -- Serialize request interception handling
+      attr_reader :request_interception_semaphore
 
       # Navigate to a URL
       # @rbs url: String -- URL to navigate to

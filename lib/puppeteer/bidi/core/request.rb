@@ -6,6 +6,26 @@ module Puppeteer
     module Core
       # Request represents a network request
       class Request < EventEmitter
+        DESTINATION_RESOURCE_TYPES = {
+          "style" => "stylesheet",
+          "document" => "document",
+          "script" => "script",
+          "image" => "image",
+          "font" => "font",
+          "audio" => "media",
+          "video" => "media",
+          "track" => "texttrack",
+          "manifest" => "manifest",
+          "iframe" => "document",
+          "frame" => "document",
+          "fetch" => "fetch",
+          "object" => "other",
+          "embed" => "other",
+          "worker" => "other",
+          "sharedworker" => "other",
+          "serviceworker" => "other",
+        }.freeze
+
         include Disposable::DisposableMixin
 
         # Create a request instance from a beforeRequestSent event
@@ -101,7 +121,13 @@ module Puppeteer
         # Get resource type (non-standard)
         # @rbs return: String? -- Resource type
         def resource_type
-          @event.dig('request', 'goog:resourceType')
+          resource_type = @event.dig('request', 'goog:resourceType')
+          return resource_type if resource_type
+
+          destination = @event.dig('request', 'destination')
+          return nil unless destination
+
+          DESTINATION_RESOURCE_TYPES.fetch(destination, destination)
         end
 
         # Get POST data (non-standard)

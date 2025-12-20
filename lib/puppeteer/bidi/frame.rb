@@ -483,12 +483,9 @@ module Puppeteer
           end
 
           # Return HTTPResponse for full page navigation, nil for fragment/history
-          if result == :full_page
-            response = navigation_response_for(navigation_obj)
-            response || HTTPResponse.new(url: @browsing_context.url, status: 200)
-          else
-            nil
-          end
+          return nil unless result == :full_page
+
+          navigation_response_for(navigation_obj)
         rescue Async::TimeoutError
           raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
         ensure
@@ -596,8 +593,7 @@ module Puppeteer
           request.once(:error) do
             page.emit(:requestfailed, http_request)
           end
-
-          Async do
+          page.request_interception_semaphore.async do
             http_request.finalize_interceptions
           end
         end

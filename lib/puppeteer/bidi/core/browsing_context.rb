@@ -271,9 +271,16 @@ module Puppeteer
         def set_extra_http_headers(headers)
           raise BrowsingContextClosedError, @reason if closed?
 
-          session.async_send_command('browsingContext.setExtraHTTPHeaders', {
-            context: @id,
-            headers: headers
+          normalized = headers.map do |key, value|
+            {
+              name: key.to_s.downcase,
+              value: { type: 'string', value: value.to_s }
+            }
+          end
+
+          session.async_send_command('network.setExtraHeaders', {
+            contexts: [@id],
+            headers: normalized
           })
         end
 

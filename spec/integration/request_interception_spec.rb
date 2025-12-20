@@ -594,6 +594,8 @@ RSpec.describe "Request interception" do
     end
 
     it "should work with file URLs" do
+      pending "File URL requests are not emitted in Firefox BiDi"
+
       with_test_state do |page:, **|
         page.set_request_interception(true)
         urls = Set.new
@@ -667,7 +669,7 @@ RSpec.describe "Request interception" do
     end
 
     it "should work with worker" do
-      pending "Worker events are not implemented"
+      skip "Worker events are not implemented"
 
       with_test_state do |page:, server:, **|
         page.goto("#{server.prefix}/worker/worker.html")

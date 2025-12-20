@@ -130,7 +130,8 @@ module TestServer
     end
 
     def handle_request(request)
-      path = request.path
+      raw_path = request.path
+      path = strip_query(raw_path)
       handler = lookup_route(path)
       body = request.body&.read
       route_request = RouteRequest.new(request, body: body)
@@ -175,7 +176,8 @@ module TestServer
     def serve_static_asset(request)
       return method_not_allowed(request) unless %w[GET HEAD].include?(request.method)
 
-      relative_path = request.path == '/' ? '/index.html' : request.path
+      path = strip_query(request.path)
+      relative_path = path == '/' ? '/index.html' : path
       sanitized = sanitize_path(relative_path)
 
       unless sanitized
@@ -192,6 +194,9 @@ module TestServer
       headers = {
         'content-type' => mime_type_for(file_path)
       }
+      if sanitized.start_with?('cached/')
+        headers['cache-control'] = 'public, max-age=31536000'
+      end
 
       response_body = request.method == 'HEAD' ? '' : body
 
@@ -258,6 +263,12 @@ module TestServer
       full_path[@assets_directory.length + 1..]
     end
 
+    def strip_query(path)
+      return '' if path.nil?
+
+      path.split('?', 2).first
+    end
+
     def mime_type_for(file_path)
       ext = File.extname(file_path)
       case ext
@@ -270,6 +281,8 @@ module TestServer
       when '.jpg', '.jpeg' then 'image/jpeg'
       when '.gif' then 'image/gif'
       when '.svg' then 'image/svg+xml'
+      when '.woff' then 'font/woff'
+      when '.woff2' then 'font/woff2'
       when '.txt' then 'text/plain; charset=utf-8'
       else 'application/octet-stream'
       end
@@ -346,7 +359,9 @@ module TestServer
     end
 
     def path
-      @request.path
+      return '' unless @request&.path
+
+      @request.path.split('?', 2).first
     end
     alias path_info path
 
