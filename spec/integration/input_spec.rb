@@ -221,6 +221,7 @@ RSpec.describe 'input tests' do
 
     it 'should be able to reset selected files with empty file list' do
       skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+      skip 'Firefox BiDi does not trigger second file chooser in headful mode' unless headless_mode?
 
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
@@ -328,6 +329,7 @@ RSpec.describe 'input tests' do
   describe 'FileChooser.cancel' do
     it 'should cancel dialog' do
       skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+      skip 'Firefox BiDi does not trigger second file chooser in headful mode' unless headless_mode?
 
       with_test_state do |page:, **|
         # Consider file chooser canceled if we can summon another one.
