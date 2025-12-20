@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 # rbs_inline: enabled
 
-require 'base64'
-require 'fileutils'
+require "base64"
+require "fileutils"
+require "uri"
 
 module Puppeteer
   module Bidi
@@ -23,6 +24,14 @@ module Puppeteer
         @browsing_context = browsing_context
         @timeout_settings = TimeoutSettings.new(DEFAULT_TIMEOUT)
         @emitter = Core::EventEmitter.new
+        @request_handlers = begin
+          ObjectSpace::WeakMap.new
+        rescue NameError
+          {}
+        end
+        @request_interception = nil
+        @auth_interception = nil
+        @credentials = nil
       end
 
       # Event emitter delegation methods
@@ -33,7 +42,18 @@ module Puppeteer
       # @rbs &block: (untyped) -> void -- Event handler
       # @rbs return: void
       def on(event, &block)
-        @emitter.on(event, &block)
+        return @emitter.on(event, &block) unless event.to_sym == :request
+
+        wrapper = @request_handlers[block]
+        unless wrapper
+          wrapper = lambda do |request|
+            request.enqueue_intercept_action do
+              block.call(request)
+            end
+          end
+          @request_handlers[block] = wrapper
+        end
+        @emitter.on(event, &wrapper)
       end
 
       # Register a one-time event listener
@@ -49,6 +69,11 @@ module Puppeteer
       # @rbs &block: (untyped) -> void -- Event handler to remove
       # @rbs return: void
       def off(event, &block)
+        if event.to_sym == :request && block
+          wrapper = @request_handlers.delete(block)
+          return @emitter.off(event, &(wrapper || block))
+        end
+
         @emitter.off(event, &block)
       end
 
@@ -58,6 +83,16 @@ module Puppeteer
       # @rbs return: void
       def emit(event, data = nil)
         @emitter.emit(event, data)
+      end
+
+      # @rbs return: bool -- Whether any network interception is enabled
+      def network_interception_enabled?
+        !@request_interception.nil? || !@auth_interception.nil?
+      end
+
+      # @rbs return: Hash[Symbol, String]?
+      def credentials
+        @credentials
       end
 
       # Navigate to a URL
@@ -377,6 +412,56 @@ module Puppeteer
         end
       end
 
+      # Enable or disable request interception.
+      # @rbs enable: bool -- Whether to enable interception
+      # @rbs return: void
+      def set_request_interception(enable)
+        assert_not_closed
+
+        @request_interception = toggle_interception(
+          ["beforeRequestSent"],
+          @request_interception,
+          enable,
+        )
+      end
+
+      # Set extra HTTP headers for the page.
+      # @rbs headers: Hash[String, String] -- Extra headers
+      # @rbs return: void
+      def set_extra_http_headers(headers)
+        assert_not_closed
+
+        normalized = {}
+        headers.each do |key, value|
+          normalized[key.to_s] = value.to_s
+        end
+        @browsing_context.set_extra_http_headers(normalized).wait
+      end
+
+      # Authenticate to HTTP Basic auth challenges.
+      # @rbs credentials: Hash[Symbol, String]? -- Credentials (username/password) or nil to disable
+      # @rbs return: void
+      def authenticate(credentials)
+        assert_not_closed
+
+        @auth_interception = toggle_interception(
+          ["authRequired"],
+          @auth_interception,
+          !credentials.nil?,
+        )
+
+        @credentials = credentials
+      end
+
+      # Enable or disable cache.
+      # @rbs enabled: bool -- Whether to enable cache
+      # @rbs return: void
+      def set_cache_enabled(enabled)
+        assert_not_closed
+
+        @browsing_context.set_cache_behavior(enabled ? "default" : "bypass").wait
+      end
+
       # Get the focused frame
       # @rbs return: Frame -- Focused frame
       def focused_frame
@@ -478,6 +563,131 @@ module Puppeteer
       # @rbs return: HTTPResponse? -- Response or nil
       def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
         main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
+      end
+
+      # Wait for a request that matches a URL or predicate.
+      # @rbs url_or_predicate: String | ^(HTTPRequest) -> boolish -- URL or predicate
+      # @rbs timeout: Numeric? -- Timeout in ms (0 for infinite)
+      # @rbs &block: (-> void)? -- Optional block to trigger the request
+      # @rbs return: HTTPRequest
+      def wait_for_request(url_or_predicate, timeout: nil, &block)
+        assert_not_closed
+
+        timeout_ms = timeout.nil? ? @timeout_settings.timeout : timeout
+        predicate = if url_or_predicate.is_a?(Proc)
+                      url_or_predicate
+                    else
+                      ->(request) { request.url == url_or_predicate }
+                    end
+
+        promise = Async::Promise.new
+        listener = proc do |request|
+          next unless predicate.call(request)
+
+          promise.resolve(request) unless promise.resolved?
+        end
+
+        begin
+          on(:request, &listener)
+          Async(&block).wait if block
+
+          if timeout_ms == 0
+            promise.wait
+          else
+            AsyncUtils.async_timeout(timeout_ms, promise).wait
+          end
+        ensure
+          off(:request, &listener)
+        end
+      end
+
+      # Wait for a response that matches a URL or predicate.
+      # @rbs url_or_predicate: String | ^(HTTPResponse) -> boolish -- URL or predicate
+      # @rbs timeout: Numeric? -- Timeout in ms (0 for infinite)
+      # @rbs &block: (-> void)? -- Optional block to trigger the response
+      # @rbs return: HTTPResponse
+      def wait_for_response(url_or_predicate, timeout: nil, &block)
+        assert_not_closed
+
+        timeout_ms = timeout.nil? ? @timeout_settings.timeout : timeout
+        predicate = if url_or_predicate.is_a?(Proc)
+                      url_or_predicate
+                    else
+                      ->(response) { response.url == url_or_predicate }
+                    end
+
+        promise = Async::Promise.new
+        listener = proc do |response|
+          next unless predicate.call(response)
+
+          promise.resolve(response) unless promise.resolved?
+        end
+
+        begin
+          on(:response, &listener)
+          Async(&block).wait if block
+
+          if timeout_ms == 0
+            promise.wait
+          else
+            AsyncUtils.async_timeout(timeout_ms, promise).wait
+          end
+        ensure
+          off(:response, &listener)
+        end
+      end
+
+      # Retrieve cookies for the current page.
+      # @rbs return: Array[Hash[String, untyped]]
+      def cookies
+        assert_not_closed
+
+        @browsing_context.get_cookies.wait.map do |cookie|
+          value = cookie["value"]
+          value = value["value"] if value.is_a?(Hash)
+          {
+            "name" => cookie["name"],
+            "value" => value,
+            "domain" => cookie["domain"],
+            "path" => cookie["path"],
+            "httpOnly" => cookie["httpOnly"],
+            "secure" => cookie["secure"],
+            "sameSite" => cookie["sameSite"],
+            "expires" => cookie["expiry"],
+          }.compact
+        end
+      end
+
+      # Set a cookie for the current page.
+      # @rbs name: String -- Cookie name
+      # @rbs value: String -- Cookie value
+      # @rbs url: String? -- URL scope
+      # @rbs domain: String? -- Domain scope
+      # @rbs path: String? -- Path scope
+      # @rbs return: void
+      def set_cookie(name:, value:, url: nil, domain: nil, path: nil)
+        assert_not_closed
+
+        cookie_url = url || @browsing_context.url
+        cookie_domain = domain
+        if cookie_domain.nil? && cookie_url
+          begin
+            cookie_domain = URI.parse(cookie_url).host
+          rescue URI::InvalidURIError
+            cookie_domain = nil
+          end
+        end
+
+        raise ArgumentError, "At least one of url or domain must be specified" if cookie_domain.nil?
+
+        cookie = {
+          "domain" => cookie_domain,
+          "name" => name,
+          "value" => { "type" => "string", "value" => value },
+        }
+        cookie["path"] = path if path
+
+        @browsing_context.set_cookie(cookie).wait
       end
 
       # Wait for a file chooser to be opened
@@ -785,6 +995,17 @@ module Puppeteer
       # @rbs return: void
       def assert_not_closed
         raise PageClosedError if closed?
+      end
+
+      def toggle_interception(phases, interception, expected)
+        if expected && interception.nil?
+          return @browsing_context.add_intercept(phases: phases).wait
+        end
+        if !expected && interception
+          @browsing_context.user_context.browser.remove_intercept(interception).wait
+          return nil
+        end
+        interception
       end
     end
   end
