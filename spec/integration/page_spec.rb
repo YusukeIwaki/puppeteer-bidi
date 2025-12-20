@@ -1292,10 +1292,8 @@ RSpec.describe 'Page' do
 
   describe 'Page.select' do
     it 'should select single option' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         page.select('select', 'blue')
         expect(page.evaluate('() => result.onInput')).to eq(['blue'])
         expect(page.evaluate('() => result.onChange')).to eq(['blue'])
@@ -1303,10 +1301,8 @@ RSpec.describe 'Page' do
     end
 
     it 'should select only first option if multiple given' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         page.select('select', 'blue', 'green', 'red')
         expect(page.evaluate('() => result.onInput')).to eq(['blue'])
         expect(page.evaluate('() => result.onChange')).to eq(['blue'])
@@ -1314,12 +1310,10 @@ RSpec.describe 'Page' do
     end
 
     it 'should not throw when select causes navigation' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
 
-        page.eval_on_selector('select', "select => select.addEventListener('change', () => { window.location = '/empty.html'; })")
+        page.eval_on_selector('select', "select => select.addEventListener('input', () => { window.location = '/empty.html'; })")
 
         page.wait_for_navigation do
           page.select('select', 'blue')
@@ -1330,22 +1324,18 @@ RSpec.describe 'Page' do
     end
 
     it 'should select multiple options' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         page.evaluate('() => { makeMultiple(); }')
         page.select('select', 'blue', 'green', 'red')
-        expect(page.evaluate('() => result.onInput')).to match_array(['blue', 'green', 'red'])
-        expect(page.evaluate('() => result.onChange')).to match_array(['blue', 'green', 'red'])
+        expect(page.evaluate('() => result.onInput')).to match_array(%w[blue green red])
+        expect(page.evaluate('() => result.onChange')).to match_array(%w[blue green red])
       end
     end
 
     it 'should respect event bubbling' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         page.select('select', 'blue')
         expect(page.evaluate('() => result.onBubblingInput')).to eq(['blue'])
         expect(page.evaluate('() => result.onBubblingChange')).to eq(['blue'])
@@ -1353,8 +1343,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should throw when element is not a <select>' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
         page.goto(server.empty_page)
         page.set_content('<body></body>')
@@ -1366,72 +1354,60 @@ RSpec.describe 'Page' do
     end
 
     it 'should return [] on no matched values' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         result = page.select('select', '42', 'abc')
         expect(result).to eq([])
       end
     end
 
     it 'should return an array of matched values' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         page.evaluate('() => { makeMultiple(); }')
         result = page.select('select', 'blue', 'black', 'magenta')
-        expect(result.sort).to eq(['black', 'blue', 'magenta'])
+        expect(result.sort).to eq(%w[black blue magenta])
       end
     end
 
     it 'should return an array of one element when multiple is not set' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         result = page.select('select', '42', 'blue', 'black', 'magenta')
         expect(result.length).to eq(1)
       end
     end
 
     it 'should return [] on no values' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         result = page.select('select')
         expect(result).to eq([])
       end
     end
 
     it 'should deselect all options when passed no values for a multiple select' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         page.evaluate('() => { makeMultiple(); }')
         page.select('select', 'blue', 'black', 'magenta')
         page.select('select')
+        # For multiple select, all options should be deselected
         expect(page.eval_on_selector('select', "select => Array.from(select.options).every(option => !option.selected)")).to be true
       end
     end
 
     it 'should deselect all options when passed no values for a select without multiple' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         page.select('select', 'blue', 'black', 'magenta')
         page.select('select')
-        expect(page.eval_on_selector('select', "select => Array.from(select.options).every(option => !option.selected)")).to be true
+        # For single select, the first option (value "") should be selected
+        expect(page.eval_on_selector('select', "select => Array.from(select.options).filter(option => option.selected)[0].value")).to eq('')
       end
     end
 
     it 'should throw if passed in non-strings' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, **|
         page.set_content('<select><option value="12"/></select>')
         expect {
@@ -1441,10 +1417,8 @@ RSpec.describe 'Page' do
     end
 
     it 'should work when re-defining top-level Event class' do
-      pending 'Page.select not implemented'
-
       with_test_state do |page:, server:, **|
-        page.goto("#{server.prefix}/select.html")
+        page.goto("#{server.prefix}/input/select.html")
         page.evaluate('() => { window.Event = null; }')
         page.select('select', 'blue')
         expect(page.evaluate('() => result.onInput')).to eq(['blue'])

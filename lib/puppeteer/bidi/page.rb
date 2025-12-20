@@ -281,6 +281,15 @@ module Puppeteer
         main_frame.hover(selector)
       end
 
+      # Select options on a <select> element matching the selector
+      # Triggers 'change' and 'input' events once all options are selected.
+      # @rbs selector: String -- Selector for <select> element
+      # @rbs *values: String -- Option values to select
+      # @rbs return: Array[String] -- Actually selected option values
+      def select(selector, *values)
+        main_frame.select(selector, *values)
+      end
+
       # Focus an element matching the selector
       # @rbs selector: String -- Selector to focus
       # @rbs return: void
