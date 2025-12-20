@@ -261,25 +261,37 @@ module Puppeteer
 
         begin
           adopted_element.evaluate(<<~JS, values)
-            (element, values) => {
+            (element, vals) => {
+              const values = new Set(vals);
               if (!(element instanceof HTMLSelectElement)) {
                 throw new Error('Element is not a <select> element.');
               }
 
-              const options = Array.from(element.options);
-              element.value = undefined;
-
-              for (const option of options) {
-                option.selected = values.includes(option.value);
-                if (option.selected && !element.multiple) {
-                  break;
+              const selectedValues = new Set();
+              if (!element.multiple) {
+                for (const option of element.options) {
+                  option.selected = false;
+                }
+                for (const option of element.options) {
+                  if (values.has(option.value)) {
+                    option.selected = true;
+                    selectedValues.add(option.value);
+                    break;
+                  }
+                }
+              } else {
+                for (const option of element.options) {
+                  option.selected = values.has(option.value);
+                  if (option.selected) {
+                    selectedValues.add(option.value);
+                  }
                 }
               }
 
               element.dispatchEvent(new Event('input', {bubbles: true}));
               element.dispatchEvent(new Event('change', {bubbles: true}));
 
-              return options.filter(option => option.selected).map(option => option.value);
+              return Array.from(selectedValues.values());
             }
           JS
         ensure
