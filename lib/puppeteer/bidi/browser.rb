@@ -380,7 +380,7 @@ module Puppeteer
       end
 
       # @rbs user_context: Core::UserContext -- User context to get browser context for
-      # @rbs return: BrowserContext? -- Browser context or nil
+      # @rbs return: BrowserContext -- Browser context
       def browser_context_for(user_context)
         return @browser_contexts[user_context.id] if @browser_contexts.key?(user_context.id)
 
