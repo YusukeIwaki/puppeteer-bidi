@@ -189,8 +189,6 @@ RSpec.describe 'Page' do
 
   describe 'Page.setGeolocation' do
     it 'should work' do
-      pending 'Page.setGeolocation not implemented'
-
       with_test_state do |page:, server:, context:, **|
         context.override_permissions(server.prefix, ['geolocation'])
         page.goto(server.empty_page)
@@ -205,12 +203,10 @@ RSpec.describe 'Page' do
     end
 
     it 'should throw when invalid longitude' do
-      pending 'Page.setGeolocation not implemented'
-
       with_test_state do |page:, **|
         expect {
           page.set_geolocation(longitude: 200, latitude: 10)
-        }.to raise_error(/Invalid longitude/)
+        }.to raise_error(/Invalid longitude "200"/)
       end
     end
   end

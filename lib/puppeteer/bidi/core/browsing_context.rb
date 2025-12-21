@@ -335,7 +335,7 @@ module Puppeteer
         # @rbs return: Async::Task[untyped]
         def set_geolocation_override(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          raise 'Missing coordinates' unless options[:coordinates]
+          raise 'Missing coordinates' unless options.key?(:coordinates)
 
           session.async_send_command('emulation.setGeolocationOverride', {
             coordinates: options[:coordinates],

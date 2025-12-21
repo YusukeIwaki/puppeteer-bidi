@@ -6,6 +6,30 @@ module Puppeteer
     # BrowserContext represents an isolated browsing session
     # This is a high-level wrapper around Core::UserContext
     class BrowserContext
+      # Maps web permission names to protocol permission names
+      # Based on Puppeteer's WEB_PERMISSION_TO_PROTOCOL_PERMISSION
+      WEB_PERMISSION_TO_PROTOCOL_PERMISSION = {
+        'accelerometer' => 'sensors',
+        'ambient-light-sensor' => 'sensors',
+        'background-sync' => 'backgroundSync',
+        'camera' => 'videoCapture',
+        'clipboard-read' => 'clipboardReadWrite',
+        'clipboard-sanitized-write' => 'clipboardSanitizedWrite',
+        'clipboard-write' => 'clipboardReadWrite',
+        'geolocation' => 'geolocation',
+        'gyroscope' => 'sensors',
+        'idle-detection' => 'idleDetection',
+        'keyboard-lock' => 'keyboardLock',
+        'magnetometer' => 'sensors',
+        'microphone' => 'audioCapture',
+        'midi' => 'midi',
+        'midi-sysex' => 'midiSysex',
+        'notifications' => 'notifications',
+        'payment-handler' => 'paymentHandler',
+        'persistent-storage' => 'durableStorage',
+        'pointer-lock' => 'pointerLock'
+      }.freeze
+
       attr_reader :user_context #: Core::UserContext
       attr_reader :browser #: Browser
 
@@ -51,6 +75,31 @@ module Puppeteer
           end
 
           page
+        end
+      end
+
+      # Override permissions for an origin
+      # @rbs origin: String -- Origin URL
+      # @rbs permissions: Array[String] -- Permissions to grant
+      # @rbs return: void
+      def override_permissions(origin, permissions)
+        # Validate all permissions are known
+        permissions_set = permissions.map do |permission|
+          protocol_permission = WEB_PERMISSION_TO_PROTOCOL_PERMISSION[permission.to_s]
+          raise ArgumentError, "Unknown permission: #{permission}" unless protocol_permission
+
+          permission.to_s
+        end.to_set
+
+        # Set each permission
+        WEB_PERMISSION_TO_PROTOCOL_PERMISSION.each_key do |permission|
+          state = permissions_set.include?(permission) ? 'granted' : 'denied'
+          begin
+            @user_context.set_permissions(origin, { name: permission }, state).wait
+          rescue StandardError
+            # Ignore errors for denied permissions (some may not be supported)
+            raise if permissions_set.include?(permission)
+          end
         end
       end
 
