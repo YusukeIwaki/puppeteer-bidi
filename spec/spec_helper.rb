@@ -16,6 +16,7 @@ end
 
 Puppeteer::Bidi::BrowserContext.prepend(TestShortInspect)
 Puppeteer::Bidi::Page.prepend(TestShortInspect)
+Puppeteer::Bidi::ElementHandle.prepend(TestShortInspect)
 Puppeteer::Bidi::HTTPRequest.prepend(TestShortInspect)
 
 RSpec.configure do |config|
