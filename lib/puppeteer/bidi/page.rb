@@ -844,10 +844,15 @@ module Puppeteer
       def set_user_agent(user_agent, user_agent_metadata = nil)
         assert_not_closed
 
+        if user_agent.is_a?(Hash)
+          raise UnsupportedOperationError, "options hash is not supported in BiDi-only mode"
+        end
+
         if user_agent_metadata
           raise UnsupportedOperationError, "userAgentMetadata is not supported in BiDi-only mode"
         end
 
+        user_agent = nil if user_agent == ""
         @browsing_context.set_user_agent(user_agent).wait
       end
 

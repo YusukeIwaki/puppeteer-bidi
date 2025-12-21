@@ -731,7 +731,7 @@ RSpec.describe 'Page' do
         page.goto(server.empty_page)
         expect(page.evaluate('() => navigator.userAgent')).to eq('NewAgent')
 
-        page.set_user_agent(nil)
+        page.set_user_agent('')
         page.goto(server.empty_page)
         expect(page.evaluate('() => navigator.userAgent')).to eq(original)
       end
