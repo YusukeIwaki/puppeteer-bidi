@@ -654,7 +654,7 @@ module Puppeteer
         assert_not_closed
 
         normalized_urls = (urls.empty? ? [url] : urls).map do |cookie_url|
-          URI.parse(cookie_url)
+          parse_cookie_url_strict(cookie_url)
         end
 
         @browsing_context.get_cookies.wait
@@ -1132,6 +1132,17 @@ module Puppeteer
         URI.parse(cookie_url)
       rescue URI::InvalidURIError
         nil
+      end
+
+      def parse_cookie_url_strict(cookie_url)
+        normalized_url = URI.parse(cookie_url.to_s)
+        if normalized_url.scheme.nil? ||
+           (normalized_url.scheme.match?(/\Ahttps?\z/i) && normalized_url.host.to_s.empty?)
+          raise ArgumentError, "Invalid URL"
+        end
+        normalized_url
+      rescue URI::InvalidURIError
+        raise ArgumentError, "Invalid URL"
       end
 
       def toggle_interception(phases, interception, expected)
