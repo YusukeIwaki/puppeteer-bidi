@@ -837,6 +837,33 @@ module Puppeteer
         ).wait
       end
 
+      # Set geolocation override
+      # @rbs longitude: Numeric -- Longitude between -180 and 180
+      # @rbs latitude: Numeric -- Latitude between -90 and 90
+      # @rbs accuracy: Numeric -- Non-negative accuracy value
+      # @rbs return: void
+      def set_geolocation(longitude:, latitude:, accuracy: 0)
+        assert_not_closed
+
+        if longitude < -180 || longitude > 180
+          raise ArgumentError, "Invalid longitude \"#{longitude}\": precondition -180 <= LONGITUDE <= 180 failed."
+        end
+        if latitude < -90 || latitude > 90
+          raise ArgumentError, "Invalid latitude \"#{latitude}\": precondition -90 <= LATITUDE <= 90 failed."
+        end
+        if accuracy < 0
+          raise ArgumentError, "Invalid accuracy \"#{accuracy}\": precondition 0 <= ACCURACY failed."
+        end
+
+        @browsing_context.set_geolocation_override(
+          coordinates: {
+            latitude: latitude,
+            longitude: longitude,
+            accuracy: accuracy
+          }
+        ).wait
+      end
+
       # Set user agent
       # @rbs user_agent: String? -- User agent string or nil to restore original
       # @rbs user_agent_metadata: Hash[Symbol, untyped]? -- Not supported in BiDi-only mode
