@@ -16,14 +16,15 @@ module Puppeteer
       # @rbs connection: Connection -- BiDi connection
       # @rbs launcher: BrowserLauncher? -- Browser launcher instance
       # @rbs ws_endpoint: String? -- WebSocket endpoint URL
+      # @rbs accept_insecure_certs: bool -- Accept insecure certificates
       # @rbs return: Browser -- Browser instance
-      def self.create(connection:, launcher: nil, ws_endpoint: nil)
+      def self.create(connection:, launcher: nil, ws_endpoint: nil, accept_insecure_certs: false)
         # Create a new BiDi session
         session = Core::Session.from(
           connection: connection,
           capabilities: {
             alwaysMatch: {
-              acceptInsecureCerts: false,
+              acceptInsecureCerts: accept_insecure_certs,
               unhandledPromptBehavior: { default: 'ignore' },
               webSocketUrl: true,
             },
@@ -71,8 +72,10 @@ module Puppeteer
       # @rbs headless: bool -- Run browser in headless mode
       # @rbs args: Array[String]? -- Additional browser arguments
       # @rbs timeout: Numeric? -- Launch timeout in seconds
+      # @rbs accept_insecure_certs: bool -- Accept insecure certificates
       # @rbs return: Browser -- Browser instance
-      def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil)
+      def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
+                      accept_insecure_certs: false)
         launcher = BrowserLauncher.new(
           executable_path: executable_path,
           user_data_dir: user_data_dir,
@@ -92,7 +95,8 @@ module Puppeteer
 
         connection = Connection.new(transport)
 
-        browser = create(connection: connection, launcher: launcher, ws_endpoint: ws_endpoint)
+        browser = create(connection: connection, launcher: launcher, ws_endpoint: ws_endpoint,
+                         accept_insecure_certs: accept_insecure_certs)
         _target = browser.wait_for_target { |target| target.type == 'page' }
         browser
       end
@@ -100,8 +104,9 @@ module Puppeteer
       # Connect to an existing Firefox browser instance
       # @rbs ws_endpoint: String -- WebSocket endpoint URL
       # @rbs timeout: Numeric? -- Connect timeout in seconds
+      # @rbs accept_insecure_certs: bool -- Accept insecure certificates
       # @rbs return: Browser -- Browser instance
-      def self.connect(ws_endpoint, timeout: nil)
+      def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false)
         transport = Transport.new(ws_endpoint)
         ws_endpoint = transport.url
         timeout_ms = ((timeout || 30) * 1000).to_i
@@ -114,7 +119,8 @@ module Puppeteer
           raise Error, "WebDriver BiDi endpoint is not ready: #{status.inspect}"
         end
 
-        create(connection: connection, launcher: nil, ws_endpoint: ws_endpoint)
+        create(connection: connection, launcher: nil, ws_endpoint: ws_endpoint,
+               accept_insecure_certs: accept_insecure_certs)
       end
 
       # Get BiDi session status
@@ -135,12 +141,49 @@ module Puppeteer
         @default_browser_context.new_page
       end
 
+      # Create a new browser context
+      # @rbs return: BrowserContext -- New browser context
+      def create_browser_context
+        user_context = @core_browser.create_user_context.wait
+        browser_context_for(user_context)
+      end
+
       # Get all pages
       # @rbs return: Array[Page] -- All pages
       def pages
         return [] if @closed || @disconnected
 
         @default_browser_context.pages
+      end
+
+      # Get all cookies in the default browser context.
+      # @rbs return: Array[Hash[String, untyped]] -- Cookies
+      def cookies
+        @default_browser_context.cookies
+      end
+
+      # Set cookies in the default browser context.
+      # @rbs *cookies: Array[Hash[String, untyped]] -- Cookie data
+      # @rbs **cookie: untyped -- Single cookie via keyword arguments
+      # @rbs return: void
+      def set_cookie(*cookies, **cookie)
+        @default_browser_context.set_cookie(*cookies, **cookie)
+      end
+
+      # Delete cookies in the default browser context.
+      # @rbs *cookies: Array[Hash[String, untyped]] -- Cookies to delete
+      # @rbs **cookie: untyped -- Single cookie via keyword arguments
+      # @rbs return: void
+      def delete_cookie(*cookies, **cookie)
+        @default_browser_context.delete_cookie(*cookies, **cookie)
+      end
+
+      # Delete cookies matching the provided filters in the default browser context.
+      # @rbs *filters: Array[Hash[String, untyped]] -- Cookie filters
+      # @rbs **filter: untyped -- Single filter via keyword arguments
+      # @rbs return: void
+      def delete_matching_cookies(*filters, **filter)
+        @default_browser_context.delete_matching_cookies(*filters, **filter)
       end
 
       # Register event handler

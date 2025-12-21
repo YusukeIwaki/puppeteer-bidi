@@ -8,17 +8,40 @@ require 'protocol/http/response'
 require 'socket'
 require 'timeout'
 require 'uri'
+require 'openssl'
 
 module TestServer
+  SSL_CERT_PATH = File.expand_path('ssl/cert.pem', __dir__)
+  SSL_KEY_PATH = File.expand_path('ssl/key.pem', __dir__)
+
+  def self.ssl_context
+    @ssl_context ||= begin
+      context = OpenSSL::SSL::SSLContext.new
+      context.cert = OpenSSL::X509::Certificate.new(File.read(SSL_CERT_PATH))
+      context.key = OpenSSL::PKey::RSA.new(File.read(SSL_KEY_PATH))
+      context
+    end
+  end
+
+  def self.client_ssl_context
+    @client_ssl_context ||= begin
+      context = OpenSSL::SSL::SSLContext.new
+      context.verify_mode = OpenSSL::SSL::VERIFY_NONE
+      context
+    end
+  end
+
   class Server
     attr_reader :port, :prefix, :cross_process_prefix, :empty_page
 
     DEFAULT_TIMEOUT = 5 # seconds
 
-    def initialize
-      @port = find_available_port
-      @prefix = "http://localhost:#{@port}"
-      @cross_process_prefix = "http://127.0.0.1:#{@port}"
+    def initialize(scheme: 'http', ssl_context: nil, port: nil)
+      @scheme = scheme
+      @ssl_context = ssl_context
+      @port = port || find_available_port
+      @prefix = "#{@scheme}://localhost:#{@port}"
+      @cross_process_prefix = "#{@scheme}://127.0.0.1:#{@port}"
       @empty_page = "#{@prefix}/empty.html"
       @assets_directory = File.expand_path('../assets', __dir__)
 
@@ -114,7 +137,10 @@ module TestServer
 
     def run_server
       Sync do
-        endpoint = Async::HTTP::Endpoint.parse("http://127.0.0.1:#{@port}")
+        endpoint = Async::HTTP::Endpoint.parse(
+          "#{@scheme}://127.0.0.1:#{@port}",
+          ssl_context: @ssl_context
+        )
         server = Async::HTTP::Server.for(endpoint) do |request|
           handle_request(request)
         end
@@ -289,20 +315,17 @@ module TestServer
     end
 
     def find_available_port
-      (8081..8089).each do |candidate|
-        begin
-          server = TCPServer.new('localhost', candidate)
-          server.close
-          return candidate
-        rescue Errno::EADDRINUSE
-          next
-        end
-      end
-      raise 'No available port found'
+      server = TCPServer.new('127.0.0.1', 0)
+      port = server.addr[1]
+      server.close
+      port
     end
 
     def wait_for_server
-      endpoint = Async::HTTP::Endpoint.parse(@prefix)
+      endpoint = Async::HTTP::Endpoint.parse(
+        @prefix,
+        ssl_context: @scheme == 'https' ? TestServer.client_ssl_context : nil
+      )
 
       Sync do |task|
         task.with_timeout(10) do

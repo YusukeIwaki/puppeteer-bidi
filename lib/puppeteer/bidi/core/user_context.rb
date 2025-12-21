@@ -97,7 +97,7 @@ module Puppeteer
 
         # Get cookies for this user context
         # @rbs source_origin: String? -- Source origin
-        # @rbs return: Array[Hash[String, untyped]] -- Cookies
+        # @rbs return: Async::Task[Array[Hash[String, untyped]]] -- Cookies
         def get_cookies(**options)
           raise UserContextClosedError, @reason if closed?
 
@@ -109,8 +109,10 @@ module Puppeteer
           }
           params[:partition][:sourceOrigin] = source_origin if source_origin
 
-          result = session.async_send_command('storage.getCookies', params)
-          result['cookies']
+          Async do
+            result = session.async_send_command('storage.getCookies', params).wait
+            result['cookies']
+          end
         end
 
         # Set a cookie in this user context

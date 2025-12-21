@@ -6,6 +6,7 @@ require 'timeout'
 # Load support files
 require_relative 'support/test_server'
 require_relative 'support/golden_comparator'
+require_relative 'support/cookie_helpers'
 
 module TestShortInspect
   def inspect
@@ -52,9 +53,14 @@ RSpec.configure do |config|
   config.before(:suite) do
     if RSpec.configuration.files_to_run.any? { |f| f.include?('spec/integration') }
       headless = !%w[0 false].include?(ENV['HEADLESS'])
-      $shared_browser = Puppeteer::Bidi.launch_browser_instance(headless: headless)
+      $shared_browser = Puppeteer::Bidi.launch_browser_instance(headless: headless, accept_insecure_certs: true)
       $shared_test_server = TestServer::Server.new
+      $shared_https_test_server = TestServer::Server.new(
+        scheme: 'https',
+        ssl_context: TestServer.ssl_context
+      )
       $shared_test_server.start
+      $shared_https_test_server.start
       puts "\n[Test Suite] Browser and server started (will be reused across tests)"
     end
   end
@@ -67,6 +73,10 @@ RSpec.configure do |config|
     if $shared_test_server
       $shared_test_server.stop
       puts "[Test Suite] Server stopped"
+    end
+    if $shared_https_test_server
+      $shared_https_test_server.stop
+      puts "[Test Suite] HTTPS server stopped"
     end
   end
 
@@ -85,6 +95,7 @@ RSpec.configure do |config|
 
   helper_module = Module.new do
     include GoldenComparator
+    include CookieHelpers
 
     def headless_mode?
       !%w[0 false].include?(ENV['HEADLESS'])
@@ -111,7 +122,8 @@ RSpec.configure do |config|
       context = $shared_browser.default_browser_context
 
       begin
-        yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
+        yield(page: page, server: $shared_test_server, https_server: $shared_https_test_server,
+              browser: $shared_browser, context: context)
       ensure
         # Close the page to clean up resources
         page.close unless page.closed?

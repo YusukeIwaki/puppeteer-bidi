@@ -648,56 +648,124 @@ module Puppeteer
       end
 
       # Retrieve cookies for the current page.
+      # @rbs *urls: Array[String] -- URLs to filter cookies by
       # @rbs return: Array[Hash[String, untyped]]
-      def cookies
+      def cookies(*urls)
         assert_not_closed
 
-        @browsing_context.get_cookies.wait.map do |cookie|
-          value = cookie["value"]
-          value = value["value"] if value.is_a?(Hash)
-          {
-            "name" => cookie["name"],
-            "value" => value,
-            "domain" => cookie["domain"],
-            "path" => cookie["path"],
-            "httpOnly" => cookie["httpOnly"],
-            "secure" => cookie["secure"],
-            "sameSite" => cookie["sameSite"],
-            "expires" => cookie["expiry"],
-          }.compact
+        normalized_urls = (urls.empty? ? [url] : urls).map do |cookie_url|
+          URI.parse(cookie_url)
+        end
+
+        @browsing_context.get_cookies.wait
+                         .map { |cookie| CookieUtils.bidi_to_puppeteer_cookie(cookie) }
+                         .select do |cookie|
+                           normalized_urls.any? do |normalized_url|
+                             CookieUtils.test_url_match_cookie(cookie, normalized_url)
+                           end
+                         end
+      end
+
+      # Set cookies for the current page.
+      # @rbs *cookies: Array[Hash[String, untyped]] -- Cookie data
+      # @rbs **cookie: untyped -- Single cookie via keyword arguments
+      # @rbs return: void
+      def set_cookie(*cookies, **cookie)
+        assert_not_closed
+
+        cookies = cookies.dup
+        cookies << cookie unless cookie.empty?
+
+        page_url = url
+        page_url_starts_with_http = page_url&.start_with?("http")
+
+        cookies.each do |raw_cookie|
+          normalized_cookie = CookieUtils.normalize_cookie_input(raw_cookie)
+          cookie_url = normalized_cookie["url"].to_s
+          if cookie_url.empty? && page_url_starts_with_http
+            cookie_url = page_url
+          end
+
+          if cookie_url == "about:blank"
+            raise ArgumentError, "Blank page can not have cookie \"#{normalized_cookie["name"]}\""
+          end
+          if cookie_url.start_with?("data:")
+            raise ArgumentError, "Data URL page can not have cookie \"#{normalized_cookie["name"]}\""
+          end
+
+          partition_key = normalized_cookie["partitionKey"]
+          if !partition_key.nil? && !partition_key.is_a?(String)
+            raise ArgumentError, "BiDi only allows domain partition keys"
+          end
+
+          normalized_url = parse_cookie_url(cookie_url)
+          domain = normalized_cookie["domain"] || normalized_url&.host
+          if domain.nil?
+            raise ArgumentError, "At least one of the url and domain needs to be specified"
+          end
+
+          bidi_cookie = {
+            "domain" => domain,
+            "name" => normalized_cookie["name"],
+            "value" => { "type" => "string", "value" => normalized_cookie["value"] },
+          }
+          bidi_cookie["path"] = normalized_cookie["path"] if normalized_cookie.key?("path")
+          bidi_cookie["httpOnly"] = normalized_cookie["httpOnly"] if normalized_cookie.key?("httpOnly")
+          bidi_cookie["secure"] = normalized_cookie["secure"] if normalized_cookie.key?("secure")
+          if normalized_cookie.key?("sameSite") && !normalized_cookie["sameSite"].nil?
+            bidi_cookie["sameSite"] = CookieUtils.convert_cookies_same_site_cdp_to_bidi(
+              normalized_cookie["sameSite"]
+            )
+          end
+          expiry = CookieUtils.convert_cookies_expiry_cdp_to_bidi(normalized_cookie["expires"])
+          bidi_cookie["expiry"] = expiry unless expiry.nil?
+          bidi_cookie.merge!(CookieUtils.cdp_specific_cookie_properties_from_puppeteer_to_bidi(
+                               normalized_cookie,
+                               "sameParty",
+                               "sourceScheme",
+                               "priority",
+                               "url"
+                             ))
+
+          if partition_key
+            @browser_context.user_context.set_cookie(bidi_cookie, source_origin: partition_key).wait
+          else
+            @browsing_context.set_cookie(bidi_cookie).wait
+          end
         end
       end
 
-      # Set a cookie for the current page.
-      # @rbs name: String -- Cookie name
-      # @rbs value: String -- Cookie value
-      # @rbs url: String? -- URL scope
-      # @rbs domain: String? -- Domain scope
-      # @rbs path: String? -- Path scope
+      # Delete cookies from the current page.
+      # @rbs *cookies: Array[Hash[String, untyped]] -- Cookie filters
+      # @rbs **cookie: untyped -- Single cookie filter via keyword arguments
       # @rbs return: void
-      def set_cookie(name:, value:, url: nil, domain: nil, path: nil)
+      def delete_cookie(*cookies, **cookie)
         assert_not_closed
 
-        cookie_url = url || @browsing_context.url
-        cookie_domain = domain
-        if cookie_domain.nil? && cookie_url
-          begin
-            cookie_domain = URI.parse(cookie_url).host
-          rescue URI::InvalidURIError
-            cookie_domain = nil
+        cookies = cookies.dup
+        cookies << cookie unless cookie.empty?
+
+        page_url = url
+
+        tasks = cookies.map do |raw_cookie|
+          normalized_cookie = CookieUtils.normalize_cookie_input(raw_cookie)
+          cookie_url = normalized_cookie["url"] || page_url
+          normalized_url = parse_cookie_url(cookie_url.to_s)
+          domain = normalized_cookie["domain"] || normalized_url&.host
+          if domain.nil?
+            raise ArgumentError, "At least one of the url and domain needs to be specified"
           end
+
+          filter = {
+            "domain" => domain,
+            "name" => normalized_cookie["name"],
+          }
+          filter["path"] = normalized_cookie["path"] if normalized_cookie.key?("path")
+
+          -> { @browsing_context.delete_cookie(filter).wait }
         end
 
-        raise ArgumentError, "At least one of url or domain must be specified" if cookie_domain.nil?
-
-        cookie = {
-          "domain" => cookie_domain,
-          "name" => name,
-          "value" => { "type" => "string", "value" => value },
-        }
-        cookie["path"] = path if path
-
-        @browsing_context.set_cookie(cookie).wait
+        AsyncUtils.await_promise_all(*tasks) unless tasks.empty?
       end
 
       # Wait for a file chooser to be opened
@@ -1054,6 +1122,16 @@ module Puppeteer
       # @rbs return: void
       def assert_not_closed
         raise PageClosedError if closed?
+      end
+
+      # @rbs cookie_url: String -- Cookie URL
+      # @rbs return: URI::Generic? -- Parsed URL or nil
+      def parse_cookie_url(cookie_url)
+        return nil if cookie_url.nil? || cookie_url.empty?
+
+        URI.parse(cookie_url)
+      rescue URI::InvalidURIError
+        nil
       end
 
       def toggle_interception(phases, interception, expected)
