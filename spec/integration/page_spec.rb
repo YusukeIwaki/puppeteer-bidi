@@ -206,7 +206,7 @@ RSpec.describe 'Page' do
       with_test_state do |page:, **|
         expect {
           page.set_geolocation(longitude: 200, latitude: 10)
-        }.to raise_error(/Invalid longitude/)
+        }.to raise_error(/Invalid longitude "200"/)
       end
     end
   end

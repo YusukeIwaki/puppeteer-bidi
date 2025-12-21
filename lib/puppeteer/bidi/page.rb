@@ -840,9 +840,9 @@ module Puppeteer
       # Set geolocation override
       # @rbs longitude: Numeric -- Longitude between -180 and 180
       # @rbs latitude: Numeric -- Latitude between -90 and 90
-      # @rbs accuracy: Numeric -- Non-negative accuracy value
+      # @rbs accuracy: Numeric? -- Non-negative accuracy value
       # @rbs return: void
-      def set_geolocation(longitude:, latitude:, accuracy: 0)
+      def set_geolocation(longitude:, latitude:, accuracy: nil)
         assert_not_closed
 
         if longitude < -180 || longitude > 180
@@ -851,16 +851,19 @@ module Puppeteer
         if latitude < -90 || latitude > 90
           raise ArgumentError, "Invalid latitude \"#{latitude}\": precondition -90 <= LATITUDE <= 90 failed."
         end
-        if accuracy < 0
-          raise ArgumentError, "Invalid accuracy \"#{accuracy}\": precondition 0 <= ACCURACY failed."
+        accuracy_value = accuracy.nil? ? 0 : accuracy
+        if accuracy_value < 0
+          raise ArgumentError, "Invalid accuracy \"#{accuracy_value}\": precondition 0 <= ACCURACY failed."
         end
 
+        coordinates = {
+          latitude: latitude,
+          longitude: longitude
+        }
+        coordinates[:accuracy] = accuracy unless accuracy.nil?
+
         @browsing_context.set_geolocation_override(
-          coordinates: {
-            latitude: latitude,
-            longitude: longitude,
-            accuracy: accuracy
-          }
+          coordinates: coordinates
         ).wait
       end
 
