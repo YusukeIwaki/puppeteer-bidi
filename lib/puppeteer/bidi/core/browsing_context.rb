@@ -316,17 +316,21 @@ module Puppeteer
 
         # Delete cookies
         # @rbs *cookie_filters: Hash[String, untyped] -- Cookie filters
-        # @rbs return: void
+        # @rbs return: Async::Task[untyped]
         def delete_cookie(*cookie_filters)
           raise BrowsingContextClosedError, @reason if closed?
-          cookie_filters.each do |filter|
-            session.async_send_command('storage.deleteCookies', {
-              filter: filter,
-              partition: {
-                type: 'context',
-                context: @id
-              }
-            })
+          Async do
+            tasks = cookie_filters.map do |filter|
+              session.async_send_command('storage.deleteCookies', {
+                filter: filter,
+                partition: {
+                  type: 'context',
+                  context: @id
+                }
+              })
+            end
+
+            AsyncUtils.promise_all(*tasks).wait unless tasks.empty?
           end
         end
 

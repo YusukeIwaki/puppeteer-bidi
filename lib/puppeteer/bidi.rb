@@ -11,6 +11,7 @@ require "puppeteer/bidi/serializer"
 require "puppeteer/bidi/deserializer"
 require "puppeteer/bidi/injected_source"
 require "puppeteer/bidi/lazy_arg"
+require "puppeteer/bidi/cookie_utils"
 require "puppeteer/bidi/js_handle"
 require "puppeteer/bidi/keyboard"
 require "puppeteer/bidi/mouse"
@@ -39,9 +40,11 @@ module Puppeteer
     # @rbs headless: bool -- Run browser in headless mode
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
+    # @rbs accept_insecure_certs: bool -- Accept insecure certificates
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
-    def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil, &block)
+    def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
+                    accept_insecure_certs: false, &block)
       unless block
         raise ArgumentError, 'Block is required for launch_with_sync'
       end
@@ -53,7 +56,8 @@ module Puppeteer
             user_data_dir: user_data_dir,
             headless: headless,
             args: args,
-            timeout: timeout
+            timeout: timeout,
+            accept_insecure_certs: accept_insecure_certs
           )
           block.call(browser)
         ensure
@@ -68,30 +72,35 @@ module Puppeteer
     # @rbs headless: bool -- Run browser in headless mode
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
+    # @rbs accept_insecure_certs: bool -- Accept insecure certificates
     # @rbs return: Browser -- Browser instance (if no block given)
-    def self.launch_browser_instance(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil)
+    def self.launch_browser_instance(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
+                                     accept_insecure_certs: false)
       Browser.launch(
         executable_path: executable_path,
         user_data_dir: user_data_dir,
         headless: headless,
         args: args,
-        timeout: timeout
+        timeout: timeout,
+        accept_insecure_certs: accept_insecure_certs
       )
     end
 
     # Connect to an existing browser instance
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
     # @rbs timeout: Numeric? -- Connect timeout in seconds
+    # @rbs accept_insecure_certs: bool -- Accept insecure certificates
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
-    def self.connect(ws_endpoint, timeout: nil, &block)
+    def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, &block)
       unless block
         raise ArgumentError, 'Block is required for connect_with_sync'
       end
 
       Sync do
         begin
-          browser = connect_to_browser_instance(ws_endpoint, timeout: timeout)
+          browser = connect_to_browser_instance(ws_endpoint, timeout: timeout,
+                                                accept_insecure_certs: accept_insecure_certs)
           block.call(browser)
         ensure
           browser&.close
@@ -102,9 +111,10 @@ module Puppeteer
     # Connect to an existing browser instance
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
     # @rbs timeout: Numeric? -- Connect timeout in seconds
+    # @rbs accept_insecure_certs: bool -- Accept insecure certificates
     # @rbs return: Browser -- Browser instance
-    def self.connect_to_browser_instance(ws_endpoint, timeout: nil)
-      Browser.connect(ws_endpoint, timeout: timeout)
+    def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false)
+      Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
     end
   end
 end
