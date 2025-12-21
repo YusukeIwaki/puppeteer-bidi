@@ -45,6 +45,7 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
   it 'should poll on interval' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
+      page.evaluate("() => { delete window.__FOO }")
 
       start_time = Time.now
 
@@ -65,6 +66,7 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
   it 'should poll on interval with block' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
+      page.evaluate("() => { delete window.__FOO }")
 
       start_time = Time.now
 
