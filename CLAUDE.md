@@ -60,7 +60,8 @@ This project uses **Async (Fiber-based)**, NOT concurrent-ruby (Thread-based).
 2. Understand BiDi protocol calls
 3. Implement with proper deserialization
 4. Port tests from Puppeteer
-5. See [Porting Puppeteer Guide](CLAUDE/porting_puppeteer.md)
+5. **Update `API_COVERAGE.md`** - Mark implemented methods as ✅ and update coverage count
+6. See [Porting Puppeteer Guide](CLAUDE/porting_puppeteer.md)
 
 ## Coding Conventions
 

@@ -212,3 +212,23 @@ curl -sL https://raw.githubusercontent.com/puppeteer/puppeteer/main/test/assets/
 ```
 
 **Why this matters**: Test assets are designed to test specific edge cases (rotated elements, complex layouts, etc.). Using simplified versions defeats the purpose of these tests.
+
+## 9. API Coverage Update
+
+**IMPORTANT**: When implementing new Puppeteer API methods, update `API_COVERAGE.md`:
+
+1. Find the corresponding entry in the table (e.g., `Browser.userAgent`, `Page.setUserAgent`)
+2. Change the status from `❌` to `✅`
+3. Update the coverage count at the top of the file
+
+```markdown
+# Before
+- Coverage: `156/274` (`56.93%`)
+| `Browser.userAgent` | `Puppeteer::Bidi::Browser#user_agent` | ❌ |
+
+# After (implemented 2 new methods: 156 + 2 = 158)
+- Coverage: `158/274` (`57.66%`)
+| `Browser.userAgent` | `Puppeteer::Bidi::Browser#user_agent` | ✅ |
+```
+
+**CI will fail** if API_COVERAGE.md is not updated when new methods are implemented. The API Coverage check compares implemented methods against the coverage file.
