@@ -39,5 +39,9 @@ module Puppeteer
     # Raised when a timeout occurs (e.g., navigation timeout)
     class TimeoutError < Error
     end
+
+    # Raised when an operation is unsupported in this environment
+    class UnsupportedOperationError < Error
+    end
   end
 end

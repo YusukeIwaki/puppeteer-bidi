@@ -343,6 +343,18 @@ module Puppeteer
           })
         end
 
+        # Set user agent override
+        # @rbs user_agent: String? -- User agent string or nil to restore original
+        # @rbs return: Async::Task[void]
+        def set_user_agent(user_agent)
+          raise BrowsingContextClosedError, @reason if closed?
+
+          session.async_send_command("emulation.setUserAgentOverride", {
+            userAgent: user_agent,
+            contexts: [@id]
+          })
+        end
+
         # Set timezone override
         # @rbs timezone_id: String? -- Timezone ID
         # @rbs return: Async::Task[untyped]
