@@ -358,6 +358,14 @@ module Puppeteer
         evaluate('element => element.scrollIntoView({block: "center", inline: "center", behavior: "instant"})')
       end
 
+      # Create a locator based on this element handle.
+      # @rbs return: Locator -- Locator instance
+      def as_locator
+        assert_not_disposed
+
+        NodeLocator.create_from_handle(frame, self)
+      end
+
       # Check if element is intersecting the viewport
       # @rbs threshold: Numeric -- Intersection ratio threshold
       # @rbs return: bool -- Whether element intersects viewport
