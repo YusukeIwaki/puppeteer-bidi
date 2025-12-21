@@ -73,6 +73,8 @@ RSpec.describe 'input tests' do
 
   describe 'Page.waitForFileChooser' do
     it 'should work when file input is attached to DOM' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
         chooser = page.wait_for_file_chooser do
@@ -83,7 +85,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should work when file input is attached to DOM using JavaScript' do
-      pending 'Firefox BiDi does not fire fileDialogOpened event for input elements clicked via JavaScript'
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
         chooser = page.wait_for_file_chooser do
@@ -94,8 +97,7 @@ RSpec.describe 'input tests' do
     end
 
     it 'should work when file input is not attached to DOM' do
-      # Firefox BiDi does not fire input.fileDialogOpened event for detached elements
-      pending 'Firefox BiDi does not support fileDialogOpened for detached elements'
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
 
       with_test_state do |page:, **|
         chooser = page.wait_for_file_chooser do
@@ -144,6 +146,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should work with no timeout' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
         chooser = page.wait_for_file_chooser(timeout: 0) do
@@ -155,6 +159,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should return the same file chooser when there are many watchdogs simultaneously' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
 
@@ -173,6 +179,8 @@ RSpec.describe 'input tests' do
 
   describe 'FileChooser.accept' do
     it 'should accept single file' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" oninput="javascript:console.timeStamp()" />')
         file_to_upload = File.expand_path('../assets/file-to-upload.txt', __dir__)
@@ -188,6 +196,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should be able to read selected file' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
         file_to_upload = File.expand_path('../assets/file-to-upload.txt', __dir__)
@@ -210,6 +220,14 @@ RSpec.describe 'input tests' do
     end
 
     it 'should be able to reset selected files with empty file list' do
+      if linux?
+        if headless_mode?
+          skip 'Firefox crashes in headless mode on Linux'
+        else
+          pending 'Firefox BiDi does not trigger second file chooser in headful mode'
+        end
+      end
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
         file_to_upload = File.expand_path('../assets/file-to-upload.txt', __dir__)
@@ -233,6 +251,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should not accept multiple files for single-file input' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
         file_to_upload = File.expand_path('../assets/file-to-upload.txt', __dir__)
@@ -249,6 +269,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should succeed even for non-existent files' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       # Firefox BiDi rejects non-existent files with NS_ERROR_FILE_NOT_FOUND
       pending 'Firefox BiDi rejects non-existent files'
 
@@ -266,6 +288,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should error on read of non-existent files' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       # Firefox BiDi rejects non-existent files with NS_ERROR_FILE_NOT_FOUND
       pending 'Firefox BiDi rejects non-existent files'
 
@@ -290,6 +314,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should fail when accepting file chooser twice' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
 
@@ -307,6 +333,14 @@ RSpec.describe 'input tests' do
 
   describe 'FileChooser.cancel' do
     it 'should cancel dialog' do
+      if linux?
+        if headless_mode?
+          skip 'Firefox crashes in headless mode on Linux'
+        else
+          pending 'Firefox BiDi does not trigger second file chooser in headful mode'
+        end
+      end
+
       with_test_state do |page:, **|
         # Consider file chooser canceled if we can summon another one.
         # There's no reliable way in WebPlatform to see that FileChooser was
@@ -327,6 +361,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should fail when canceling file chooser twice' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
 
@@ -344,6 +380,8 @@ RSpec.describe 'input tests' do
 
   describe 'FileChooser.isMultiple' do
     it 'should work for single file pick' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input type="file" />')
 
@@ -356,6 +394,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should work for "multiple"' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input multiple type="file" />')
 
@@ -368,6 +408,8 @@ RSpec.describe 'input tests' do
     end
 
     it 'should work for "webkitdirectory"' do
+      skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
+
       with_test_state do |page:, **|
         page.set_content('<input multiple webkitdirectory type="file" />')
 

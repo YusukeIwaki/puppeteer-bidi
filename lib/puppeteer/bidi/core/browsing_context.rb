@@ -35,6 +35,7 @@ module Puppeteer
           @children = {}
           @realms = {}
           @requests = {}
+          @inflight_request_ids = {}
           @navigation = nil
           @emulation_state = { javascript_enabled: true }
           @inflight_requests = 0
@@ -255,16 +256,37 @@ module Puppeteer
 
         # Add network intercept
         # @rbs **options: untyped -- Intercept options
-        # @rbs return: String -- Intercept ID
+        # @rbs return: Async::Task[String] -- Intercept ID
         def add_intercept(**options)
           raise BrowsingContextClosedError, @reason if closed?
-          result = session.async_send_command('network.addIntercept', options.merge(contexts: [@id]))
-          result['intercept']
+          Async do
+            result = session.async_send_command('network.addIntercept', options.merge(contexts: [@id])).wait
+            result['intercept']
+          end
+        end
+
+        # Set extra HTTP headers for this context
+        # @rbs headers: Hash[String, String] -- Extra headers
+        # @rbs return: Async::Task[untyped]
+        def set_extra_http_headers(headers)
+          raise BrowsingContextClosedError, @reason if closed?
+
+          normalized = headers.map do |key, value|
+            {
+              name: key.to_s.downcase,
+              value: { type: 'string', value: value.to_s }
+            }
+          end
+
+          session.async_send_command('network.setExtraHeaders', {
+            contexts: [@id],
+            headers: normalized
+          })
         end
 
         # Get cookies
         # @rbs **options: untyped -- Cookie filter options
-        # @rbs return: Array[Hash[String, untyped]] -- Cookies
+        # @rbs return: Async::Task[Array[Hash[String, untyped]]] -- Cookies
         def get_cookies(**options)
           raise BrowsingContextClosedError, @reason if closed?
           params = options.dup
@@ -272,8 +294,10 @@ module Puppeteer
             type: 'context',
             context: @id
           }
-          result = session.async_send_command('storage.getCookies', params)
-          result['cookies']
+          Async do
+            result = session.async_send_command('storage.getCookies', params).wait
+            result['cookies']
+          end
         end
 
         # Set a cookie
@@ -542,13 +566,16 @@ module Puppeteer
           session.on('network.beforeRequestSent') do |event|
             next unless event['context'] == @id
 
-            request_id = event['request']['request']
+            request_id = event.dig('request', 'request')
             next if @requests.key?(request_id)
 
-            @requests[request_id] = true
+            request = Request.from(self, event)
+            @requests[request_id] = request
+            emit(:request, { request: request })
 
             # Increment inflight requests counter
             @inflight_mutex.synchronize do
+              @inflight_request_ids[request_id] = true
               @inflight_requests += 1
               emit(:inflight_changed, { inflight: @inflight_requests })
             end
@@ -557,8 +584,8 @@ module Puppeteer
           session.on('network.responseCompleted') do |event|
             next unless event['context'] == @id
 
-            request_id = event['request']['request']
-            next unless @requests.delete(request_id)
+            request_id = event.dig('request', 'request')
+            next unless @inflight_request_ids.delete(request_id)
 
             # Decrement inflight requests counter
             @inflight_mutex.synchronize do
@@ -570,8 +597,8 @@ module Puppeteer
           session.on('network.fetchError') do |event|
             next unless event['context'] == @id
 
-            request_id = event['request']['request']
-            next unless @requests.delete(request_id)
+            request_id = event.dig('request', 'request')
+            next unless @inflight_request_ids.delete(request_id)
 
             # Decrement inflight requests counter
             @inflight_mutex.synchronize do

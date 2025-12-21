@@ -25,10 +25,10 @@ module TestServer
       @routes = {}
       @routes_mutex = Mutex.new
 
-  @request_promises = {}
-  @request_promises_mutex = Mutex.new
+      @request_promises = {}
+      @request_promises_mutex = Mutex.new
 
-  @server_thread = nil
+      @server_thread = nil
 
       @ready_mutex = Mutex.new
       @ready_condition = ConditionVariable.new
@@ -79,6 +79,14 @@ module TestServer
       end
     end
 
+    def set_redirect(from, to)
+      set_route(from) do |_request, writer|
+        writer.status = 302
+        writer.add_header('location', to)
+        writer.finish
+      end
+    end
+
     def wait_for_request(path, timeout: nil)
       promise = RequestPromise.new
 
@@ -122,12 +130,16 @@ module TestServer
     end
 
     def handle_request(request)
-      path = request.path
+      raw_path = request.path
+      path = strip_query(raw_path)
       handler = lookup_route(path)
+      body = request.body&.read
+      route_request = RouteRequest.new(request, body: body)
+
+      notify_request(path, RequestRecord.new(route_request, body))
 
       if handler
-        notify_request(path)
-        respond_with_handler(handler, request)
+        respond_with_handler(handler, route_request)
       else
         serve_static_asset(request)
       end
@@ -138,9 +150,8 @@ module TestServer
       request.body&.close
     end
 
-    def respond_with_handler(handler, request)
+    def respond_with_handler(handler, route_request)
       writer = ResponseWriter.new
-      route_request = RouteRequest.new(request)
 
       begin
         handler.call(route_request, writer)
@@ -165,7 +176,8 @@ module TestServer
     def serve_static_asset(request)
       return method_not_allowed(request) unless %w[GET HEAD].include?(request.method)
 
-      relative_path = request.path == '/' ? '/index.html' : request.path
+      path = strip_query(request.path)
+      relative_path = path == '/' ? '/index.html' : path
       sanitized = sanitize_path(relative_path)
 
       unless sanitized
@@ -182,6 +194,9 @@ module TestServer
       headers = {
         'content-type' => mime_type_for(file_path)
       }
+      if sanitized.start_with?('cached/')
+        headers['cache-control'] = 'public, max-age=31536000'
+      end
 
       response_body = request.method == 'HEAD' ? '' : body
 
@@ -202,12 +217,12 @@ module TestServer
       end
     end
 
-    def notify_request(path)
+    def notify_request(path, request)
       promises = nil
       @request_promises_mutex.synchronize do
         promises = @request_promises.delete(path)
       end
-      promises&.each(&:resolve)
+      promises&.each { |promise| promise.resolve(request) }
     end
 
     def register_server(_server)
@@ -248,6 +263,12 @@ module TestServer
       full_path[@assets_directory.length + 1..]
     end
 
+    def strip_query(path)
+      return '' if path.nil?
+
+      path.split('?', 2).first
+    end
+
     def mime_type_for(file_path)
       ext = File.extname(file_path)
       case ext
@@ -260,6 +281,8 @@ module TestServer
       when '.jpg', '.jpeg' then 'image/jpeg'
       when '.gif' then 'image/gif'
       when '.svg' then 'image/svg+xml'
+      when '.woff' then 'font/woff'
+      when '.woff2' then 'font/woff2'
       when '.txt' then 'text/plain; charset=utf-8'
       else 'application/octet-stream'
       end
@@ -318,9 +341,10 @@ module TestServer
   class RouteRequest
     attr_reader :method, :headers
 
-    def initialize(request)
+    def initialize(request, body: nil)
       @request = request
       @method = request.method
+      @body = body
       @headers = {}
       request.headers.each do |field|
         if field.respond_to?(:name) && field.respond_to?(:value)
@@ -335,7 +359,9 @@ module TestServer
     end
 
     def path
-      @request.path
+      return '' unless @request&.path
+
+      @request.path.split('?', 2).first
     end
     alias path_info path
 
@@ -349,8 +375,21 @@ module TestServer
     end
 
     def body
+      return @body if @body
       return nil unless @request.body
-      @body ||= @request.body.read
+
+      @body = @request.body.read
+    end
+  end
+
+  class RequestRecord
+    attr_reader :method, :headers, :path, :post_body
+
+    def initialize(route_request, body)
+      @method = route_request.method
+      @headers = route_request.headers
+      @path = route_request.path
+      @post_body = body
     end
   end
 
@@ -359,10 +398,12 @@ module TestServer
       @resolved = false
       @mutex = Mutex.new
       @condition = ConditionVariable.new
+      @request = nil
     end
 
-    def resolve
+    def resolve(request)
       @mutex.synchronize do
+        @request = request
         @resolved = true
         @condition.broadcast
       end
@@ -372,6 +413,7 @@ module TestServer
       @mutex.synchronize do
         @condition.wait(@mutex) unless @resolved
       end
+      @request
     end
 
     def resolved?

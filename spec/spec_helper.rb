@@ -7,6 +7,16 @@ require 'timeout'
 require_relative 'support/test_server'
 require_relative 'support/golden_comparator'
 
+module TestShortInspect
+  def inspect
+    "#<#{self.class} 0x#{object_id.to_s(16)}>"
+  end
+end
+
+Puppeteer::Bidi::BrowserContext.prepend(TestShortInspect)
+Puppeteer::Bidi::Page.prepend(TestShortInspect)
+Puppeteer::Bidi::HTTPRequest.prepend(TestShortInspect)
+
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
   config.example_status_persistence_file_path = ".rspec_status"
@@ -27,10 +37,12 @@ RSpec.configure do |config|
   rspec_around_suite_patch = Module.new do
     def with_suite_hooks(...)
       puts "\n[Test Suite] Starting..."
+      result = nil
       Sync do |parent|
-        super(...)
-        parent.reactor.print_hierarchy
+        result = super(...)
+        parent.reactor.print_hierarchy if ENV['DEBUG_ASYNC_HIERARCHY']
       end
+      result
     end
   end
   RSpec::Core::Configuration.prepend(rspec_around_suite_patch)
@@ -76,6 +88,10 @@ RSpec.configure do |config|
 
     def headless_mode?
       !%w[0 false].include?(ENV['HEADLESS'])
+    end
+
+    def linux?
+      RUBY_PLATFORM.include?('linux')
     end
 
     # Legacy helper - launches a new browser for each call

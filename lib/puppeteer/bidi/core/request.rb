@@ -6,6 +6,26 @@ module Puppeteer
     module Core
       # Request represents a network request
       class Request < EventEmitter
+        DESTINATION_RESOURCE_TYPES = {
+          "style" => "stylesheet",
+          "document" => "document",
+          "script" => "script",
+          "image" => "image",
+          "font" => "font",
+          "audio" => "media",
+          "video" => "media",
+          "track" => "texttrack",
+          "manifest" => "manifest",
+          "iframe" => "document",
+          "frame" => "document",
+          "fetch" => "fetch",
+          "object" => "other",
+          "embed" => "other",
+          "worker" => "other",
+          "sharedworker" => "other",
+          "serviceworker" => "other",
+        }.freeze
+
         include Disposable::DisposableMixin
 
         # Create a request instance from a beforeRequestSent event
@@ -27,8 +47,8 @@ module Puppeteer
           @error = nil
           @redirect = nil
           @response = nil
-          @response_content_promise = nil
-          @request_body_promise = nil
+          @response_content_task = nil
+          @request_body_task = nil
           @disposables = Disposable::DisposableStack.new
         end
 
@@ -101,7 +121,13 @@ module Puppeteer
         # Get resource type (non-standard)
         # @rbs return: String? -- Resource type
         def resource_type
-          @event.dig('request', 'goog:resourceType')
+          resource_type = @event.dig('request', 'goog:resourceType')
+          return resource_type if resource_type
+
+          destination = @event.dig('request', 'destination')
+          return nil unless destination
+
+          DESTINATION_RESOURCE_TYPES.fetch(destination, destination)
         end
 
         # Get POST data (non-standard)
@@ -128,7 +154,7 @@ module Puppeteer
         # @rbs headers: Array[Hash[String, untyped]]? -- Modified headers
         # @rbs cookies: Array[Hash[String, untyped]]? -- Modified cookies
         # @rbs body: Hash[String, untyped]? -- Modified body
-        # @rbs return: untyped
+        # @rbs return: Async::Task[untyped]
         def continue_request(url: nil, method: nil, headers: nil, cookies: nil, body: nil)
           params = { request: id }
           params[:url] = url if url
@@ -137,12 +163,13 @@ module Puppeteer
           params[:cookies] = cookies if cookies
           params[:body] = body if body
 
-          session.send_command('network.continueRequest', params)
+          session.async_send_command('network.continueRequest', params)
         end
 
         # Fail the request
+        # @rbs return: Async::Task[untyped]
         def fail_request
-          session.send_command('network.failRequest', { request: id })
+          session.async_send_command('network.failRequest', { request: id })
         end
 
         # Provide a response for the request
@@ -150,7 +177,7 @@ module Puppeteer
         # @rbs reason_phrase: String? -- Response reason phrase
         # @rbs headers: Array[Hash[String, untyped]]? -- Response headers
         # @rbs body: Hash[String, untyped]? -- Response body
-        # @rbs return: untyped
+        # @rbs return: Async::Task[untyped]
         def provide_response(status_code: nil, reason_phrase: nil, headers: nil, body: nil)
           params = { request: id }
           params[:statusCode] = status_code if status_code
@@ -158,20 +185,24 @@ module Puppeteer
           params[:headers] = headers if headers
           params[:body] = body if body
 
-          session.send_command('network.provideResponse', params)
+          session.async_send_command('network.provideResponse', params)
         end
 
         # Fetch POST data for the request
-        # @rbs return: String? -- POST data
+        # @rbs return: Async::Task[String?] -- POST data
         def fetch_post_data
-          return nil unless has_post_data?
-          return @request_body_promise if @request_body_promise
+          unless has_post_data?
+            return Async do
+              nil
+            end
+          end
+          return @request_body_task if @request_body_task
 
-          @request_body_promise = begin
-            result = session.send_command('network.getData', {
+          @request_body_task = Async do
+            result = session.async_send_command('network.getData', {
               dataType: 'request',
               request: id
-            })
+            }).wait
 
             bytes = result['bytes']
             if bytes['type'] == 'string'
@@ -183,34 +214,36 @@ module Puppeteer
         end
 
         # Get response content
-        # @rbs return: String -- Response content as binary string
+        # @rbs return: Async::Task[String] -- Response content as binary string
         def response_content
-          return @response_content_promise if @response_content_promise
+          return @response_content_task if @response_content_task
 
-          @response_content_promise = begin
-            result = session.send_command('network.getData', {
-              dataType: 'response',
-              request: id
-            })
+          @response_content_task = Async do
+            begin
+              result = session.async_send_command('network.getData', {
+                dataType: 'response',
+                request: id
+              }).wait
 
-            bytes = result['bytes']
-            if bytes['type'] == 'base64'
-              [bytes['value']].pack('m0')
-            else
-              bytes['value']
+              bytes = result['bytes']
+              if bytes['type'] == 'base64'
+                [bytes['value']].pack('m0')
+              else
+                bytes['value']
+              end
+            rescue => e
+              if e.message.include?('No resource with given identifier found')
+                raise 'Could not load response body for this request. This might happen if the request is a preflight request.'
+              end
+              raise
             end
-          rescue => e
-            if e.message.include?('No resource with given identifier found')
-              raise 'Could not load response body for this request. This might happen if the request is a preflight request.'
-            end
-            raise
           end
         end
 
         # Continue with authentication
         # @rbs action: String -- 'provideCredentials', 'default', or 'cancel'
         # @rbs credentials: Hash[String, untyped]? -- Credentials hash with username and password
-        # @rbs return: untyped
+        # @rbs return: Async::Task[untyped]
         def continue_with_auth(action:, credentials: nil)
           params = {
             request: id,
@@ -218,7 +251,7 @@ module Puppeteer
           }
           params[:credentials] = credentials if action == 'provideCredentials'
 
-          session.send_command('network.continueWithAuth', params)
+          session.async_send_command('network.continueWithAuth', params)
         end
 
         protected
@@ -281,6 +314,17 @@ module Puppeteer
             @error = event['errorText']
             emit(:error, @error)
             dispose
+          end
+
+          # Listen for response started
+          session.on('network.responseStarted') do |event|
+            next unless event['context'] == @browsing_context.id
+            next unless event.dig('request', 'request') == id
+            next unless event['redirectCount'] == @event['redirectCount']
+
+            @response = event['response']
+            @event['request']['timings'] = event.dig('request', 'timings')
+            emit(:response, @response)
           end
 
           # Listen for response completed

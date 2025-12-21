@@ -232,10 +232,7 @@ module Puppeteer
         response = wait_for_navigation(timeout: timeout, wait_until: wait_until) do
           @browsing_context.navigate(url, wait: 'interactive').wait
         end
-        # Return HTTPResponse with the final URL
-        # Note: Currently we don't track HTTP status codes from BiDi protocol
-        # Assuming successful navigation (200 OK)
-        HTTPResponse.new(url: @browsing_context.url, status: 200)
+        response
       end
 
       # Set frame content
@@ -486,11 +483,9 @@ module Puppeteer
           end
 
           # Return HTTPResponse for full page navigation, nil for fragment/history
-          if result == :full_page
-            HTTPResponse.new(url: @browsing_context.url, status: 200)
-          else
-            nil
-          end
+          return nil unless result == :full_page
+
+          navigation_response_for(navigation_obj)
         rescue Async::TimeoutError
           raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
         ensure
@@ -582,6 +577,26 @@ module Puppeteer
         @browsing_context.on(:fragment_navigated) do
           page.emit(:framenavigated, self)
         end
+
+        @browsing_context.on(:request) do |data|
+          request = data[:request]
+          http_request = HTTPRequest.from(
+            request,
+            self,
+            page.network_interception_enabled?
+          )
+
+          request.once(:success) do
+            page.emit(:requestfinished, http_request)
+          end
+
+          request.once(:error) do
+            page.emit(:requestfailed, http_request)
+          end
+          page.request_interception_semaphore.async do
+            http_request.finalize_interceptions
+          end
+        end
       end
 
       # Create a Frame for a child browsing context
@@ -616,6 +631,51 @@ module Puppeteer
       # @rbs return: void
       def assert_not_detached
         raise FrameDetachedError, "Attempted to use detached Frame '#{_id}'." if @browsing_context.closed?
+      end
+
+      def navigation_response_for(navigation)
+        return nil unless navigation&.request
+
+        request = navigation.request
+        resolved_request = request.last_redirect || request
+        http_request = HTTPRequest.for_core_request(resolved_request)
+        return http_request.response if http_request&.response
+
+        wait_for_request_completion(request)
+
+        resolved_request = request.last_redirect || request
+        http_request = HTTPRequest.for_core_request(resolved_request)
+        http_request&.response
+      end
+
+      def wait_for_request_completion(request)
+        loop do
+          return if request.response || request.error
+
+          promise = Async::Promise.new
+          success_listener = proc do
+            promise.resolve(:done) unless promise.resolved?
+          end
+          error_listener = proc do
+            promise.resolve(:done) unless promise.resolved?
+          end
+          redirect_listener = proc do |redirect_request|
+            promise.resolve(redirect_request) unless promise.resolved?
+          end
+
+          request.on(:success, &success_listener)
+          request.on(:error, &error_listener)
+          request.on(:redirect, &redirect_listener)
+
+          result = promise.wait
+          request.off(:success, &success_listener)
+          request.off(:error, &error_listener)
+          request.off(:redirect, &redirect_listener)
+
+          return if result == :done
+
+          request = result
+        end
       end
 
     end

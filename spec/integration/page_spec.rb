@@ -116,8 +116,6 @@ RSpec.describe 'Page' do
   describe 'Removing and Adding Event Handlers' do
     it 'should correctly fire event handlers as they are added and then removed' do
       with_test_state do |page:, server:, **|
-        pending 'Page.on("request") not implemented'
-
         handler_called = false
         handler = ->(request) { handler_called = true }
 
@@ -394,8 +392,6 @@ RSpec.describe 'Page' do
 
   describe 'Page.waitForRequest' do
     it 'should work' do
-      pending 'Page.waitForRequest not implemented'
-
       with_test_state do |page:, server:, **|
         page.goto(server.empty_page)
 
@@ -414,8 +410,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should work with predicate' do
-      pending 'Page.waitForRequest not implemented'
-
       with_test_state do |page:, server:, **|
         page.goto(server.empty_page)
 
@@ -446,8 +440,6 @@ RSpec.describe 'Page' do
 
   describe 'Page.waitForResponse' do
     it 'should work' do
-      pending 'Page.waitForResponse not implemented'
-
       with_test_state do |page:, server:, **|
         page.goto(server.empty_page)
 
@@ -476,8 +468,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should work with predicate' do
-      pending 'Page.waitForResponse not implemented'
-
       with_test_state do |page:, server:, **|
         page.goto(server.empty_page)
 
@@ -1634,8 +1624,6 @@ RSpec.describe 'Page' do
 
   describe 'Page.waitForSelector' do
     it 'should wait for selector' do
-      pending 'waitForSelector has mutex issues in test context'
-
       with_test_state do |page:, **|
         page.set_content('<div>test</div>')
         element = page.wait_for_selector('div')
@@ -1644,8 +1632,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should timeout' do
-      pending 'waitForSelector has mutex issues in test context'
-
       with_test_state do |page:, **|
         expect {
           page.wait_for_selector('div', timeout: 100)
@@ -1654,8 +1640,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should wait for visible' do
-      pending 'waitForSelector visible option needs refinement'
-
       with_test_state do |page:, **|
         page.set_content('<div style="display: none">test</div>')
 
@@ -1690,8 +1674,6 @@ RSpec.describe 'Page' do
 
   describe 'Page content methods' do
     it 'should work with content()' do
-      pending 'Page.content not implemented'
-
       with_test_state do |page:, **|
         page.set_content('<div>test</div>')
         content = page.content
@@ -1895,6 +1877,8 @@ RSpec.describe 'Page' do
 
     it 'should work with file:// urls' do
       with_test_state do |page:, **|
+        pending 'File URL navigation returns no response in Firefox BiDi'
+
         file_path = File.join(__dir__, '../assets/empty.html')
         response = page.goto("file://#{file_path}")
         expect(response.ok?).to be true
