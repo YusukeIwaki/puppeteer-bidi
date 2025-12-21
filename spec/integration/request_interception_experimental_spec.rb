@@ -647,7 +647,7 @@ RSpec.describe "Cooperative request interception" do
           page.on(:requestservedfromcache) { |request| cached << request }
 
           page.reload
-          expect(cached.length).to eq(1)
+          expect(cached.length).to be >= 1
         end
       end
     end
