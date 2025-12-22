@@ -215,6 +215,25 @@ RSpec.describe "Locator" do
       end
     end
 
+    it "should retry clicks on errors" do
+      with_test_state do |page:, **|
+        page.set_default_timeout(200)
+        page.set_viewport(width: 500, height: 500)
+        page.set_content(<<~HTML)
+          <button style="display: none;" onclick="this.innerText = 'clicked';">
+            test
+          </button>
+        HTML
+        expect do
+          page.locator("button").click
+        end.to raise_error(Puppeteer::Bidi::TimeoutError, "Timed out after waiting 200ms")
+      end
+    end
+
+    it "can be aborted" do
+      skip "Abort signals are not implemented for locator actions in Ruby yet."
+    end
+
     it "should work with an iframe" do
       with_test_state do |page:, **|
         page.set_viewport(width: 500, height: 500)
@@ -394,6 +413,10 @@ RSpec.describe "Locator" do
       end
     end
 
+    it "can be aborted" do
+      skip "Abort signals are not implemented for locator actions in Ruby yet."
+    end
+
     it "should time out when all locators do not match" do
       with_test_state do |page:, **|
         page.set_content("<button>test</button>")
@@ -487,7 +510,7 @@ RSpec.describe "Locator" do
           page
             .locator("::-p-text(test)")
             .set_timeout(500)
-            .filter("(element) => element.getAttribute('clickable') === 'true'")
+            .filter("async (element) => element.getAttribute('clickable') === 'true'")
             .filter("(element) => element.getAttribute('clickable') === 'true'")
             .hover
         end
