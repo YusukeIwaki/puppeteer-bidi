@@ -343,7 +343,11 @@ module Puppeteer
                   :ensure_element_is_in_viewport,
                   :wait_for_stable_bounding_box
 
-      def perform_action(cause, wait_for_enabled: false)
+      # @rbs cause: String -- Action name
+      # @rbs wait_for_enabled: bool -- Whether to wait for enabled
+      # @rbs &block: (ElementHandle) -> void -- Action to perform
+      # @rbs return: void
+      def perform_action(cause, wait_for_enabled: false, &block)
         with_retry(cause) do |deadline, remaining_ms|
           handle = _wait(timeout_ms: remaining_ms, deadline: deadline)
           begin
@@ -351,7 +355,7 @@ module Puppeteer
             wait_for_stable_bounding_box_if_needed(handle, deadline)
             wait_for_enabled_if_needed(handle, deadline) if wait_for_enabled
             @emitter.emit(LocatorEvent::ACTION, nil)
-            yield handle
+            block.call(handle)
           rescue StandardError => error
             handle.dispose if handle.respond_to?(:dispose)
             raise error
@@ -359,13 +363,16 @@ module Puppeteer
         end
       end
 
-      def with_retry(cause)
+      # @rbs cause: String -- Action name
+      # @rbs &block: (Numeric?, Numeric?) -> untyped -- Retry block
+      # @rbs return: untyped
+      def with_retry(cause, &block)
         deadline = build_deadline
         loop do
           remaining_ms = deadline ? remaining_time_ms(deadline) : nil
           raise_timeout if deadline && remaining_ms <= 0
           begin
-            return yield(deadline, remaining_ms)
+            return block.call(deadline, remaining_ms)
           rescue TimeoutError
             raise
           rescue StandardError
@@ -389,9 +396,12 @@ module Puppeteer
         raise TimeoutError, "Timed out after waiting #{@timeout}ms"
       end
 
-      def wait_until(deadline)
+      # @rbs deadline: Numeric? -- Deadline timestamp
+      # @rbs &block: () -> boolish -- Condition block
+      # @rbs return: void
+      def wait_until(deadline, &block)
         loop do
-          return if yield
+          return if block.call
           raise_timeout if deadline && remaining_time_ms(deadline) <= 0
           sleep RETRY_DELAY
         end
