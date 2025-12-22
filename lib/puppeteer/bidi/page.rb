@@ -281,6 +281,24 @@ module Puppeteer
         main_frame.query_selector_all(selector)
       end
 
+      # Create a locator for a selector or function.
+      # @rbs selector: String? -- Selector to locate
+      # @rbs function: String? -- JavaScript function for function locator
+      # @rbs return: Locator -- Locator instance
+      def locator(selector = nil, function: nil)
+        assert_not_closed
+
+        if function
+          raise ArgumentError, "selector and function cannot both be set" if selector
+
+          FunctionLocator.create(self, function)
+        elsif selector
+          NodeLocator.create(self, selector)
+        else
+          raise ArgumentError, "selector or function must be provided"
+        end
+      end
+
       # Evaluate a function on the first element matching the selector
       # @rbs selector: String -- Selector to query
       # @rbs page_function: String -- JavaScript function to evaluate

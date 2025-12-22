@@ -257,7 +257,7 @@ module Puppeteer
 
         options = {}
         options[:polling] = resolved_polling if resolved_polling
-        options[:timeout] = timeout if timeout
+        options[:timeout] = timeout unless timeout.nil?
 
         begin
           handle = frame.isolated_realm.wait_for_function(
