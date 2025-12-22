@@ -342,3 +342,4 @@
 | `Target.type` | `Puppeteer::Bidi::Target#type` | ❌ |
 | `Target.url` | `Puppeteer::Bidi::Target#url` | ❌ |
 | `Target.worker` | `Puppeteer::Bidi::Target#worker` | ❌ |
+
