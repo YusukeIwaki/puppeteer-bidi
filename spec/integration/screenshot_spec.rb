@@ -308,6 +308,9 @@ RSpec.describe 'Screenshot', type: :integration do
       with_test_state do |page:, **|
         page.set_viewport(width: 500, height: 500)
         page.set_content(<<~HTML)
+          <style>
+            body { height: 1000px; margin: 0; }
+          </style>
           <div style="position:absolute; top: 100px; left: 100px; width: 100px; height: 100px; background: green; transform: rotateZ(200deg);">&nbsp;</div>
         HTML
         element = page.query_selector('div')

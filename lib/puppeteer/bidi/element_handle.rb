@@ -415,63 +415,11 @@ module Puppeteer
           element_clip[:height] = clip[:height]
         end
 
-        # Check if element is larger than viewport - if so, temporarily resize viewport
-        current_viewport = page.viewport
-        viewport_width = current_viewport ? current_viewport[:width] : page.evaluate('window.innerWidth')
-        viewport_height = current_viewport ? current_viewport[:height] : page.evaluate('window.innerHeight')
-
-        needs_viewport_resize = element_clip[:width] > viewport_width || element_clip[:height] > viewport_height
-
-        if needs_viewport_resize
-          # Temporarily resize viewport to accommodate the element
-          new_width = [element_clip[:width].ceil, viewport_width].max
-          new_height = [element_clip[:height].ceil, viewport_height].max
-          page.set_viewport(width: new_width, height: new_height)
-
-          # Re-scroll and recalculate bounding box after viewport change
-          scroll_into_view_if_needed if scroll_into_view
-          element_box = non_empty_visible_bounding_box
-
-          scroll_offset = evaluate(<<~JS)
-            () => {
-              return {
-                pageLeft: window.visualViewport.pageLeft,
-                pageTop: window.visualViewport.pageTop
-              };
-            }
-          JS
-
-          element_clip = {
-            x: element_box.x + scroll_offset['pageLeft'],
-            y: element_box.y + scroll_offset['pageTop'],
-            width: element_box.width,
-            height: element_box.height
-          }
-
-          if clip
-            element_clip[:x] += clip[:x]
-            element_clip[:y] += clip[:y]
-            element_clip[:width] = clip[:width]
-            element_clip[:height] = clip[:height]
-          end
-        end
-
-        begin
-          # Pass clip in document coordinates with capture_beyond_viewport: false
-          # Page.screenshot will convert document coordinates to viewport coordinates
-          # when capture_beyond_viewport is false, which allows it to work with Firefox BiDi
-          page.screenshot(
-            path: path,
-            type: type,
-            clip: element_clip,
-            capture_beyond_viewport: false
-          )
-        ensure
-          # Restore original viewport if we changed it
-          if needs_viewport_resize && current_viewport
-            page.set_viewport(width: current_viewport[:width], height: current_viewport[:height])
-          end
-        end
+        page.screenshot(
+          path: path,
+          type: type,
+          clip: element_clip
+        )
       end
 
       # Check if element is intersecting the viewport
@@ -528,6 +476,10 @@ module Puppeteer
             if (!(element instanceof Element)) {
               return null;
             }
+            // Element is not visible
+            if (element.getClientRects().length === 0) {
+              return null;
+            }
             const rect = element.getBoundingClientRect();
             return {x: rect.x, y: rect.y, width: rect.width, height: rect.height};
           }
@@ -535,12 +487,12 @@ module Puppeteer
 
         return nil unless result
 
-        # Return nil if element has zero dimensions (not visible)
-        return nil if result['width'].zero? && result['height'].zero?
+        offset = top_left_corner_of_frame
+        return nil unless offset
 
         BoundingBox.new(
-          x: result['x'],
-          y: result['y'],
+          x: result['x'] + offset[:x],
+          y: result['y'] + offset[:y],
           width: result['width'],
           height: result['height']
         )
@@ -625,12 +577,23 @@ module Puppeteer
 
         return nil unless model
 
+        offset = top_left_corner_of_frame
+        return nil unless offset
+
         # Convert raw arrays to Point objects for each quad
         BoxModel.new(
-          content: model['content'].map { |p| Point.new(x: p['x'], y: p['y']) },
-          padding: model['padding'].map { |p| Point.new(x: p['x'], y: p['y']) },
-          border: model['border'].map { |p| Point.new(x: p['x'], y: p['y']) },
-          margin: model['margin'].map { |p| Point.new(x: p['x'], y: p['y']) },
+          content: model['content'].map do |p|
+            Point.new(x: p['x'] + offset[:x], y: p['y'] + offset[:y])
+          end,
+          padding: model['padding'].map do |p|
+            Point.new(x: p['x'] + offset[:x], y: p['y'] + offset[:y])
+          end,
+          border: model['border'].map do |p|
+            Point.new(x: p['x'] + offset[:x], y: p['y'] + offset[:y])
+          end,
+          margin: model['margin'].map do |p|
+            Point.new(x: p['x'] + offset[:x], y: p['y'] + offset[:y])
+          end,
           width: model['width'],
           height: model['height']
         )
@@ -775,6 +738,49 @@ module Puppeteer
         raise 'Node has 0 height.' if box.height.zero?
 
         box
+      end
+
+      # Get top-left corner offset of the element's frame relative to the main frame
+      # @rbs return: Hash[Symbol, Numeric]? -- Offset hash or nil if not visible
+      def top_left_corner_of_frame
+        point = { x: 0, y: 0 }
+        current_frame = frame
+
+        while (parent_frame = current_frame.parent_frame)
+          handle = current_frame.frame_element
+          raise 'Unsupported frame type' unless handle
+
+          begin
+            parent_box = handle.evaluate(<<~JS)
+              element => {
+                // Element is not visible.
+                if (element.getClientRects().length === 0) {
+                  return null;
+                }
+                const rect = element.getBoundingClientRect();
+                const style = window.getComputedStyle(element);
+                return {
+                  left: rect.left +
+                    parseInt(style.paddingLeft, 10) +
+                    parseInt(style.borderLeftWidth, 10),
+                  top: rect.top +
+                    parseInt(style.paddingTop, 10) +
+                    parseInt(style.borderTopWidth, 10)
+                };
+              }
+            JS
+          ensure
+            handle.dispose unless handle.disposed?
+          end
+
+          return nil unless parent_box
+
+          point[:x] += parent_box['left']
+          point[:y] += parent_box['top']
+          current_frame = parent_frame
+        end
+
+        point
       end
 
       # String representation includes element type
