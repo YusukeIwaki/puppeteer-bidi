@@ -366,6 +366,114 @@ module Puppeteer
         NodeLocator.create_from_handle(frame, self)
       end
 
+      # Take a screenshot of the element.
+      # Following Puppeteer's implementation: ElementHandle.screenshot
+      # @rbs path: String? -- File path to save screenshot
+      # @rbs type: String -- Image type ('png' or 'jpeg')
+      # @rbs clip: Hash[Symbol, Numeric]? -- Clip region relative to element
+      # @rbs scroll_into_view: bool -- Scroll element into view before screenshot
+      # @rbs return: String -- Base64-encoded image data
+      def screenshot(path: nil, type: 'png', clip: nil, scroll_into_view: true)
+        assert_not_disposed
+
+        page = frame.page
+
+        # Scroll into view if needed
+        scroll_into_view_if_needed if scroll_into_view
+
+        # Get element's bounding box - must not be empty
+        # Note: bounding_box returns viewport-relative coordinates from getBoundingClientRect()
+        element_box = non_empty_visible_bounding_box
+
+        # Get page scroll offset from visualViewport to convert to document coordinates
+        scroll_offset = evaluate(<<~JS)
+          () => {
+            if (!window.visualViewport) {
+              throw new Error('window.visualViewport is not supported.');
+            }
+            return {
+              pageLeft: window.visualViewport.pageLeft,
+              pageTop: window.visualViewport.pageTop
+            };
+          }
+        JS
+
+        # Build element clip in document coordinates (viewport coords + scroll offset)
+        # Following Puppeteer's implementation: elementClip.x += pageLeft; elementClip.y += pageTop
+        element_clip = {
+          x: element_box.x + scroll_offset['pageLeft'],
+          y: element_box.y + scroll_offset['pageTop'],
+          width: element_box.width,
+          height: element_box.height
+        }
+
+        # Apply user-specified clip if provided
+        if clip
+          element_clip[:x] += clip[:x]
+          element_clip[:y] += clip[:y]
+          element_clip[:width] = clip[:width]
+          element_clip[:height] = clip[:height]
+        end
+
+        # Check if element is larger than viewport - if so, temporarily resize viewport
+        current_viewport = page.viewport
+        viewport_width = current_viewport ? current_viewport[:width] : page.evaluate('window.innerWidth')
+        viewport_height = current_viewport ? current_viewport[:height] : page.evaluate('window.innerHeight')
+
+        needs_viewport_resize = element_clip[:width] > viewport_width || element_clip[:height] > viewport_height
+
+        if needs_viewport_resize
+          # Temporarily resize viewport to accommodate the element
+          new_width = [element_clip[:width].ceil, viewport_width].max
+          new_height = [element_clip[:height].ceil, viewport_height].max
+          page.set_viewport(width: new_width, height: new_height)
+
+          # Re-scroll and recalculate bounding box after viewport change
+          scroll_into_view_if_needed if scroll_into_view
+          element_box = non_empty_visible_bounding_box
+
+          scroll_offset = evaluate(<<~JS)
+            () => {
+              return {
+                pageLeft: window.visualViewport.pageLeft,
+                pageTop: window.visualViewport.pageTop
+              };
+            }
+          JS
+
+          element_clip = {
+            x: element_box.x + scroll_offset['pageLeft'],
+            y: element_box.y + scroll_offset['pageTop'],
+            width: element_box.width,
+            height: element_box.height
+          }
+
+          if clip
+            element_clip[:x] += clip[:x]
+            element_clip[:y] += clip[:y]
+            element_clip[:width] = clip[:width]
+            element_clip[:height] = clip[:height]
+          end
+        end
+
+        begin
+          # Pass clip in document coordinates with capture_beyond_viewport: false
+          # Page.screenshot will convert document coordinates to viewport coordinates
+          # when capture_beyond_viewport is false, which allows it to work with Firefox BiDi
+          page.screenshot(
+            path: path,
+            type: type,
+            clip: element_clip,
+            capture_beyond_viewport: false
+          )
+        ensure
+          # Restore original viewport if we changed it
+          if needs_viewport_resize && current_viewport
+            page.set_viewport(width: current_viewport[:width], height: current_viewport[:height])
+          end
+        end
+      end
+
       # Check if element is intersecting the viewport
       # @rbs threshold: Numeric -- Intersection ratio threshold
       # @rbs return: bool -- Whether element intersects viewport
@@ -656,6 +764,17 @@ module Puppeteer
             return visible === isVisible;
           }
         JS
+      end
+
+      # Get bounding box ensuring it's non-empty and visible
+      # @rbs return: BoundingBox -- Non-empty bounding box
+      def non_empty_visible_bounding_box
+        box = bounding_box
+        raise 'Node is either not visible or not an HTMLElement' unless box
+        raise 'Node has 0 width.' if box.width.zero?
+        raise 'Node has 0 height.' if box.height.zero?
+
+        box
       end
 
       # String representation includes element type
