@@ -1,3 +1,5 @@
+[![Gem Version](https://badge.fury.io/rb/puppeteer-bidi.svg)](https://badge.fury.io/rb/puppeteer-bidi)
+
 # Puppeteer::BiDi
 
 Ruby bindings for the WebDriver BiDi-powered version of [Puppeteer](https://pptr.dev/), focused on modern Firefox automation with a familiar, synchronous API.
