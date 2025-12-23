@@ -343,11 +343,9 @@ RSpec.describe 'Screenshot', type: :integration do
       end
     end
 
-    # Skip fractional dimension tests due to minor rounding differences
     # between Firefox versions. The screenshot functionality works correctly,
     # but pixel-perfect comparison fails due to subpixel rendering differences.
     it 'should work for an element with fractional dimensions' do
-      skip 'Fractional dimensions have minor rounding differences in Firefox BiDi'
       with_test_state do |page:, **|
         page.set_viewport(width: 500, height: 500)
         page.set_content('<div style="width:48.51px;height:19.8px;border:1px solid black;"></div>')
@@ -360,10 +358,12 @@ RSpec.describe 'Screenshot', type: :integration do
     end
 
     it 'should work for an element with an offset' do
-      skip 'Fractional offsets have minor rounding differences in Firefox BiDi'
       with_test_state do |page:, **|
         page.set_viewport(width: 500, height: 500)
         page.set_content(<<~HTML)
+          <style>
+            body { height: 1000px; margin: 0; }
+          </style>
           <div style="position:absolute; top: 10.3px; left: 20.4px; width:50.3px;height:20.2px;border:1px solid black;"></div>
         HTML
         element = page.query_selector('div')

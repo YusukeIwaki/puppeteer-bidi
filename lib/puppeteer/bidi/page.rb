@@ -226,12 +226,13 @@ module Puppeteer
             }
           end
 
+          clip_x, clip_y, clip_width, clip_height = process_clip(**box)
           options[:clip] = {
             type: 'box',
-            x: box[:x],
-            y: box[:y],
-            width: box[:width],
-            height: box[:height]
+            x: clip_x,
+            y: clip_y,
+            width: clip_width,
+            height: clip_height
           }
         end
 
@@ -1172,6 +1173,18 @@ module Puppeteer
           return nil
         end
         interception
+      end
+
+      # ref: https://github.com/puppeteer/puppeteer/commit/2275c3c0c801d42514d6de127b9b1537d20356a9
+      def process_clip(x:, y:, width:, height:)
+        rounded_x = x.round
+        rounded_y = y.round
+        [
+          rounded_x,
+          rounded_y,
+          (width + (x - rounded_x)).round,
+          (height + (y - rounded_y)).round,
+        ]
       end
     end
   end
