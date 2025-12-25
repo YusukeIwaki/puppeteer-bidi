@@ -579,7 +579,7 @@ module Puppeteer
       # The function persists across navigations.
       # @rbs name: String -- Function name to expose on globalThis
       # @rbs apply: Proc? -- Ruby callable to execute when function is called
-      # @rbs &block: (*untyped) -> untyped -- Ruby block to execute when function is called
+      # @rbs &block: ?{ (*untyped) -> untyped } -- Ruby block to execute when function is called
       # @rbs return: void
       def expose_function(name, apply = nil, &block)
         assert_not_detached
