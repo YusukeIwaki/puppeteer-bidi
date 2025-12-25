@@ -192,4 +192,37 @@ RSpec.describe 'Evaluation', type: :integration do
       end
     end
   end
+
+  describe 'Page.evaluateOnNewDocument' do
+    it 'should evaluate before anything else on the page' do
+      with_test_state do |page:, server:, **|
+        page.evaluate_on_new_document(<<~JS)
+          () => {
+            globalThis.injected = 123;
+          }
+        JS
+        page.goto("#{server.prefix}/tamperable.html")
+        result = page.evaluate('() => globalThis.result')
+        expect(result).to eq(123)
+      end
+    end
+
+    it 'should work with CSP' do
+      with_test_state do |page:, server:, **|
+        server.set_csp('/empty.html', "script-src #{server.prefix}")
+        page.evaluate_on_new_document(<<~JS)
+          () => {
+            globalThis.injected = 123;
+          }
+        JS
+        page.goto("#{server.prefix}/empty.html")
+        result = page.evaluate('() => globalThis.injected')
+        expect(result).to eq(123)
+
+        # Make sure CSP works - inline script should fail
+        # We don't have addScriptTag yet, so we test CSP differently
+        # by verifying our injected script worked despite CSP
+      end
+    end
+  end
 end

@@ -26,6 +26,7 @@ module Puppeteer
         @parent = parent
         @browsing_context = browsing_context
         @frames = {} # Map of browsing context id to Frame (like WeakMap in JS)
+        @exposed_functions = {} # Map of function name to ExposedFunction
 
         default_core_realm = @browsing_context.default_realm
         internal_core_realm = @browsing_context.create_window_realm("__puppeteer_internal_#{rand(1..10_000)}")
@@ -572,6 +573,36 @@ module Puppeteer
           element.remote_value_as_shared_reference,
           files
         ).wait
+      end
+
+      # Expose a Ruby block as a function in the frame's global context.
+      # The function persists across navigations.
+      # @rbs name: String -- Function name to expose on globalThis
+      # @rbs &block: (*untyped) -> untyped -- Ruby block to execute when function is called
+      # @rbs return: void
+      def expose_function(name, &block)
+        assert_not_detached
+
+        if @exposed_functions.key?(name)
+          raise Error, "Failed to add page binding with name #{name}: globalThis['#{name}'] already exists!"
+        end
+
+        exposed_function = ExposedFunction.from(self, name, &block)
+        @exposed_functions[name] = exposed_function
+      end
+
+      # Remove an exposed function.
+      # @rbs name: String -- Function name to remove
+      # @rbs return: void
+      def remove_exposed_function(name)
+        assert_not_detached
+
+        exposed_function = @exposed_functions.delete(name)
+        unless exposed_function
+          raise Error, "Failed to remove page binding with name #{name}: window['#{name}'] does not exist!"
+        end
+
+        exposed_function.dispose
       end
 
       # Get the frame ID (browsing context ID)

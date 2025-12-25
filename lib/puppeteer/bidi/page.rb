@@ -995,6 +995,48 @@ module Puppeteer
         @browsing_context.set_javascript_enabled(enabled).wait
       end
 
+      # Evaluate a function before any script runs on every page load.
+      # @rbs page_function: String -- JavaScript function or expression
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: NewDocumentScriptEvaluation -- Script evaluation result with identifier
+      def evaluate_on_new_document(page_function, *args)
+        assert_not_closed
+
+        # Build the evaluation expression as an IIFE
+        expression = build_evaluation_expression(page_function, *args)
+
+        # Add as preload script
+        script_id = @browsing_context.add_preload_script(expression).wait
+
+        NewDocumentScriptEvaluation.new(script_id)
+      end
+
+      # Remove a script injected by evaluateOnNewDocument.
+      # @rbs identifier: String -- Script identifier from NewDocumentScriptEvaluation
+      # @rbs return: void
+      def remove_script_to_evaluate_on_new_document(identifier)
+        assert_not_closed
+        @browsing_context.remove_preload_script(identifier).wait
+      end
+
+      # Expose a Ruby block as a function in the page's global context.
+      # The function persists across navigations.
+      # @rbs name: String -- Function name to expose on globalThis
+      # @rbs &block: (*untyped) -> untyped -- Ruby block to execute when function is called
+      # @rbs return: void
+      def expose_function(name, &block)
+        assert_not_closed
+        main_frame.expose_function(name, &block)
+      end
+
+      # Remove an exposed function.
+      # @rbs name: String -- Function name to remove
+      # @rbs return: void
+      def remove_exposed_function(name)
+        assert_not_closed
+        main_frame.remove_exposed_function(name)
+      end
+
       # Check if JavaScript is enabled
       # @rbs return: bool -- Whether JavaScript is enabled
       def javascript_enabled?
@@ -1195,6 +1237,68 @@ module Puppeteer
           (clip_width + (clip_x - rounded_x)).round,
           (clip_height + (clip_y - rounded_y)).round,
         ]
+      end
+
+      # Build an evaluation expression (IIFE) from a function and arguments.
+      # Following Puppeteer's evaluationExpression pattern.
+      # @rbs page_function: String -- JavaScript function or expression
+      # @rbs *args: untyped -- Arguments to pass to the function
+      # @rbs return: String -- IIFE expression
+      def build_evaluation_expression(page_function, *args)
+        page_function_str = page_function.strip
+
+        # Build argument list as JSON-serialized values
+        if args.empty?
+          args_str = ""
+        else
+          serialized_args = args.map { |arg| serialize_arg_for_preload(arg) }
+          args_str = serialized_args.join(", ")
+        end
+
+        # Detect if page_function is a function expression
+        is_function = page_function_str.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
+                      page_function_str.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
+
+        if is_function
+          # Wrap function invocation in an IIFE
+          "() => { (#{page_function_str})(#{args_str}); }"
+        else
+          # Treat as expression, wrap in IIFE
+          "() => { #{page_function_str} }"
+        end
+      end
+
+      # Serialize an argument for use in preload script.
+      # Unlike BiDi serialization, this produces JavaScript literal strings.
+      # @rbs arg: untyped -- Argument to serialize
+      # @rbs return: String -- JavaScript literal
+      def serialize_arg_for_preload(arg)
+        case arg
+        when String
+          JSON.generate(arg)
+        when Integer, Float
+          arg.to_s
+        when TrueClass, FalseClass
+          arg.to_s
+        when NilClass
+          "null"
+        when Array, Hash
+          JSON.generate(arg)
+        else
+          JSON.generate(arg.to_s)
+        end
+      end
+    end
+
+    # Result of evaluateOnNewDocument containing the script identifier.
+    # Can be used to remove the script later.
+    class NewDocumentScriptEvaluation
+      attr_reader :identifier #: String
+
+      # @rbs identifier: String -- Script identifier
+      # @rbs return: void
+      def initialize(identifier)
+        @identifier = identifier
       end
     end
   end
