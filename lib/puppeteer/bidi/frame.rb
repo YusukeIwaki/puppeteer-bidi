@@ -306,6 +306,29 @@ module Puppeteer
         JS
       end
 
+      # Get the full HTML contents of the frame, including the DOCTYPE
+      # @rbs return: String -- Full HTML content
+      def content
+        assert_not_detached
+
+        evaluate(<<~JS)
+          () => {
+            let content = '';
+            for (const node of document.childNodes) {
+              switch (node) {
+                case document.documentElement:
+                  content += document.documentElement.outerHTML;
+                  break;
+                default:
+                  content += new XMLSerializer().serializeToString(node);
+                  break;
+              }
+            }
+            return content;
+          }
+        JS
+      end
+
       # Get the frame name
       # @rbs return: String -- Frame name
       def name
