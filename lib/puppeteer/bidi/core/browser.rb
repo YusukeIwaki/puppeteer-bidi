@@ -81,6 +81,9 @@ module Puppeteer
           if options[:contexts]
             params[:contexts] = options[:contexts].map(&:id)
           end
+          if options.key?(:arguments) || options.key?("arguments")
+            params[:arguments] = options[:arguments] || options["arguments"]
+          end
           params[:sandbox] = options[:sandbox] if options[:sandbox]
 
           Async do

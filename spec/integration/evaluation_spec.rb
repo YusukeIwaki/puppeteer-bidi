@@ -219,9 +219,10 @@ RSpec.describe 'Evaluation', type: :integration do
         result = page.evaluate('() => globalThis.injected')
         expect(result).to eq(123)
 
-        # Make sure CSP works - inline script should fail
-        # We don't have addScriptTag yet, so we test CSP differently
-        # by verifying our injected script worked despite CSP
+        pending 'Page.add_script_tag not implemented'
+        page.add_script_tag(content: 'window.e = 10;')
+        result = page.evaluate('() => globalThis.e')
+        expect(result).to be_nil
       end
     end
   end

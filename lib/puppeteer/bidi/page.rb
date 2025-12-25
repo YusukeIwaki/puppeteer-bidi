@@ -1019,14 +1019,28 @@ module Puppeteer
         @browsing_context.remove_preload_script(identifier).wait
       end
 
-      # Expose a Ruby block as a function in the page's global context.
+      # Expose a Ruby callable as a function in the page's global context.
       # The function persists across navigations.
       # @rbs name: String -- Function name to expose on globalThis
+      # @rbs pptr_function: untyped -- Callable or module-like object with default export
       # @rbs &block: (*untyped) -> untyped -- Ruby block to execute when function is called
       # @rbs return: void
-      def expose_function(name, &block)
+      def expose_function(name, pptr_function = nil, &block)
         assert_not_closed
-        main_frame.expose_function(name, &block)
+
+        handler = block
+        if handler.nil?
+          if pptr_function.respond_to?(:call)
+            handler = pptr_function
+          elsif pptr_function.is_a?(Hash)
+            handler = pptr_function[:default] || pptr_function["default"]
+          end
+        end
+        unless handler&.respond_to?(:call)
+          raise ArgumentError, "expose_function requires a callable"
+        end
+
+        main_frame.expose_function(name, handler)
       end
 
       # Remove an exposed function.
@@ -1239,7 +1253,7 @@ module Puppeteer
         ]
       end
 
-      # Build an evaluation expression (IIFE) from a function and arguments.
+      # Build an evaluation expression from a function and arguments.
       # Following Puppeteer's evaluationExpression pattern.
       # @rbs page_function: String -- JavaScript function or expression
       # @rbs *args: untyped -- Arguments to pass to the function
@@ -1247,23 +1261,18 @@ module Puppeteer
       def build_evaluation_expression(page_function, *args)
         page_function_str = page_function.strip
 
-        # Build argument list as JSON-serialized values
-        if args.empty?
-          args_str = ""
-        else
-          serialized_args = args.map { |arg| serialize_arg_for_preload(arg) }
-          args_str = serialized_args.join(", ")
-        end
-
-        # Detect if page_function is a function expression
         is_function = page_function_str.match?(/\A\s*(?:async\s+)?(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>/) ||
                       page_function_str.match?(/\A\s*(?:async\s+)?function\s*\w*\s*\(/)
 
+        if !args.empty? && !is_function
+          raise ArgumentError, "Cannot evaluate a string with arguments"
+        end
+
+        args_str = args.map { |arg| serialize_arg_for_preload(arg) }.join(", ")
+
         if is_function
-          # Wrap function invocation in an IIFE
           "() => { (#{page_function_str})(#{args_str}); }"
         else
-          # Treat as expression, wrap in IIFE
           "() => { #{page_function_str} }"
         end
       end

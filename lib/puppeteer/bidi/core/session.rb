@@ -140,6 +140,7 @@ module Puppeteer
             'network.authRequired',
             'script.realmCreated',
             'script.realmDestroyed',
+            'script.message',
             'log.entryAdded',
             'input.fileDialogOpened',
           ]

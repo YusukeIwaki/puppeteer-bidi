@@ -575,19 +575,25 @@ module Puppeteer
         ).wait
       end
 
-      # Expose a Ruby block as a function in the frame's global context.
+      # Expose a Ruby callable as a function in the frame's global context.
       # The function persists across navigations.
       # @rbs name: String -- Function name to expose on globalThis
+      # @rbs apply: Proc? -- Ruby callable to execute when function is called
       # @rbs &block: (*untyped) -> untyped -- Ruby block to execute when function is called
       # @rbs return: void
-      def expose_function(name, &block)
+      def expose_function(name, apply = nil, &block)
         assert_not_detached
 
         if @exposed_functions.key?(name)
           raise Error, "Failed to add page binding with name #{name}: globalThis['#{name}'] already exists!"
         end
 
-        exposed_function = ExposedFunction.from(self, name, &block)
+        handler = apply || block
+        unless handler&.respond_to?(:call)
+          raise ArgumentError, "expose_function requires a callable"
+        end
+
+        exposed_function = ExposedFunction.from(self, name, handler)
         @exposed_functions[name] = exposed_function
       end
 
@@ -599,7 +605,7 @@ module Puppeteer
 
         exposed_function = @exposed_functions.delete(name)
         unless exposed_function
-          raise Error, "Failed to remove page binding with name #{name}: window['#{name}'] does not exist!"
+          raise Error, "Failed to remove page binding with name #{name}: window['#{name}'] does not exists!"
         end
 
         exposed_function.dispose
