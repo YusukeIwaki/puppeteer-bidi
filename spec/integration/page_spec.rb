@@ -699,8 +699,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should work with loading frames' do
-      skip 'Firefox crashes when intercepting requests during frame navigation'
-
       with_test_state do |page:, server:, **|
         page.set_request_interception(true)
         iframe_request = Async::Promise.new
@@ -713,13 +711,8 @@ RSpec.describe 'Page' do
           end
         end
 
-        error = nil
         nav_task = Async do
-          begin
-            page.goto("#{server.prefix}/frames/one-frame.html", wait_until: 'networkidle0')
-          rescue => e
-            error = e
-          end
+          page.goto("#{server.prefix}/frames/one-frame.html", wait_until: 'networkidle0')
         end
 
         request = iframe_request.wait
@@ -730,7 +723,6 @@ RSpec.describe 'Page' do
         end
         request.continue
         nav_task.wait
-        expect(error).to be_nil
 
         frame = page.frames[1]
         result = frame.evaluate('async () => await globalThis.compute(3, 5)')
