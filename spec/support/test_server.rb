@@ -94,6 +94,7 @@ module TestServer
     def clear_routes
       @routes_mutex.synchronize { @routes.clear }
       @request_promises_mutex.synchronize { @request_promises.clear }
+      @csp_headers_mutex&.synchronize { @csp_headers&.clear }
     end
 
     def set_route(path, &block)
@@ -107,6 +108,22 @@ module TestServer
         writer.status = 302
         writer.add_header('location', to)
         writer.finish
+      end
+    end
+
+    def set_csp(path, csp_value)
+      # Store CSP headers for specific paths
+      @csp_headers ||= {}
+      @csp_headers_mutex ||= Mutex.new
+      @csp_headers_mutex.synchronize do
+        @csp_headers[path] = csp_value
+      end
+    end
+
+    def get_csp(path)
+      return nil unless @csp_headers
+      @csp_headers_mutex.synchronize do
+        @csp_headers[path]
       end
     end
 
@@ -223,6 +240,10 @@ module TestServer
       if sanitized.start_with?('cached/')
         headers['cache-control'] = 'public, max-age=31536000'
       end
+
+      # Add CSP header if set for this path
+      csp = get_csp(path)
+      headers['content-security-policy'] = csp if csp
 
       response_body = request.method == 'HEAD' ? '' : body
 

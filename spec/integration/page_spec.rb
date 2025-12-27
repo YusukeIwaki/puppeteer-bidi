@@ -544,93 +544,277 @@ RSpec.describe 'Page' do
   end
 
   describe 'Page.exposeFunction' do
-    it 'should work' do
-      pending 'Page.exposeFunction not implemented'
+    def attach_frame(page, frame_id, url)
+      page.evaluate(<<~JS, frame_id, url)
+        async (frameId, src) => {
+          const frame = document.createElement('iframe');
+          frame.id = frameId;
+          frame.src = src;
+          document.body.appendChild(frame);
+          await new Promise(resolve => (frame.onload = resolve));
+        }
+      JS
 
+      page.frames.last
+    end
+
+    def detach_frame(page, frame_id)
+      page.evaluate(<<~JS, frame_id)
+        (frameId) => {
+          const frame = document.getElementById(frameId);
+          if (frame) {
+            frame.remove();
+          }
+        }
+      JS
+    end
+
+    it 'should work' do
       with_test_state do |page:, **|
         page.expose_function('compute') do |a, b|
           a * b
         end
 
-        result = page.evaluate('async () => await compute(9, 4)')
+        result = page.evaluate('async () => await globalThis.compute(9, 4)')
         expect(result).to eq(36)
       end
     end
 
-    it 'should survive navigations' do
-      pending 'Page.exposeFunction not implemented'
+    it 'should throw exception in page context' do
+      with_test_state do |page:, **|
+        page.expose_function('woof') do
+          raise 'WOOF WOOF'
+        end
 
+        result = page.evaluate(<<~JS)
+          async () => {
+            try {
+              return await globalThis.woof();
+            } catch (error) {
+              return {
+                message: error.message,
+                stack: error.stack
+              };
+            }
+          }
+        JS
+        expect(result['message']).to eq('WOOF WOOF')
+        expect(result['stack']).to include('page_spec.rb')
+      end
+    end
+
+    it 'should support throwing "null"' do
+      with_test_state do |page:, **|
+        page.expose_function('woof') do
+          raise nil
+        end
+
+        result = page.evaluate(<<~JS)
+          async () => {
+            try {
+              await globalThis.woof();
+            } catch (error) {
+              return error;
+            }
+          }
+        JS
+        expect(result).to be_nil
+      end
+    end
+
+    it 'should be callable from-inside evaluateOnNewDocument' do
+      with_test_state do |page:, **|
+        called = Async::Promise.new
+        page.expose_function('woof') do
+          called.resolve(nil)
+        end
+
+        page.evaluate_on_new_document(<<~JS)
+          async () => {
+            await globalThis.woof();
+          }
+        JS
+
+        page.reload
+        Puppeteer::Bidi::AsyncUtils.async_timeout(2000, called).wait
+      end
+    end
+
+    it 'should survive navigation' do
       with_test_state do |page:, server:, **|
         page.expose_function('compute') do |a, b|
           a * b
         end
 
         page.goto(server.empty_page)
-        result = page.evaluate('async () => await compute(9, 4)')
+        result = page.evaluate('async () => await globalThis.compute(9, 4)')
         expect(result).to eq(36)
       end
     end
 
     it 'should await returned promise' do
-      pending 'Page.exposeFunction not implemented'
-
       with_test_state do |page:, **|
         page.expose_function('compute') do |a, b|
-          a * b
+          Async do
+            a * b
+          end
         end
 
-        result = page.evaluate('async () => await compute(3, 5)')
+        result = page.evaluate('async () => await globalThis.compute(3, 5)')
+        expect(result).to eq(15)
+      end
+    end
+
+    it 'should await returned if called from function' do
+      with_test_state do |page:, **|
+        page.expose_function('compute') do |a, b|
+          Async do
+            a * b
+          end
+        end
+
+        result = page.evaluate(<<~JS)
+          async () => {
+            const result = await globalThis.compute(3, 5);
+            return result;
+          }
+        JS
         expect(result).to eq(15)
       end
     end
 
     it 'should work on frames' do
-      pending 'Page.exposeFunction not implemented'
-
       with_test_state do |page:, server:, **|
         page.expose_function('compute') do |a, b|
-          a * b
+          Async do
+            a * b
+          end
         end
 
         page.goto("#{server.prefix}/frames/nested-frames.html")
+        frame = page.frames[1]
+        result = frame.evaluate('async () => await globalThis.compute(3, 5)')
+        expect(result).to eq(15)
+      end
+    end
+
+    it 'should work with loading frames' do
+      with_test_state do |page:, server:, **|
+        page.set_request_interception(true)
+        iframe_request = Async::Promise.new
+
+        page.on(:request) do |request|
+          if request.url.end_with?('/frames/frame.html')
+            iframe_request.resolve(request)
+          else
+            request.continue
+          end
+        end
+
+        nav_task = Async do
+          page.goto("#{server.prefix}/frames/one-frame.html", wait_until: 'networkidle0')
+        end
+
+        request = iframe_request.wait
+        page.expose_function('compute') do |a, b|
+          Async do
+            a * b
+          end
+        end
+        request.continue
+        nav_task.wait
 
         frame = page.frames[1]
-        result = frame.evaluate('async () => await compute(3, 5)')
+        result = frame.evaluate('async () => await globalThis.compute(3, 5)')
+        expect(result).to eq(15)
+      end
+    end
+
+    it 'should work on frames before navigation' do
+      with_test_state do |page:, server:, **|
+        page.goto("#{server.prefix}/frames/nested-frames.html")
+        page.expose_function('compute') do |a, b|
+          Async do
+            a * b
+          end
+        end
+
+        frame = page.frames[1]
+        result = frame.evaluate('async () => await globalThis.compute(3, 5)')
+        expect(result).to eq(15)
+      end
+    end
+
+    it 'should not throw when frames detach' do
+      with_test_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        attach_frame(page, 'frame1', server.empty_page)
+        page.expose_function('compute') do |a, b|
+          Async do
+            a * b
+          end
+        end
+        detach_frame(page, 'frame1')
+
+        result = page.evaluate('async () => await globalThis.compute(3, 5)')
         expect(result).to eq(15)
       end
     end
 
     it 'should work with complex objects' do
-      pending 'Page.exposeFunction not implemented'
-
       with_test_state do |page:, **|
         page.expose_function('complexObject') do |a, b|
-          { x: a['x'] + b['x'] }
+          { 'x' => a['x'] + b['x'] }
         end
 
-        result = page.evaluate("async () => await complexObject({x: 5}, {x: 2})")
+        result = page.evaluate("async () => await globalThis.complexObject({x: 5}, {x: 2})")
         expect(result).to eq({ 'x' => 7 })
+      end
+    end
+
+    it 'should fallback to default export when passed a module object' do
+      with_test_state do |page:, server:, **|
+        module_object = {
+          default: ->(a, b) { a * b }
+        }
+
+        page.goto(server.empty_page)
+        page.expose_function('compute', module_object)
+        result = page.evaluate('async () => await globalThis.compute(9, 4)')
+        expect(result).to eq(36)
+      end
+    end
+
+    it 'should be called once' do
+      with_test_state do |page:, server:, **|
+        page.goto("#{server.prefix}/frames/nested-frames.html")
+        calls = 0
+        page.expose_function('call') do
+          calls += 1
+        end
+
+        frame = page.frames[1]
+        frame.evaluate('async () => await globalThis.call()')
+        expect(calls).to eq(1)
       end
     end
   end
 
   describe 'Page.removeExposedFunction' do
     it 'should work' do
-      pending 'Page.removeExposedFunction not implemented'
-
       with_test_state do |page:, **|
         page.expose_function('compute') do |a, b|
           a * b
         end
 
-        result = page.evaluate('async () => await compute(9, 4)')
+        result = page.evaluate('async () => await globalThis.compute(9, 4)')
         expect(result).to eq(36)
 
         page.remove_exposed_function('compute')
 
         expect {
-          page.evaluate('async () => await compute(9, 4)')
-        }.to raise_error(/compute is not defined/)
+          page.evaluate('async () => await globalThis.compute(9, 4)')
+        }.to raise_error(/globalThis.compute is not a function/)
       end
     end
   end

@@ -201,6 +201,7 @@ See the [CLAUDE/](CLAUDE/) directory for detailed implementation guides:
 - **[Navigation Waiting](CLAUDE/navigation_waiting.md)** - waitForNavigation patterns
 - **[Frame Architecture](CLAUDE/frame_architecture.md)** - Parent-based frame hierarchy
 - **[FileChooser](CLAUDE/file_chooser.md)** - File upload and dialog handling (requires Firefox Nightly)
+- **[ExposeFunction](CLAUDE/expose_function_implementation.md)** - `exposeFunction` and `evaluateOnNewDocument` using BiDi script.message
 - **[Error Handling](CLAUDE/error_handling.md)** - Custom exception types
 
 ### Testing
