@@ -820,13 +820,9 @@ RSpec.describe 'Page' do
 
         page.remove_exposed_function('compute')
 
-        error = begin
+        expect {
           page.evaluate('async () => await globalThis.compute(9, 4)')
-          nil
-        rescue => e
-          e
-        end
-        expect(error).not_to be_nil
+        }.to raise_error(/globalThis.compute is not a function/)
       end
     end
   end
