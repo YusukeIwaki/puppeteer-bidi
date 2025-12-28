@@ -238,7 +238,7 @@ module Puppeteer
           end
 
           result = @apply.call(*args)
-          result = result.wait if result.respond_to?(:wait)
+          result = AsyncUtils.await(result)
         rescue StandardError => e
           if e.is_a?(ThrownValue)
             send_thrown_value(data_handle, e.value)
