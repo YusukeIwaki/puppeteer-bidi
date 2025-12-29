@@ -91,7 +91,7 @@ module Puppeteer
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
-        timeout_ms = ((timeout.nil? ? 30 : timeout) * 1000).to_i
+        timeout_ms = ((timeout || 30) * 1000).to_i
         AsyncUtils.async_timeout(timeout_ms, transport.connect).wait
 
         connection = Connection.new(transport)
@@ -110,7 +110,7 @@ module Puppeteer
       def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false)
         transport = Transport.new(ws_endpoint)
         ws_endpoint = transport.url
-        timeout_ms = ((timeout.nil? ? 30 : timeout) * 1000).to_i
+        timeout_ms = ((timeout || 30) * 1000).to_i
         AsyncUtils.async_timeout(timeout_ms, transport.connect).wait
         connection = Connection.new(transport)
 
@@ -253,7 +253,7 @@ module Puppeteer
       # @rbs return: BrowserTarget | PageTarget | FrameTarget -- Matching target
       def wait_for_target(timeout: nil, &predicate)
         predicate ||= ->(_target) { true }
-        timeout_ms = timeout.nil? ? 30_000 : timeout
+        timeout_ms = timeout || 30_000
         raise ArgumentError, 'timeout must be >= 0' if timeout_ms && timeout_ms.negative?
 
         if (target = find_target(predicate))

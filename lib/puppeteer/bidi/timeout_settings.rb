@@ -26,17 +26,12 @@ module Puppeteer
 
       # @rbs return: Numeric -- Default timeout in ms
       def timeout
-        return @default_timeout unless @default_timeout.nil?
-
-        DEFAULT_TIMEOUT
+        @default_timeout || DEFAULT_TIMEOUT
       end
 
       # @rbs return: Numeric -- Default navigation timeout in ms
       def navigation_timeout
-        return @default_navigation_timeout unless @default_navigation_timeout.nil?
-        return @default_timeout unless @default_timeout.nil?
-
-        DEFAULT_TIMEOUT
+        @default_navigation_timeout || @default_timeout || DEFAULT_TIMEOUT
       end
     end
   end

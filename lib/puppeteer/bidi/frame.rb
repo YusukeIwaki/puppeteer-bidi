@@ -397,7 +397,7 @@ module Puppeteer
       def wait_for_navigation(timeout: nil, wait_until: 'load', &block)
         assert_not_detached
 
-        navigation_timeout_ms = timeout.nil? ? page.timeout_settings.navigation_timeout : timeout
+        navigation_timeout_ms = timeout || page.timeout_settings.navigation_timeout
 
         # Normalize wait_until to array
         wait_until_array = wait_until.is_a?(Array) ? wait_until : [wait_until]
@@ -542,7 +542,7 @@ module Puppeteer
 
           navigation_response_for(navigation_obj)
         rescue Async::TimeoutError
-          raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{navigation_timeout_ms}ms exceeded"
+          raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{navigation_timeout_ms} ms exceeded"
         ensure
           # Clean up listeners
           @browsing_context.off(:navigation, &navigation_listener)

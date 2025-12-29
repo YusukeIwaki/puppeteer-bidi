@@ -424,8 +424,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should respect timeout' do
-      pending 'Page.waitForRequest not implemented'
-
       with_test_state do |page:, **|
         expect {
           page.wait_for_request('notexist', timeout: 1)
@@ -454,8 +452,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should respect timeout' do
-      pending 'Page.waitForResponse not implemented'
-
       with_test_state do |page:, **|
         expect {
           page.wait_for_response('notexist', timeout: 1)
@@ -505,8 +501,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should respect timeout' do
-      pending 'waitForNetworkIdle test needs refinement'
-
       with_test_state do |page:, server:, **|
         # Set up a route that never responds
         server.set_route('/hang') do |_req, _writer|
