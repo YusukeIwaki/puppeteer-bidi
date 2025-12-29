@@ -245,9 +245,9 @@ module Puppeteer
       # Navigate to a URL
       # @rbs url: String -- URL to navigate to
       # @rbs wait_until: String -- When to consider navigation complete ('load', 'domcontentloaded')
-      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs return: HTTPResponse? -- Response or nil
-      def goto(url, wait_until: 'load', timeout: 30000)
+      def goto(url, wait_until: 'load', timeout: nil)
         response = wait_for_navigation(timeout: timeout, wait_until: wait_until) do
           @browsing_context.navigate(url, wait: 'interactive').wait
         end
@@ -390,12 +390,14 @@ module Puppeteer
       end
 
       # Wait for navigation to complete
-      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs wait_until: String | Array[String] -- When to consider navigation complete
       # @rbs &block: (-> void)? -- Optional block to trigger navigation
       # @rbs return: HTTPResponse? -- Response or nil
-      def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
+      def wait_for_navigation(timeout: nil, wait_until: 'load', &block)
         assert_not_detached
+
+        navigation_timeout_ms = timeout.nil? ? page.timeout_settings.navigation_timeout : timeout
 
         # Normalize wait_until to array
         wait_until_array = wait_until.is_a?(Array) ? wait_until : [wait_until]
@@ -511,17 +513,28 @@ module Puppeteer
             concurrency = network_idle_events.include?('networkidle0') ? 0 : 2
 
             # Wait for both navigation and network idle in parallel using promise_all
-            navigation_result, _ = AsyncUtils.async_timeout(timeout, -> do
-              AsyncUtils.await_promise_all(
+            if navigation_timeout_ms == 0
+              navigation_result, _ = AsyncUtils.await_promise_all(
                 promise,
                 -> { page.wait_for_network_idle(idle_time: 500, timeout: timeout, concurrency: concurrency) }
               )
-            end).wait
+            else
+              navigation_result, _ = AsyncUtils.async_timeout(navigation_timeout_ms, -> do
+                AsyncUtils.await_promise_all(
+                  promise,
+                  -> { page.wait_for_network_idle(idle_time: 500, timeout: timeout, concurrency: concurrency) }
+                )
+              end).wait
+            end
 
             result = navigation_result
           else
             # Only wait for navigation
-            result = AsyncUtils.async_timeout(timeout, promise).wait
+            result = if navigation_timeout_ms == 0
+                       promise.wait
+                     else
+                       AsyncUtils.async_timeout(navigation_timeout_ms, promise).wait
+                     end
           end
 
           # Return HTTPResponse for full page navigation, nil for fragment/history
@@ -529,7 +542,7 @@ module Puppeteer
 
           navigation_response_for(navigation_obj)
         rescue Async::TimeoutError
-          raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
+          raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{navigation_timeout_ms}ms exceeded"
         ensure
           # Clean up listeners
           @browsing_context.off(:navigation, &navigation_listener)
