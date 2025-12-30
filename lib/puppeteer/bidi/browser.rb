@@ -91,7 +91,8 @@ module Puppeteer
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
-        AsyncUtils.async_timeout((timeout || 30) * 1000, transport.connect).wait
+        timeout_ms = ((timeout || 30) * 1000).to_i
+        AsyncUtils.async_timeout(timeout_ms, transport.connect).wait
 
         connection = Connection.new(transport)
 

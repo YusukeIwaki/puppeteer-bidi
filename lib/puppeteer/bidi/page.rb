@@ -11,8 +11,6 @@ module Puppeteer
     # Page represents a single page/tab in the browser
     # This is a high-level wrapper around Core::BrowsingContext
     class Page
-      DEFAULT_TIMEOUT = 30_000 #: Integer
-
       attr_reader :browsing_context #: Core::BrowsingContext
       attr_reader :browser_context #: BrowserContext
       attr_reader :timeout_settings #: TimeoutSettings
@@ -23,8 +21,9 @@ module Puppeteer
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
         @browsing_context = browsing_context
-        @timeout_settings = TimeoutSettings.new(DEFAULT_TIMEOUT)
+        @timeout_settings = TimeoutSettings.new
         @emitter = Core::EventEmitter.new
+        @file_chooser_waiters = []
         @request_interception_semaphore = Async::Semaphore.new(1)
         @request_handlers = begin
           ObjectSpace::WeakMap.new
@@ -108,11 +107,12 @@ module Puppeteer
       # Navigate to a URL
       # @rbs url: String -- URL to navigate to
       # @rbs wait_until: String -- When to consider navigation complete ('load', 'domcontentloaded')
+      # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs return: HTTPResponse? -- Main response
-      def goto(url, wait_until: 'load')
+      def goto(url, wait_until: 'load', timeout: nil)
         assert_not_closed
 
-        main_frame.goto(url, wait_until: wait_until)
+        main_frame.goto(url, wait_until: wait_until, timeout: timeout)
       end
 
       # Set page content
@@ -431,11 +431,11 @@ module Puppeteer
       end
 
       # Reloads the page.
-      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs wait_until: String | Array[String] -- When to consider navigation complete
       # @rbs ignore_cache: bool -- Whether to ignore the browser cache
       # @rbs return: HTTPResponse? -- Response or nil
-      def reload(timeout: 30000, wait_until: 'load', ignore_cache: false)
+      def reload(timeout: nil, wait_until: 'load', ignore_cache: false)
         assert_not_closed
 
         reload_options = {}
@@ -584,18 +584,45 @@ module Puppeteer
         @timeout_settings.set_default_timeout(timeout)
       end
 
+      # Set the default navigation timeout.
+      # @rbs timeout: Numeric -- Timeout in ms
+      # @rbs return: void
+      def set_default_navigation_timeout(timeout)
+        raise ArgumentError, 'timeout must be a non-negative number' unless timeout.is_a?(Numeric) && timeout >= 0
+
+        @timeout_settings.set_default_navigation_timeout(timeout)
+      end
+
       # Get the current default timeout in milliseconds.
       # @rbs return: Numeric -- Timeout in ms
       def default_timeout
         @timeout_settings.timeout
       end
 
+      # Get the current default navigation timeout in milliseconds.
+      # @rbs return: Numeric -- Navigation timeout in ms
+      def default_navigation_timeout
+        @timeout_settings.navigation_timeout
+      end
+
+      # Get the current default timeout in milliseconds.
+      # @rbs return: Numeric -- Timeout in ms
+      def get_default_timeout
+        default_timeout
+      end
+
+      # Get the current default navigation timeout in milliseconds.
+      # @rbs return: Numeric -- Navigation timeout in ms
+      def get_default_navigation_timeout
+        default_navigation_timeout
+      end
+
       # Wait for navigation to complete
-      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs wait_until: String -- When to consider navigation complete
       # @rbs &block: (-> void)? -- Optional block to trigger navigation
       # @rbs return: HTTPResponse? -- Response or nil
-      def wait_for_navigation(timeout: 30000, wait_until: 'load', &block)
+      def wait_for_navigation(timeout: nil, wait_until: 'load', &block)
         main_frame.wait_for_navigation(timeout: timeout, wait_until: wait_until, &block)
       end
 
@@ -607,7 +634,7 @@ module Puppeteer
       def wait_for_request(url_or_predicate, timeout: nil, &block)
         assert_not_closed
 
-        timeout_ms = timeout.nil? ? @timeout_settings.timeout : timeout
+        timeout_ms = timeout || @timeout_settings.timeout
         predicate = if url_or_predicate.is_a?(Proc)
                       url_or_predicate
                     else
@@ -620,9 +647,13 @@ module Puppeteer
 
           promise.resolve(request) unless promise.resolved?
         end
+        close_listener = proc do
+          promise.reject(PageClosedError.new) unless promise.resolved?
+        end
 
         begin
           on(:request, &listener)
+          @browsing_context.once(:closed, &close_listener)
           Async(&block).wait if block
 
           if timeout_ms == 0
@@ -630,8 +661,11 @@ module Puppeteer
           else
             AsyncUtils.async_timeout(timeout_ms, promise).wait
           end
+        rescue Async::TimeoutError
+          raise TimeoutError, "Timed out after waiting #{timeout_ms}ms"
         ensure
           off(:request, &listener)
+          @browsing_context.off(:closed, &close_listener)
         end
       end
 
@@ -643,7 +677,7 @@ module Puppeteer
       def wait_for_response(url_or_predicate, timeout: nil, &block)
         assert_not_closed
 
-        timeout_ms = timeout.nil? ? @timeout_settings.timeout : timeout
+        timeout_ms = timeout || @timeout_settings.timeout
         predicate = if url_or_predicate.is_a?(Proc)
                       url_or_predicate
                     else
@@ -656,9 +690,13 @@ module Puppeteer
 
           promise.resolve(response) unless promise.resolved?
         end
+        close_listener = proc do
+          promise.reject(PageClosedError.new) unless promise.resolved?
+        end
 
         begin
           on(:response, &listener)
+          @browsing_context.once(:closed, &close_listener)
           Async(&block).wait if block
 
           if timeout_ms == 0
@@ -666,8 +704,11 @@ module Puppeteer
           else
             AsyncUtils.async_timeout(timeout_ms, promise).wait
           end
+        rescue Async::TimeoutError
+          raise TimeoutError, "Timed out after waiting #{timeout_ms}ms"
         ensure
           off(:response, &listener)
+          @browsing_context.off(:closed, &close_listener)
         end
       end
 
@@ -793,7 +834,7 @@ module Puppeteer
       end
 
       # Wait for a file chooser to be opened
-      # @rbs timeout: Numeric? -- Wait timeout in ms
+      # @rbs timeout: Numeric? -- Wait timeout in ms (0 for infinite)
       # @rbs &block: (-> void)? -- Optional block to trigger file chooser
       # @rbs return: FileChooser -- File chooser instance
       def wait_for_file_chooser(timeout: nil, &block)
@@ -803,6 +844,7 @@ module Puppeteer
         effective_timeout = timeout || @timeout_settings.timeout
 
         promise = Async::Promise.new
+        @file_chooser_waiters << promise
 
         # Listener for file dialog opened event
         file_dialog_listener = lambda do |info|
@@ -822,38 +864,44 @@ module Puppeteer
           multiple = info['multiple'] || false
 
           file_chooser = FileChooser.new(element, multiple)
-          promise.resolve(file_chooser)
+          @file_chooser_waiters.each do |waiter|
+            waiter.resolve(file_chooser) unless waiter.resolved?
+          end
+          @file_chooser_waiters.clear
         end
 
         begin
           # Register listener before executing the block
-          @browsing_context.on(:filedialogopened, &file_dialog_listener)
+          @browsing_context.once(:filedialogopened, &file_dialog_listener)
 
           # Execute the block that triggers the file chooser
           Async(&block).wait if block
 
           # Wait for file chooser with timeout
-          if timeout == 0
+          if effective_timeout == 0
             promise.wait
           else
             AsyncUtils.async_timeout(effective_timeout, promise).wait
           end
         rescue Async::TimeoutError
-          raise TimeoutError, "Waiting for file chooser timed out after #{effective_timeout}ms"
+          @file_chooser_waiters.delete(promise)
+          raise TimeoutError, "Waiting for `FileChooser` failed: #{effective_timeout}ms exceeded"
         ensure
           @browsing_context.off(:filedialogopened, &file_dialog_listener)
+          @file_chooser_waiters.delete(promise)
         end
       end
 
       # Wait for network to be idle (no more than concurrency connections for idle_time)
       # Based on Puppeteer's waitForNetworkIdle implementation
       # @rbs idle_time: Numeric -- Time to wait for idle in ms
-      # @rbs timeout: Numeric -- Wait timeout in ms
+      # @rbs timeout: Numeric? -- Wait timeout in ms (0 for infinite)
       # @rbs concurrency: Integer -- Max allowed inflight requests
       # @rbs return: void
-      def wait_for_network_idle(idle_time: 500, timeout: 30000, concurrency: 0)
+      def wait_for_network_idle(idle_time: 500, timeout: nil, concurrency: 0)
         assert_not_closed
 
+        timeout_ms = timeout || @timeout_settings.timeout
         promise = Async::Promise.new
         idle_timer = nil
         idle_timer_mutex = Thread::Mutex.new
@@ -902,7 +950,13 @@ module Puppeteer
           end
 
           # Wait with timeout
-          AsyncUtils.async_timeout(timeout, promise).wait
+          if timeout_ms == 0
+            promise.wait
+          else
+            AsyncUtils.async_timeout(timeout_ms, promise).wait
+          end
+        rescue Async::TimeoutError
+          raise TimeoutError, "Timed out after waiting #{timeout_ms}ms"
         ensure
           # Clean up
           idle_timer_mutex.synchronize do
@@ -986,6 +1040,7 @@ module Puppeteer
 
       alias viewport= set_viewport
       alias default_timeout= set_default_timeout
+      alias default_navigation_timeout= set_default_navigation_timeout
 
       # Set JavaScript enabled state
       # @rbs enabled: bool -- Whether JavaScript is enabled
@@ -1059,17 +1114,17 @@ module Puppeteer
 
       # Navigate backward in history
       # @rbs wait_until: String -- When to consider navigation complete
-      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs return: HTTPResponse? -- Response or nil
-      def go_back(wait_until: 'load', timeout: 30000)
+      def go_back(wait_until: 'load', timeout: nil)
         go(-1, wait_until: wait_until, timeout: timeout)
       end
 
       # Navigate forward in history
       # @rbs wait_until: String -- When to consider navigation complete
-      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs return: HTTPResponse? -- Response or nil
-      def go_forward(wait_until: 'load', timeout: 30000)
+      def go_forward(wait_until: 'load', timeout: nil)
         go(1, wait_until: wait_until, timeout: timeout)
       end
 
@@ -1082,11 +1137,12 @@ module Puppeteer
       # completed if we don't observe a navigation request shortly after start.
       # @rbs delta: Integer -- Steps to go back (negative) or forward (positive)
       # @rbs wait_until: String -- When to consider navigation complete
-      # @rbs timeout: Numeric -- Navigation timeout in ms
+      # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs return: HTTPResponse? -- Response or nil
       def go(delta, wait_until:, timeout:)
         assert_not_closed
 
+        timeout_ms = timeout || @timeout_settings.navigation_timeout
         load_event = wait_until == 'domcontentloaded' ? :dom_content_loaded : :load
 
         started_promise = Async::Promise.new
@@ -1147,7 +1203,7 @@ module Puppeteer
 
         begin
           # If nothing starts soon, assume we're at the history edge.
-          start_timeout_ms = [timeout.to_i, 500].min
+          start_timeout_ms = timeout_ms.positive? ? [timeout_ms.to_i, 500].min : 500
           start_type = AsyncUtils.async_timeout(start_timeout_ms, started_promise).wait
         rescue Async::TimeoutError
           return nil
@@ -1162,9 +1218,13 @@ module Puppeteer
             AsyncUtils.async_timeout(200, navigation_request_promise).wait
 
             begin
-              AsyncUtils.async_timeout(timeout, load_promise).wait
+              if timeout_ms == 0
+                load_promise.wait
+              else
+                AsyncUtils.async_timeout(timeout_ms, load_promise).wait
+              end
             rescue Async::TimeoutError
-              raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout}ms exceeded"
+              raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout_ms} ms exceeded"
             end
 
             HTTPResponse.for_bfcache(url: @browsing_context.url)

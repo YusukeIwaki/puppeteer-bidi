@@ -211,9 +211,9 @@ NODE_OWNER_ALIASES = {
   "HTTPResponse" => "HTTPResponse",
   "filechooser" => "FileChooser",
   "fileChooser" => "FileChooser",
-  "FileChooser" => "FileChooser",
-  "target" => "Target",
-  "Target" => "Target"
+  "FileChooser" => "FileChooser"
+  # Note: Target is excluded from coverage tracking due to significant
+  # implementation differences between Node.js and Ruby versions.
 }.freeze
 
 def canonical_node_owner(owner)
@@ -232,8 +232,9 @@ RUBY_OWNER_CONSTANTS = {
   "Mouse" => "Puppeteer::Bidi::Mouse",
   "HTTPRequest" => "Puppeteer::Bidi::HTTPRequest",
   "HTTPResponse" => "Puppeteer::Bidi::HTTPResponse",
-  "FileChooser" => "Puppeteer::Bidi::FileChooser",
-  "Target" => "Puppeteer::Bidi::Target"
+  "FileChooser" => "Puppeteer::Bidi::FileChooser"
+  # Note: Target is excluded from coverage tracking due to significant
+  # implementation differences between Node.js and Ruby versions.
 }.freeze
 
 def safe_constantize(name)

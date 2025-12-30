@@ -28,29 +28,45 @@ module Puppeteer
       # @yield [async_task] Execute a task within the timeout, optionally receiving Async::Task
       # @return [Async::Task] Async task that resolves/rejects once the operation completes
       def async_timeout(timeout_ms, task = nil, &block)
-        timeout_seconds = timeout_ms / 1000.0
-
         if task
-          Async do |async_task|
-            async_task.with_timeout(timeout_seconds) do
+          return Async do |async_task|
+            if timeout_ms == 0
               if task.is_a?(Proc)
                 args = task.arity.positive? ? [async_task] : []
                 task.call(*args)
               else
                 await(task)
               end
+            else
+              timeout_seconds = timeout_ms / 1000.0
+              async_task.with_timeout(timeout_seconds) do
+                if task.is_a?(Proc)
+                  args = task.arity.positive? ? [async_task] : []
+                  task.call(*args)
+                else
+                  await(task)
+                end
+              end
             end
           end
-        elsif block
-          Async do |async_task|
-            async_task.with_timeout(timeout_seconds) do
+        end
+
+        if block
+          return Async do |async_task|
+            if timeout_ms == 0
               args = block.arity.positive? ? [async_task] : []
               await(block.call(*args))
+            else
+              timeout_seconds = timeout_ms / 1000.0
+              async_task.with_timeout(timeout_seconds) do
+                args = block.arity.positive? ? [async_task] : []
+                await(block.call(*args))
+              end
             end
           end
-        else
-          raise ArgumentError, 'AsyncUtils.async_timeout requires a task or block'
         end
+
+        raise ArgumentError, 'AsyncUtils.async_timeout requires a task or block'
       end
 
       def promise_all(*tasks)
