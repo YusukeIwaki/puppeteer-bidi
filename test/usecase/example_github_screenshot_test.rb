@@ -4,7 +4,7 @@ require 'chunky_png'
 
 class ExampleGithubScreenshotTest < Minitest::Test
   def test_take_screenshot_using_block
-    Puppeteer::Bidi.launch(headless: false) do |browser|
+    Puppeteer::Bidi.launch(headless: true) do |browser|
       page = browser.new_page
       page.goto('https://github.com/YusukeIwaki')
 
@@ -20,7 +20,7 @@ class ExampleGithubScreenshotTest < Minitest::Test
   end
 
   def test_take_screenshot_using_instance
-    browser = Puppeteer::Bidi.launch_browser_instance(headless: false)
+    browser = Puppeteer::Bidi.launch_browser_instance(headless: true)
 
     # works even outside of Sync block and separate thread!
     thread = Thread.new do
