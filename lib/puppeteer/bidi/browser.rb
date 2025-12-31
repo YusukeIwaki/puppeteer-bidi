@@ -64,6 +64,8 @@ module Puppeteer
         @browser_contexts = {
           default_user_context.id => @default_browser_context
         }
+
+        register_exit_cleanup if @launcher
       end
 
       # Launch a new Firefox browser instance
@@ -341,6 +343,19 @@ module Puppeteer
       end
 
       private
+
+      # @rbs return: void
+      def register_exit_cleanup
+        at_exit do
+          next if @closed || @disconnected
+
+          begin
+            @launcher&.kill
+          rescue StandardError => e
+            debug_error(e)
+          end
+        end
+      end
 
       def debug_error(error)
         return unless ENV['DEBUG_BIDI_COMMAND']
