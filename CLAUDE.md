@@ -186,6 +186,7 @@ See the [CLAUDE/](CLAUDE/) directory for detailed implementation guides:
 
 - **[Two-Layer Architecture](CLAUDE/two_layer_architecture.md)** - Core vs Upper layer, async patterns
 - **[Async Programming](CLAUDE/async_programming.md)** - Fiber-based concurrency with socketry/async
+- **[ReactorRunner](CLAUDE/reactor_runner.md)** - Using browser outside Sync blocks (at_exit, etc.)
 - **[Porting Puppeteer](CLAUDE/porting_puppeteer.md)** - Best practices for implementing features
 - **[Core Layer Gotchas](CLAUDE/core_layer_gotchas.md)** - EventEmitter/Disposable pitfalls, @disposed conflicts
 
