@@ -25,7 +25,7 @@ The `at_exit` hook runs after the Sync block has finished, so `browser.close` wo
 
 1. **Background Thread with Reactor**: ReactorRunner spawns a new thread that runs `Sync do ... end` with an `Async::Queue` for receiving jobs
 2. **Proxy Pattern**: Returns a `Proxy` object that wraps the real Browser and forwards all method calls through the ReactorRunner
-3. **Automatic Detection**: `launch_browser_instance` and `connect_to_browser_instance` check `Async::Task.current?` to decide whether to use ReactorRunner
+3. **Automatic Detection**: `launch_browser_instance` and `connect_to_browser_instance` check `Async::Task.current` to decide whether to use ReactorRunner
 
 ### Architecture
 
@@ -104,7 +104,7 @@ end
 1. **Thread Safety**: `Async::Queue` handles cross-thread communication safely
 2. **Proxyable Check**: Only `Puppeteer::Bidi::*` objects (excluding Core layer) are wrapped in Proxy
 3. **Error Handling**: Errors in reactor are propagated back to calling thread via `Async::Promise`
-4. **Type Annotations**: Return type is `Browser | ReactorRunner::Proxy` - both behave identically
+4. **Type Annotations**: Return type is `Browser` (Proxy is an internal detail)
 
 ### Reference
 

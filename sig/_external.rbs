@@ -11,7 +11,7 @@ module Async
   def self.call: [T] () { () -> T } -> Task[T]
 
   class Task[T]
-    def self.current?: () -> bool
+    def self.current: () -> Task[untyped]?
     def wait: () -> T
     def sleep: (Numeric) -> void
     def stop: () -> void
@@ -141,4 +141,3 @@ class SimpleDelegator
   def __getobj__: () -> untyped
   def __setobj__: (untyped) -> untyped
 end
-

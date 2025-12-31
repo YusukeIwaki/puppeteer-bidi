@@ -76,10 +76,10 @@ module Puppeteer
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
-    # @rbs return: Browser | ReactorRunner::Proxy -- Browser instance or proxy
+    # @rbs return: Browser -- Browser instance
     def self.launch_browser_instance(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
                                      accept_insecure_certs: false)
-      if Async::Task.current?
+      if async_context?
         Browser.launch(
           executable_path: executable_path,
           user_data_dir: user_data_dir,
@@ -105,7 +105,9 @@ module Puppeteer
           runner.close
           raise
         end
-        ReactorRunner::Proxy.new(runner, browser, owns_runner: true)
+        # @type var proxy: Browser
+        proxy = ReactorRunner::Proxy.new(runner, browser, owns_runner: true)
+        proxy
       end
     end
 
@@ -135,9 +137,9 @@ module Puppeteer
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
     # @rbs timeout: Numeric? -- Connect timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
-    # @rbs return: Browser | ReactorRunner::Proxy -- Browser instance or proxy
+    # @rbs return: Browser -- Browser instance
     def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false)
-      if Async::Task.current?
+      if async_context?
         Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
       else
         runner = ReactorRunner.new
@@ -149,8 +151,19 @@ module Puppeteer
           runner.close
           raise
         end
-        ReactorRunner::Proxy.new(runner, browser, owns_runner: true)
+        # @type var proxy: Browser
+        proxy = ReactorRunner::Proxy.new(runner, browser, owns_runner: true)
+        proxy
       end
     end
+
+    # @rbs return: bool -- Whether we're inside an Async task
+    def self.async_context?
+      task = Async::Task.current
+      !task.nil?
+    rescue RuntimeError, NoMethodError
+      false
+    end
+    private_class_method :async_context?
   end
 end
