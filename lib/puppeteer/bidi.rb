@@ -5,6 +5,7 @@ require "puppeteer/bidi/version"
 require "puppeteer/bidi/errors"
 
 require "puppeteer/bidi/async_utils"
+require "puppeteer/bidi/reactor_runner"
 require "puppeteer/bidi/timeout_settings"
 require "puppeteer/bidi/task_manager"
 require "puppeteer/bidi/serializer"
@@ -75,17 +76,37 @@ module Puppeteer
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
-    # @rbs return: Browser -- Browser instance (if no block given)
+    # @rbs return: Browser | ReactorRunner::Proxy -- Browser instance or proxy
     def self.launch_browser_instance(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
                                      accept_insecure_certs: false)
-      Browser.launch(
-        executable_path: executable_path,
-        user_data_dir: user_data_dir,
-        headless: headless,
-        args: args,
-        timeout: timeout,
-        accept_insecure_certs: accept_insecure_certs
-      )
+      if Async::Task.current?
+        Browser.launch(
+          executable_path: executable_path,
+          user_data_dir: user_data_dir,
+          headless: headless,
+          args: args,
+          timeout: timeout,
+          accept_insecure_certs: accept_insecure_certs
+        )
+      else
+        runner = ReactorRunner.new
+        begin
+          browser = runner.sync do
+            Browser.launch(
+              executable_path: executable_path,
+              user_data_dir: user_data_dir,
+              headless: headless,
+              args: args,
+              timeout: timeout,
+              accept_insecure_certs: accept_insecure_certs
+            )
+          end
+        rescue StandardError
+          runner.close
+          raise
+        end
+        ReactorRunner::Proxy.new(runner, browser, owns_runner: true)
+      end
     end
 
     # Connect to an existing browser instance
@@ -114,9 +135,22 @@ module Puppeteer
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
     # @rbs timeout: Numeric? -- Connect timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
-    # @rbs return: Browser -- Browser instance
+    # @rbs return: Browser | ReactorRunner::Proxy -- Browser instance or proxy
     def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false)
-      Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
+      if Async::Task.current?
+        Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
+      else
+        runner = ReactorRunner.new
+        begin
+          browser = runner.sync do
+            Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
+          end
+        rescue StandardError
+          runner.close
+          raise
+        end
+        ReactorRunner::Proxy.new(runner, browser, owns_runner: true)
+      end
     end
   end
 end

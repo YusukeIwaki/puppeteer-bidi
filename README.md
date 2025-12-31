@@ -78,9 +78,13 @@ Puppeteer::Bidi.launch(
 ### Connect to an existing browser
 
 ```ruby
-browser = Puppeteer::Bidi.launch_browser_instance(headless: true)
-ws_endpoint = browser.ws_endpoint
-browser.disconnect
+ws_endpoint = nil
+
+Sync do
+  browser = Puppeteer::Bidi.launch_browser_instance(headless: true)
+  ws_endpoint = browser.ws_endpoint
+  browser.disconnect
+end
 
 Puppeteer::Bidi.connect(ws_endpoint) do |session|
   puts "Reconnected to browser"

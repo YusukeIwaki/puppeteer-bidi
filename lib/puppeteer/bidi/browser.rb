@@ -92,7 +92,7 @@ module Puppeteer
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
         timeout_ms = ((timeout || 30) * 1000).to_i
-        AsyncUtils.async_timeout(timeout_ms, transport.connect).wait
+        AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
 
         connection = Connection.new(transport)
 
@@ -111,7 +111,7 @@ module Puppeteer
         transport = Transport.new(ws_endpoint)
         ws_endpoint = transport.url
         timeout_ms = ((timeout || 30) * 1000).to_i
-        AsyncUtils.async_timeout(timeout_ms, transport.connect).wait
+        AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
         connection = Connection.new(transport)
 
         # Verify that this endpoint speaks WebDriver BiDi (and is ready) before creating a new session.
