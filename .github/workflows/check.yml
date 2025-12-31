@@ -56,23 +56,13 @@ jobs:
         run: git diff --exit-code API_COVERAGE.md
 
   rspec:
-    name: RSpec (${{ matrix.os }} / Ruby ${{ matrix.ruby-version }})
-    runs-on: ${{ matrix.os }}
+    name: RSpec (${{ matrix.ruby-version }})
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            ruby-version: "3.2"
-          - os: ubuntu-latest
-            ruby-version: "3.3"
-          - os: ubuntu-latest
-            ruby-version: "3.4"
-          - os: ubuntu-latest
-            ruby-version: "4.0"
-          - os: macos-latest
-            ruby-version: "4.0"
+        ruby-version: ["3.2", "3.3", "3.4"]
 
     steps:
       - uses: actions/checkout@v4
@@ -88,44 +78,105 @@ jobs:
         with:
           firefox-version: latest-nightly
 
+      - name: Verify Firefox installation
+        run: firefox --version
+
+      - name: Run unit tests
+        run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
+
+      - name: Run integration tests
+        run: FIREFOX_PATH=`which firefox` bundle exec rspec spec/integration/
+        env:
+          HEADLESS: true
+
+  rspec_ruby4_ubuntu:
+    name: RSpec (ubuntu / Ruby 4.0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+
+      - name: Setup Firefox
+        uses: browser-actions/setup-firefox@latest
+        with:
+          firefox-version: latest-nightly
+
+      - name: Verify Firefox installation
+        run: firefox --version
+
+      - name: Run unit tests
+        run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
+
+      - name: Run usecase tests (headless)
+        run: bundle exec rake test
+
+      - name: Run integration tests (headless)
+        run: bundle exec rspec spec/integration/
+        env:
+          HEADLESS: true
+
+      - name: Run integration tests (headful, xvfb)
+        run: xvfb-run --server-args="-screen 0 1024x768x24" bundle exec rspec spec/integration/
+        env:
+          HEADLESS: "false"
+
+  rspec_ruby4_macos:
+    name: RSpec (macos / Ruby 4.0+)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+
+      - name: Setup Firefox
+        uses: browser-actions/setup-firefox@latest
+        with:
+          firefox-version: latest-nightly
+
       - name: Determine Firefox path
         id: firefox
         run: |
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            if [ -n "${RUNNER_TOOL_CACHE:-}" ]; then
-              nightly_bin="$(find "$RUNNER_TOOL_CACHE/firefox/latest-nightly" -path "*/Contents/MacOS/firefox" -print -quit 2>/dev/null)"
-              if [ -n "$nightly_bin" ] && [ -x "$nightly_bin" ]; then
-                echo "path=$nightly_bin" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-            fi
-            if [ -x "/Applications/Firefox Nightly.app/Contents/MacOS/firefox" ]; then
-              echo "path=/Applications/Firefox Nightly.app/Contents/MacOS/firefox" >> "$GITHUB_OUTPUT"
+          if [ -n "${RUNNER_TOOL_CACHE:-}" ]; then
+            nightly_bin="$(find "$RUNNER_TOOL_CACHE/firefox/latest-nightly" -path "*/Contents/MacOS/firefox" -print -quit 2>/dev/null)"
+            if [ -n "$nightly_bin" ] && [ -x "$nightly_bin" ]; then
+              echo "path=$nightly_bin" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            if command -v firefox >/dev/null 2>&1; then
-              firefox_bin="$(command -v firefox)"
-              case "$firefox_bin" in
-                *"Firefox Nightly.app"*|*"latest-nightly"*)
-                  echo "path=$firefox_bin" >> "$GITHUB_OUTPUT"
-                  exit 0
-                  ;;
-              esac
-              if "$firefox_bin" --version | grep -qiE "nightly|a1"; then
-                echo "path=$firefox_bin" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-            fi
-            echo "Firefox Nightly binary not found on macOS runner" >&2
-            exit 1
           fi
 
-          if command -v firefox >/dev/null 2>&1; then
-            echo "path=$(command -v firefox)" >> "$GITHUB_OUTPUT"
+          if [ -x "/Applications/Firefox Nightly.app/Contents/MacOS/firefox" ]; then
+            echo "path=/Applications/Firefox Nightly.app/Contents/MacOS/firefox" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Firefox binary not found" >&2
+          if command -v firefox >/dev/null 2>&1; then
+            firefox_bin="$(command -v firefox)"
+            case "$firefox_bin" in
+              *"Firefox Nightly.app"*|*"latest-nightly"*)
+                echo "path=$firefox_bin" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+            esac
+            if "$firefox_bin" --version | grep -qiE "nightly|a1"; then
+              echo "path=$firefox_bin" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "Firefox Nightly binary not found on macOS runner" >&2
           exit 1
 
       - name: Verify Firefox installation
@@ -134,21 +185,16 @@ jobs:
       - name: Run unit tests
         run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
 
-      - name: Run integration tests
+      - name: Run usecase tests (headless)
+        run: bundle exec rake test
+
+      - name: Run integration tests (headless)
         run: bundle exec rspec spec/integration/
         env:
           HEADLESS: true
           FIREFOX_PATH: ${{ steps.firefox.outputs.path }}
 
-      - name: Run integration tests (headful, xvfb)
-        if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run --server-args="-screen 0 1024x768x24" bundle exec rspec spec/integration/
-        env:
-          HEADLESS: "false"
-          FIREFOX_PATH: ${{ steps.firefox.outputs.path }}
-
       - name: Run integration tests (headful)
-        if: matrix.os == 'macos-latest'
         run: bundle exec rspec spec/integration/
         env:
           HEADLESS: "false"
