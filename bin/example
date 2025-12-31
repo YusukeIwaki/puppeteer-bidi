@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "puppeteer/bidi"
+
+browser = Puppeteer::Bidi.launch_browser_instance(headless: true)
+
+at_exit { browser.close }
+
+Sync do
+  page = browser.new_page
+  page.goto("https://example.com")
+  puts page.content
+end
