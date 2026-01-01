@@ -23,7 +23,7 @@ The `at_exit` hook runs after the Sync block has finished, so `browser.close` wo
 
 ### How It Works
 
-1. **Background Thread with Reactor**: ReactorRunner spawns a new thread that runs `Sync do ... end` with an `Async::Queue` for receiving jobs
+1. **Background Thread with Reactor**: ReactorRunner uses `Async::Actor` to run a dedicated `Sync do ... end` reactor in a background thread
 2. **Proxy Pattern**: Returns a `Proxy` object that wraps the real Browser and forwards all method calls through the ReactorRunner
 3. **Automatic Detection**: `launch_browser_instance` and `connect_to_browser_instance` check `Async::Task.current` to decide whether to use ReactorRunner
 
@@ -52,8 +52,8 @@ Main Thread                     Background Thread (ReactorRunner)
 
 #### ReactorRunner
 
-- Creates background thread with `Sync` reactor
-- Uses `Async::Queue` to receive jobs from other threads
+- Creates background thread with `Sync` reactor via `Async::Actor`
+- Uses `Async::Actor`'s queueing to receive jobs from other threads and a mutex to serialize calls
 - `sync(&block)` method executes block in reactor and returns result
 - Handles proper cleanup when closed
 
