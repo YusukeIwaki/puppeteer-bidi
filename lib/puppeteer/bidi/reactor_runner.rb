@@ -2,8 +2,7 @@
 # rbs_inline: enabled
 
 require "async"
-require "async/promise"
-require "async/queue"
+require "async/actor"
 require "delegate"
 require "thread"
 
@@ -11,6 +10,27 @@ module Puppeteer
   module Bidi
     # Runs a dedicated Async reactor in a background thread and proxies calls into it.
     class ReactorRunner
+      class Actor < Async::Actor::Proxy
+        attr_reader :thread
+
+        def close
+          return if @queue.closed?
+
+          @queue.close
+          @thread.join unless ::Thread.current == @thread
+        end
+
+        def closed?
+          @queue.closed?
+        end
+      end
+
+      class Executor
+        def run(&block)
+          block.call
+        end
+      end
+
       class Proxy < SimpleDelegator
         # @rbs runner: ReactorRunner -- Reactor runner
         # @rbs target: untyped -- Target object to proxy
@@ -78,21 +98,8 @@ module Puppeteer
 
       # @rbs return: void
       def initialize
-        @queue = Async::Queue.new
-        @ready = Queue.new
-        @closed = false
-        @thread = Thread.new do
-          Sync do |task|
-            @ready << true
-            @queue.async(parent: task) do |_async_task, job|
-              job.call
-            end
-          ensure
-            @closed = true
-          end
-        end
-
-        @ready.pop
+        @actor = Actor.new(Executor.new)
+        @mutex = Thread::Mutex.new
       end
 
       # @rbs &block: () -> untyped
@@ -101,36 +108,20 @@ module Puppeteer
         return block.call if runner_thread?
         raise Error, "ReactorRunner is closed" if closed?
 
-        promise = Async::Promise.new
-        job = lambda do
-          begin
-            promise.resolve(block.call)
-          rescue => e
-            promise.reject(e)
-          end
-        end
-
-        begin
-          @queue << job
-        rescue Async::Queue::ClosedError
-          raise Error, "ReactorRunner is closed"
-        end
-
-        promise.wait
+        @mutex.synchronize { @actor.run(&block) }
+      rescue ClosedQueueError
+        raise Error, "ReactorRunner is closed"
       end
 
       # @rbs return: void
       def close
         return if closed?
-
-        @closed = true
-        @queue.close
-        @thread.join unless runner_thread?
+        @actor.close
       end
 
       # @rbs return: bool
       def closed?
-        @closed
+        @actor.closed?
       end
 
       # @rbs value: untyped
@@ -165,7 +156,7 @@ module Puppeteer
       private
 
       def runner_thread?
-        Thread.current == @thread
+        Thread.current == @actor.thread
       end
 
       def proxyable?(value)
