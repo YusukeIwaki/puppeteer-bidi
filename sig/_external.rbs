@@ -33,6 +33,7 @@ module Async
     def resolve: (T) -> void
     def reject: (Exception) -> void
     def resolved?: () -> bool
+    def value: () -> T?
   end
 
   class TimeoutError < StandardError
