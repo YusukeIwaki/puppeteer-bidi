@@ -33,8 +33,6 @@ module Async
     def resolve: (T) -> void
     def reject: (Exception) -> void
     def resolved?: () -> bool
-    def fulfill: [U] () { () -> U } -> U
-    def self.fulfill: [U] (Promise[U]?) { () -> U } -> U
   end
 
   class TimeoutError < StandardError
@@ -48,13 +46,6 @@ module Async
     def async: () { () -> untyped } -> void
     def wait: () -> void
     def stop: () -> void
-  end
-
-  module Actor
-    def self.new: (untyped) -> Proxy
-
-    class Proxy < BasicObject
-    end
   end
 
   module HTTP
