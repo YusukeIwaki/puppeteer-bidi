@@ -34,6 +34,7 @@ module Async
     def reject: (Exception) -> void
     def resolved?: () -> bool
     def value: () -> T?
+    def self.fulfill: [U] (Promise[U]) { () -> U } -> U
   end
 
   class TimeoutError < StandardError

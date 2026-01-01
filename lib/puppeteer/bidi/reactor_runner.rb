@@ -3,7 +3,6 @@
 
 require "async"
 require "async/promise"
-require "async/queue"
 require "delegate"
 require "thread"
 
@@ -11,6 +10,18 @@ module Puppeteer
   module Bidi
     # Runs a dedicated Async reactor in a background thread and proxies calls into it.
     class ReactorRunner
+      class Finalizer
+        def initialize(queue, thread)
+          @queue = queue
+          @thread = thread
+        end
+
+        def call(_id)
+          @queue.close
+          @thread.join unless ::Thread.current == @thread
+        end
+      end
+
       class Proxy < SimpleDelegator
         # @rbs runner: ReactorRunner -- Reactor runner
         # @rbs target: untyped -- Target object to proxy
@@ -78,20 +89,27 @@ module Puppeteer
 
       # @rbs return: void
       def initialize
-        @queue = Async::Queue.new
+        @queue = Thread::Queue.new
         @ready = Queue.new
         @closed = false
         @thread = Thread.new do
-          Sync do |task|
-            @ready << true
-            @queue.async(parent: task) do |_async_task, job|
-              job.call
+          begin
+            Sync do |task|
+              @ready << true
+              while (job = @queue.pop)
+                task.async do
+                  job.call
+                end
+              end
             end
+          rescue ClosedQueueError
+            # Queue closed; exit the reactor loop.
           ensure
             @closed = true
           end
         end
 
+        ObjectSpace.define_finalizer(self, Finalizer.new(@queue, @thread))
         @ready.pop
       end
 
@@ -103,16 +121,12 @@ module Puppeteer
 
         promise = Async::Promise.new
         job = lambda do
-          begin
-            promise.resolve(block.call)
-          rescue => e
-            promise.reject(e)
-          end
+          Async::Promise.fulfill(promise, &block)
         end
 
         begin
           @queue << job
-        rescue Async::Queue::ClosedError
+        rescue ClosedQueueError
           raise Error, "ReactorRunner is closed"
         end
 
