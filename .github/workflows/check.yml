@@ -114,6 +114,9 @@ jobs:
       - name: Run unit tests
         run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
 
+      - name: Run usecase tests (headless)
+        run: bundle exec rake test
+
       - name: Run integration tests (headless)
         run: bundle exec rspec spec/integration/
         env:
@@ -181,6 +184,9 @@ jobs:
 
       - name: Run unit tests
         run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
+
+      - name: Run usecase tests (headless)
+        run: bundle exec rake test
 
       - name: Run integration tests (headless)
         run: bundle exec rspec spec/integration/
