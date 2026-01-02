@@ -130,18 +130,7 @@ module Puppeteer
           raise Error, "ReactorRunner is closed"
         end
 
-        # Ruby 4.0: Async::Promise#wait can wake spuriously; retry until resolved.
-        loop do
-          begin
-            return promise.wait
-          rescue TypeError => e
-            raise unless e.message == "exception class/object expected"
-            next unless promise.resolved?
-            value = promise.value
-            raise value if value.is_a?(Exception)
-            return value
-          end
-        end
+        promise.wait
       end
 
       # @rbs return: void
