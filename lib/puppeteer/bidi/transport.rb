@@ -101,7 +101,7 @@ module Puppeteer
           next if message.nil?
 
           Async do
-            data = JSON.parse(message)
+            data = JSON.parse(message.to_str)
             debug_print_receive(data)
             @on_message&.call(data)
           rescue JSON::ParserError => e
