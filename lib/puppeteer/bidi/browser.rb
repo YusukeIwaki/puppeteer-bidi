@@ -64,6 +64,8 @@ module Puppeteer
         @browser_contexts = {
           default_user_context.id => @default_browser_context
         }
+
+        register_exit_cleanup if @launcher
       end
 
       # Launch a new Firefox browser instance
@@ -92,7 +94,7 @@ module Puppeteer
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
         timeout_ms = ((timeout || 30) * 1000).to_i
-        AsyncUtils.async_timeout(timeout_ms, transport.connect).wait
+        AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
 
         connection = Connection.new(transport)
 
@@ -111,7 +113,7 @@ module Puppeteer
         transport = Transport.new(ws_endpoint)
         ws_endpoint = transport.url
         timeout_ms = ((timeout || 30) * 1000).to_i
-        AsyncUtils.async_timeout(timeout_ms, transport.connect).wait
+        AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
         connection = Connection.new(transport)
 
         # Verify that this endpoint speaks WebDriver BiDi (and is ready) before creating a new session.
@@ -341,6 +343,19 @@ module Puppeteer
       end
 
       private
+
+      # @rbs return: void
+      def register_exit_cleanup
+        at_exit do
+          next if @closed || @disconnected
+
+          begin
+            @launcher&.kill
+          rescue StandardError => e
+            debug_error(e)
+          end
+        end
+      end
 
       def debug_error(error)
         return unless ENV['DEBUG_BIDI_COMMAND']

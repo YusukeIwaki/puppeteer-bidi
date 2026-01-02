@@ -108,8 +108,11 @@ module Puppeteer
             warn "Failed to parse BiDi message: #{e.message}"
           end
         end
+      rescue IOError, Errno::ECONNRESET, Errno::EPIPE
+        # Connection closed - this is expected during shutdown, no need to warn
       rescue => e
-        warn "Transport receive error: #{e.message}"
+        # Only warn for unexpected errors if we weren't intentionally closed
+        warn "Transport receive error: #{e.message}" unless @closed
       ensure
         close unless @closed
       end

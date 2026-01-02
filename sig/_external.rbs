@@ -11,10 +11,20 @@ module Async
   def self.call: [T] () { () -> T } -> Task[T]
 
   class Task[T]
+    def self.current: () -> Task[untyped]?
     def wait: () -> T
     def sleep: (Numeric) -> void
     def stop: () -> void
     def with_timeout: [U] (Numeric) { () -> U } -> U
+  end
+
+  class Queue[T]
+    class ClosedError < StandardError
+    end
+    def initialize: () -> void
+    def <<: (T) -> void
+    def close: () -> void
+    def async: [U] (?parent: Task[untyped]?) { (Task[untyped], T) -> U } -> void
   end
 
   class Promise[T]
@@ -23,6 +33,8 @@ module Async
     def resolve: (T) -> void
     def reject: (Exception) -> void
     def resolved?: () -> bool
+    def value: () -> T?
+    def self.fulfill: [U] (Promise[U]) { () -> U } -> U
   end
 
   class TimeoutError < StandardError
@@ -126,3 +138,8 @@ class DateTime
   def to_time: () -> Time
 end
 
+# Delegate library
+class SimpleDelegator
+  def __getobj__: () -> untyped
+  def __setobj__: (untyped) -> untyped
+end
