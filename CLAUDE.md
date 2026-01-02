@@ -209,6 +209,7 @@ See the [CLAUDE/](CLAUDE/) directory for detailed implementation guides:
 - **[Testing Strategy](CLAUDE/testing_strategy.md)** - Test organization and optimization
 - **[RSpec pending vs skip](CLAUDE/rspec_pending_vs_skip.md)** - Documenting limitations
 - **[Test Server Routes](CLAUDE/test_server_routes.md)** - Dynamic route handling
+- **[Local CI Testing](CLAUDE/local_ci_testing.md)** - Reproducing Linux CI failures on macOS with Docker
 
 ## Releasing
 
