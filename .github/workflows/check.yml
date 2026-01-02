@@ -133,12 +133,16 @@ jobs:
         run: bundle exec rspec spec/integration/
         env:
           HEADLESS: true
+          # Fix Firefox crash in GitHub Actions
+          # Details: https://github.com/microsoft/playwright/issues/6500#issuecomment-838515115
+          HOME: /root
           FIREFOX_PATH: /usr/bin/firefox-nightly
 
       - name: Run integration tests (headful, xvfb)
         run: xvfb-run --server-args="-screen 0 1024x768x24" bundle exec rspec spec/integration/
         env:
           HEADLESS: "false"
+          HOME: /root
           FIREFOX_PATH: /usr/bin/firefox-nightly
 
   rspec_ruby4_macos:
