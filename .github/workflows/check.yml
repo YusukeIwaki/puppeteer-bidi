@@ -89,27 +89,39 @@ jobs:
         env:
           HEADLESS: true
 
-  rspec_ruby4_ubuntu:
-    name: RSpec (ubuntu / Ruby 4.0)
+  rspec_ruby4_debian:
+    name: RSpec (debian / Ruby 4.0)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    container:
+      image: ruby:4.0-slim-bookworm
 
     steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y wget gnupg git xvfb build-essential
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Setup Firefox Nightly
+        run: |
+          install -d -m 0755 /etc/apt/keyrings
+          wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- | tee /etc/apt/keyrings/packages.mozilla.org.asc > /dev/null
+          echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" | tee /etc/apt/sources.list.d/mozilla.list > /dev/null
+          echo 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000' | tee /etc/apt/preferences.d/mozilla
+          apt-get update
+          apt-get install -y firefox-nightly
+          rm -rf /var/lib/apt/lists/*
+
       - uses: actions/checkout@v4
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "4.0"
-          bundler-cache: true
+      - name: Verify installations
+        run: |
+          ruby --version
+          firefox-nightly --version
 
-      - name: Setup Firefox
-        uses: browser-actions/setup-firefox@latest
-        with:
-          firefox-version: latest-nightly
-
-      - name: Verify Firefox installation
-        run: firefox --version
+      - name: Install dependencies
+        run: bundle install
 
       - name: Run unit tests
         run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
@@ -121,11 +133,13 @@ jobs:
         run: bundle exec rspec spec/integration/
         env:
           HEADLESS: true
+          FIREFOX_PATH: /usr/bin/firefox-nightly
 
       - name: Run integration tests (headful, xvfb)
         run: xvfb-run --server-args="-screen 0 1024x768x24" bundle exec rspec spec/integration/
         env:
           HEADLESS: "false"
+          FIREFOX_PATH: /usr/bin/firefox-nightly
 
   rspec_ruby4_macos:
     name: RSpec (macos / Ruby 4.0+)
