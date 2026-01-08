@@ -11,6 +11,59 @@ module Puppeteer
     # Page represents a single page/tab in the browser
     # This is a high-level wrapper around Core::BrowsingContext
     class Page
+      UNIT_TO_PIXELS = {
+        "px" => 1,
+        "in" => 96,
+        "cm" => 37.8,
+        "mm" => 3.78
+      }.freeze
+      PAPER_FORMATS = {
+        "letter" => {
+          "cm" => { width: 21.59, height: 27.94 },
+          "in" => { width: 8.5, height: 11 }
+        },
+        "legal" => {
+          "cm" => { width: 21.59, height: 35.56 },
+          "in" => { width: 8.5, height: 14 }
+        },
+        "tabloid" => {
+          "cm" => { width: 27.94, height: 43.18 },
+          "in" => { width: 11, height: 17 }
+        },
+        "ledger" => {
+          "cm" => { width: 43.18, height: 27.94 },
+          "in" => { width: 17, height: 11 }
+        },
+        "a0" => {
+          "cm" => { width: 84.1, height: 118.9 },
+          "in" => { width: 33.1102, height: 46.811 }
+        },
+        "a1" => {
+          "cm" => { width: 59.4, height: 84.1 },
+          "in" => { width: 23.3858, height: 33.1102 }
+        },
+        "a2" => {
+          "cm" => { width: 42, height: 59.4 },
+          "in" => { width: 16.5354, height: 23.3858 }
+        },
+        "a3" => {
+          "cm" => { width: 29.7, height: 42 },
+          "in" => { width: 11.6929, height: 16.5354 }
+        },
+        "a4" => {
+          "cm" => { width: 21, height: 29.7 },
+          "in" => { width: 8.2677, height: 11.6929 }
+        },
+        "a5" => {
+          "cm" => { width: 14.8, height: 21 },
+          "in" => { width: 5.8268, height: 8.2677 }
+        },
+        "a6" => {
+          "cm" => { width: 10.5, height: 14.8 },
+          "in" => { width: 4.1339, height: 5.8268 }
+        }
+      }.freeze
+
       attr_reader :browsing_context #: Core::BrowsingContext
       attr_reader :browser_context #: BrowserContext
       attr_reader :timeout_settings #: TimeoutSettings
@@ -255,6 +308,116 @@ module Puppeteer
         end
 
         data
+      end
+
+      # Generate a PDF of the page.
+      # @rbs path: String? -- File path to save PDF
+      # @rbs scale: Numeric? -- Scale of the webpage rendering
+      # @rbs display_header_footer: bool? -- Display header and footer
+      # @rbs header_template: String? -- HTML template for header
+      # @rbs footer_template: String? -- HTML template for footer
+      # @rbs print_background: bool? -- Print background graphics
+      # @rbs landscape: bool? -- Print in landscape orientation
+      # @rbs page_ranges: String? -- Paper ranges to print (e.g. "1-5, 8")
+      # @rbs format: String? -- Paper format (e.g. "A4")
+      # @rbs width: String | Numeric? -- Paper width
+      # @rbs height: String | Numeric? -- Paper height
+      # @rbs prefer_css_page_size: bool? -- Prefer CSS @page size
+      # @rbs margin: Hash[Symbol, String | Numeric]? -- Paper margins
+      # @rbs omit_background: bool? -- Omit background
+      # @rbs tagged: bool? -- Generate tagged PDF
+      # @rbs outline: bool? -- Generate document outline
+      # @rbs timeout: Numeric? -- Timeout in ms (0 disables)
+      # @rbs wait_for_fonts: bool? -- Wait for document fonts to load
+      # @rbs return: String -- PDF data as binary string
+      def pdf(
+        path: nil,
+        scale: nil,
+        display_header_footer: nil,
+        header_template: nil,
+        footer_template: nil,
+        print_background: nil,
+        landscape: nil,
+        page_ranges: nil,
+        format: nil,
+        width: nil,
+        height: nil,
+        prefer_css_page_size: nil,
+        margin: nil,
+        omit_background: nil,
+        tagged: nil,
+        outline: nil,
+        timeout: nil,
+        wait_for_fonts: nil
+      )
+        assert_not_closed
+
+        timeout_ms = timeout.nil? ? @timeout_settings.timeout : timeout
+
+        options = {
+          scale: scale,
+          display_header_footer: display_header_footer,
+          header_template: header_template,
+          footer_template: footer_template,
+          print_background: print_background,
+          landscape: landscape,
+          page_ranges: page_ranges,
+          format: format,
+          width: width,
+          height: height,
+          prefer_css_page_size: prefer_css_page_size,
+          margin: margin,
+          omit_background: omit_background,
+          tagged: tagged,
+          outline: outline,
+          wait_for_fonts: wait_for_fonts
+        }.compact
+
+        parsed = parse_pdf_options(options, "cm")
+        ranges = parsed[:page_ranges]
+        page_ranges = ranges && !ranges.empty? ? ranges.split(", ") : []
+
+        # Wait for fonts to load
+        begin
+          if timeout_ms == 0
+            main_frame.isolated_realm.evaluate("() => document.fonts.ready")
+          else
+            AsyncUtils.async_timeout(timeout_ms, -> do
+              main_frame.isolated_realm.evaluate("() => document.fonts.ready")
+            end).wait
+          end
+        rescue Async::TimeoutError
+          raise TimeoutError, "Timed out after waiting #{timeout_ms}ms"
+        end
+
+        print_options = {
+          background: parsed[:print_background],
+          margin: parsed[:margin],
+          orientation: parsed[:landscape] ? "landscape" : "portrait",
+          page: {
+            width: parsed[:width],
+            height: parsed[:height]
+          },
+          pageRanges: page_ranges,
+          scale: parsed[:scale],
+          shrinkToFit: !parsed[:prefer_css_page_size]
+        }
+
+        begin
+          data = if timeout_ms == 0
+                   @browsing_context.print(**print_options).wait
+                 else
+                   AsyncUtils.async_timeout(timeout_ms, -> do
+                     @browsing_context.print(**print_options).wait
+                   end).wait
+                 end
+        rescue Async::TimeoutError
+          raise TimeoutError, "Timed out after waiting #{timeout_ms}ms"
+        end
+
+        pdf_data = Base64.decode64(data)
+        File.binwrite(path, pdf_data) if path
+        pdf_data
       end
 
       # Evaluate JavaScript in the page context
@@ -1355,6 +1518,109 @@ module Puppeteer
           JSON.generate(arg)
         else
           JSON.generate(arg.to_s)
+        end
+      end
+
+      def parse_pdf_options(options, length_unit)
+        defaults = {
+          scale: 1,
+          display_header_footer: false,
+          header_template: "",
+          footer_template: "",
+          print_background: false,
+          landscape: false,
+          page_ranges: "",
+          prefer_css_page_size: false,
+          omit_background: false,
+          outline: false,
+          tagged: true,
+          wait_for_fonts: true
+        }
+
+        width = 8.5
+        height = 11
+        format = options[:format]
+        if format
+          format_key = format.to_s.downcase
+          format_dimensions = PAPER_FORMATS[format_key]
+          raise "Unknown paper format: #{format}" unless format_dimensions
+
+          dimensions = format_dimensions[length_unit]
+          width = dimensions[:width]
+          height = dimensions[:height]
+        else
+          width = convert_print_parameter_to_length_unit(options[:width], length_unit) || width
+          height = convert_print_parameter_to_length_unit(options[:height], length_unit) || height
+        end
+
+        margin_options = options[:margin]
+        if margin_options.is_a?(Hash)
+          margin_options = margin_options.transform_keys(&:to_sym)
+        else
+          margin_options = {}
+        end
+        margin = {
+          top: convert_print_parameter_to_length_unit(margin_options[:top], length_unit) || 0,
+          left: convert_print_parameter_to_length_unit(margin_options[:left], length_unit) || 0,
+          bottom: convert_print_parameter_to_length_unit(margin_options[:bottom], length_unit) || 0,
+          right: convert_print_parameter_to_length_unit(margin_options[:right], length_unit) || 0
+        }
+
+        options[:tagged] = true if options[:outline]
+
+        defaults.merge(options).merge(
+          width: width,
+          height: height,
+          margin: margin
+        )
+      end
+
+      def convert_print_parameter_to_length_unit(parameter, length_unit)
+        return nil if parameter.nil?
+
+        pixels = nil
+
+        if parameter.is_a?(Numeric)
+          pixels = parameter
+        elsif parameter.is_a?(String)
+          text = parameter
+          unit = text[-2, 2].to_s.downcase
+          if UNIT_TO_PIXELS.key?(unit)
+            value_text = text[0...-2]
+          else
+            unit = "px"
+            value_text = text
+          end
+          value = parse_print_parameter_value(text, value_text)
+          pixels = value * UNIT_TO_PIXELS[unit]
+        else
+          raise "page.pdf() Cannot handle parameter type: #{js_typeof(parameter)}"
+        end
+
+        pixels / UNIT_TO_PIXELS.fetch(length_unit)
+      end
+
+      def parse_print_parameter_value(text, value_text)
+        value = Float(value_text)
+        raise "Failed to parse parameter value: #{text}" if value.nan?
+
+        value
+      rescue ArgumentError
+        raise "Failed to parse parameter value: #{text}"
+      end
+
+      def js_typeof(value)
+        case value
+        when String
+          "string"
+        when Numeric
+          "number"
+        when TrueClass, FalseClass
+          "boolean"
+        when Proc, Method
+          "function"
+        else
+          "object"
         end
       end
     end
