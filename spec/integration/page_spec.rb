@@ -1409,8 +1409,6 @@ RSpec.describe 'Page' do
 
   describe 'Page.pdf' do
     it 'should generate a pdf' do
-      skip 'Firefox BiDi print command times out - https://github.com/puppeteer/puppeteer/issues/14534'
-
       with_test_state do |page:, server:, **|
         page.goto("#{server.prefix}/grid.html")
         pdf = page.pdf
@@ -1421,8 +1419,6 @@ RSpec.describe 'Page' do
     end
 
     it 'should generate a pdf and save to file' do
-      skip 'Firefox BiDi print command times out - https://github.com/puppeteer/puppeteer/issues/14534'
-
       with_test_state do |page:, server:, **|
         Dir.mktmpdir do |dir|
           output_path = File.join(dir, 'output.pdf')
