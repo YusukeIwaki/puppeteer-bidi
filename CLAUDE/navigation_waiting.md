@@ -232,3 +232,19 @@ All tests verify both the navigation completes and the URL updates correctly.
 - [Puppeteer BrowsingContext.ts](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/bidi/core/BrowsingContext.ts)
 - [Puppeteer Navigation.ts](https://github.com/puppeteer/puppeteer/blob/main/packages/puppeteer-core/src/bidi/core/Navigation.ts)
 - [WebDriver BiDi Specification](https://w3c.github.io/webdriver-bidi/#module-browsingContext)
+
+## Behavior parity note: network idle only
+
+When `wait_until` only contains `networkidle0`/`networkidle2`, Puppeteer's BiDi
+`waitForNavigation` does not wait for lifecycle events. This is driven by
+`#waitForLoad$()` returning immediately when no lifecycle events are requested.
+
+Practical check (Firefox BiDi, `page.goto(..., wait_until: 'networkidle2')`):
+- Node.js typically logs `goto done` before `load` (or without a `load` log if it
+  happens later than the observation window).
+- Ruby should match this ordering; if `goto done` is consistently after `load`,
+  it likely indicates an implicit lifecycle wait was added.
+
+For protocol timing logs:
+- Node.js: `DEBUG=puppeteer:webDriverBiDi:* node script.js`
+- Ruby: `DEBUG_BIDI_COMMAND=1 rbenv exec bundle exec ruby script.rb`
