@@ -406,17 +406,14 @@ module Puppeteer
         lifecycle_events = wait_until_array.select { |e| ['load', 'domcontentloaded'].include?(e) }
         network_idle_events = wait_until_array.select { |e| ['networkidle0', 'networkidle2'].include?(e) }
 
-        # Default to 'load' if no lifecycle event specified
-        lifecycle_events = ['load'] if lifecycle_events.empty? && network_idle_events.any?
-
-        # Determine which load event to wait for (use the first one)
+        # Only wait for lifecycle events if explicitly requested (matches Puppeteer)
         load_event = case lifecycle_events.first
                      when 'load'
                        :load
                      when 'domcontentloaded'
                        :dom_content_loaded
                      else
-                       :load  # Default
+                       nil
                      end
 
         # Use Async::Promise for signaling (Fiber-based, not Thread-based)
@@ -454,9 +451,14 @@ module Puppeteer
           end
 
           # Also listen for load/domcontentloaded events to complete navigation
-          unless load_listener_registered
-            @browsing_context.once(load_event, &load_listener)
-            load_listener_registered = true
+          if load_event
+            unless load_listener_registered
+              @browsing_context.once(load_event, &load_listener)
+              load_listener_registered = true
+            end
+          else
+            # No lifecycle events requested; resolve once navigation is observed.
+            promise.resolve(:full_page) unless promise.resolved?
           end
         end
 
