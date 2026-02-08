@@ -228,7 +228,14 @@ module Puppeteer
               temporary_viewport[:is_mobile] = original_viewport[:is_mobile]
               temporary_viewport[:is_landscape] = original_viewport[:is_landscape]
             end
-            set_viewport(**temporary_viewport)
+            set_viewport(
+              width: temporary_viewport.fetch(:width),
+              height: temporary_viewport.fetch(:height),
+              device_scale_factor: temporary_viewport[:device_scale_factor],
+              has_touch: temporary_viewport[:has_touch],
+              is_mobile: temporary_viewport[:is_mobile],
+              is_landscape: temporary_viewport[:is_landscape]
+            )
 
             begin
               # Capture screenshot with viewport origin
@@ -237,7 +244,14 @@ module Puppeteer
             ensure
               # Restore original viewport
               if original_viewport
-                set_viewport(**original_viewport)
+                set_viewport(
+                  width: original_viewport.fetch(:width),
+                  height: original_viewport.fetch(:height),
+                  device_scale_factor: original_viewport[:device_scale_factor],
+                  has_touch: original_viewport[:has_touch],
+                  is_mobile: original_viewport[:is_mobile],
+                  is_landscape: original_viewport[:is_landscape]
+                )
               end
             end
 
