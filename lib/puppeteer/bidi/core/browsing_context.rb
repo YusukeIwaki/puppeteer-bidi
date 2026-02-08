@@ -14,22 +14,25 @@ module Puppeteer
         # @rbs id: String -- Context ID
         # @rbs url: String -- Initial URL
         # @rbs original_opener: String? -- Original opener context ID
+        # @rbs client_window: String -- Client window ID
         # @rbs return: BrowsingContext -- New browsing context
-        def self.from(user_context, parent, id, url, original_opener)
-          context = new(user_context, parent, id, url, original_opener)
+        def self.from(user_context, parent, id, url, original_opener, client_window)
+          context = new(user_context, parent, id, url, original_opener, client_window)
           context.send(:initialize_context)
           context
         end
 
-        attr_reader :id, :user_context, :parent, :original_opener, :default_realm, :navigation, :inflight_requests
+        attr_reader :id, :user_context, :parent, :original_opener, :default_realm, :navigation, :inflight_requests,
+                    :window_id
 
-        def initialize(user_context, parent, id, url, original_opener)
+        def initialize(user_context, parent, id, url, original_opener, client_window)
           super()
           @user_context = user_context
           @parent = parent
           @id = id
           @url = url
           @original_opener = original_opener
+          @window_id = client_window
           @reason = nil
           @disposables = Disposable::DisposableStack.new
           @children = {}
@@ -38,6 +41,7 @@ module Puppeteer
           @inflight_request_ids = {}
           @navigation = nil
           @emulation_state = { javascript_enabled: true }
+          @client_hints_are_set = false
           @inflight_requests = 0
           @inflight_mutex = Thread::Mutex.new
 
@@ -135,36 +139,10 @@ module Puppeteer
         # @rbs return: Async::Task[void]
         def close(prompt_unload: false)
           raise BrowsingContextClosedError, @reason if closed?
-
-          Async do
-            # Close all children first (matches Puppeteer's Promise.all pattern)
-            child_close_tasks = children.map do |child|
-              -> { child.close(prompt_unload: prompt_unload).wait rescue BrowsingContextClosedError }
-            end
-            AsyncUtils.promise_all(*child_close_tasks).wait unless child_close_tasks.empty?
-
-            # Ensure page.closed? is true and that the context has been removed
-            # from parent registries once this call returns.
-            # Register listener BEFORE sending close command to avoid race condition.
-            closed_promise = Async::Promise.new
-            closed_listener = ->(_) { closed_promise.resolve(nil) }
-            on(:closed, &closed_listener)
-
-            begin
-              session.async_send_command('browsingContext.close', {
-                context: @id,
-                promptUnload: prompt_unload
-              }).wait
-              # Wait for :closed event to ensure state is updated
-              closed_promise.wait
-            rescue Connection::ProtocolError => e
-              # "is not top-level" error occurs for iframes - they are closed
-              # automatically when parent closes, so we don't need to wait
-              raise unless e.message.include?('is not top-level')
-            ensure
-              off(:closed, &closed_listener)
-            end
-          end
+          session.async_send_command('browsingContext.close', {
+            context: @id,
+            promptUnload: prompt_unload
+          })
         end
 
         # Traverse history
@@ -192,6 +170,17 @@ module Puppeteer
         def set_viewport(**options)
           raise BrowsingContextClosedError, @reason if closed?
           session.async_send_command('browsingContext.setViewport', options.merge(context: @id))
+        end
+
+        # Set touch override
+        # @rbs max_touch_points: Integer? -- Max touch points, nil to disable
+        # @rbs return: Async::Task[untyped]
+        def set_touch_override(max_touch_points)
+          raise BrowsingContextClosedError, @reason if closed?
+          session.async_send_command('emulation.setTouchOverride', {
+            contexts: [@id],
+            maxTouchPoints: max_touch_points
+          })
         end
 
         # Perform input actions
@@ -359,6 +348,25 @@ module Puppeteer
           })
         end
 
+        # Set client hints override
+        # @rbs client_hints: Hash[String, untyped]? -- Client hints metadata, nil to restore
+        # @rbs return: Async::Task[void]
+        def set_client_hints_override(client_hints)
+          Async do
+            raise BrowsingContextClosedError, @reason if closed?
+            if client_hints.nil? && !@client_hints_are_set
+              # Avoid calling unsupported command if no override has ever been set.
+              next
+            end
+
+            @client_hints_are_set = true
+            session.async_send_command('emulation.setClientHintsOverride', {
+              clientHints: client_hints,
+              contexts: [@id]
+            }).wait
+          end
+        end
+
         # Set timezone override
         # @rbs timezone_id: String? -- Timezone ID
         # @rbs return: Async::Task[untyped]
@@ -390,17 +398,19 @@ module Puppeteer
         # Locate nodes in the context
         # @rbs locator: Hash[String, untyped] -- Node locator
         # @rbs start_nodes: Array[Hash[String, untyped]] -- Starting nodes
-        # @rbs return: Array[Hash[String, untyped]] -- Located nodes
+        # @rbs return: Async::Task[Array[Hash[String, untyped]]] -- Located nodes
         def locate_nodes(locator, start_nodes = [])
-          raise BrowsingContextClosedError, @reason if closed?
-          params = {
-            context: @id,
-            locator: locator
-          }
-          params[:startNodes] = start_nodes unless start_nodes.empty?
+          Async do
+            raise BrowsingContextClosedError, @reason if closed?
+            params = {
+              context: @id,
+              locator: locator
+            }
+            params[:startNodes] = start_nodes unless start_nodes.empty?
 
-          result = session.async_send_command('browsingContext.locateNodes', params)
-          result['nodes']
+            result = session.async_send_command('browsingContext.locateNodes', params).wait
+            result['nodes']
+          end
         end
 
         # Set JavaScript enabled state
@@ -507,7 +517,8 @@ module Puppeteer
               self,
               info['context'],
               info['url'],
-              info['originalOpener']
+              info['originalOpener'],
+              info['clientWindow'] || @window_id
             )
 
             @children[child_context.id] = child_context

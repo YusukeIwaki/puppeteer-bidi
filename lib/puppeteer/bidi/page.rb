@@ -217,11 +217,18 @@ module Puppeteer
               original_viewport = { width: original_size['width'].to_i, height: original_size['height'].to_i }
             end
 
-            # Set viewport to full page size
-            set_viewport(
+            # Set viewport to full page size while preserving optional emulation flags.
+            temporary_viewport = {
               width: scroll_dimensions['width'].to_i,
               height: scroll_dimensions['height'].to_i
-            )
+            }
+            if original_viewport
+              temporary_viewport[:device_scale_factor] = original_viewport[:device_scale_factor]
+              temporary_viewport[:has_touch] = original_viewport[:has_touch]
+              temporary_viewport[:is_mobile] = original_viewport[:is_mobile]
+              temporary_viewport[:is_landscape] = original_viewport[:is_landscape]
+            end
+            set_viewport(**temporary_viewport)
 
             begin
               # Capture screenshot with viewport origin
@@ -230,10 +237,7 @@ module Puppeteer
             ensure
               # Restore original viewport
               if original_viewport
-                set_viewport(
-                  width: original_viewport[:width],
-                  height: original_viewport[:height]
-                )
+                set_viewport(**original_viewport)
               end
             end
 
@@ -1135,15 +1139,42 @@ module Puppeteer
       # Set viewport size
       # @rbs width: Integer -- Viewport width in pixels
       # @rbs height: Integer -- Viewport height in pixels
+      # @rbs device_scale_factor: Numeric? -- Device pixel ratio override
+      # @rbs has_touch: bool? -- Whether touch support is enabled
+      # @rbs is_mobile: bool? -- Whether mobile emulation is enabled
+      # @rbs is_landscape: bool? -- Whether landscape orientation is requested
       # @rbs return: void
-      def set_viewport(width:, height:)
+      def set_viewport(width:, height:, device_scale_factor: nil, has_touch: nil, is_mobile: nil, is_landscape: nil)
+        previous_has_touch = @viewport ? !!@viewport[:has_touch] : false
+        current_has_touch = !!has_touch
+        needs_reload = previous_has_touch != current_has_touch
+
         @viewport = { width: width, height: height }
+        @viewport[:device_scale_factor] = device_scale_factor unless device_scale_factor.nil?
+        @viewport[:has_touch] = has_touch unless has_touch.nil?
+        @viewport[:is_mobile] = is_mobile unless is_mobile.nil?
+        @viewport[:is_landscape] = is_landscape unless is_landscape.nil?
+
         @browsing_context.set_viewport(
           viewport: {
             width: width,
             height: height
-          }
+          },
+          devicePixelRatio: device_scale_factor
         ).wait
+
+        if needs_reload
+          max_touch_points = current_has_touch ? 1 : nil
+          begin
+            @browsing_context.set_touch_override(max_touch_points).wait
+          rescue Connection::ProtocolError => error
+            unsupported_error = error.message.include?('unknown command') ||
+                                error.message.include?('unsupported operation') ||
+                                error.message.include?('emulation.setTouchOverride')
+            raise unless unsupported_error
+          end
+          reload
+        end
       end
 
       # Set geolocation override
@@ -1178,21 +1209,43 @@ module Puppeteer
 
       # Set user agent
       # @rbs user_agent: String? -- User agent string or nil to restore original
-      # @rbs user_agent_metadata: Hash[Symbol, untyped]? -- Not supported in BiDi-only mode
+      # @rbs user_agent_metadata: Hash[Symbol | String, untyped]? -- Optional client hints metadata
       # @rbs return: void
       def set_user_agent(user_agent, user_agent_metadata = nil)
         assert_not_closed
 
+        parsed_user_agent = nil
+        client_hints = nil
+        platform = nil
+
         if user_agent.is_a?(Hash)
-          raise UnsupportedOperationError, "options hash is not supported in BiDi-only mode"
+          options = user_agent.transform_keys(&:to_sym)
+          parsed_user_agent = options.key?(:userAgent) ? options[:userAgent] : options[:user_agent]
+          client_hints = options[:userAgentMetadata] || options[:user_agent_metadata]
+          platform = options[:platform]
+          platform = nil if platform == ''
+        else
+          parsed_user_agent = user_agent
+          client_hints = user_agent_metadata
         end
 
-        if user_agent_metadata
-          raise UnsupportedOperationError, "userAgentMetadata is not supported in BiDi-only mode"
+        parsed_user_agent = nil if parsed_user_agent == ""
+        @browsing_context.set_user_agent(parsed_user_agent).wait
+
+        if platform && platform != ''
+          client_hints = normalize_client_hints_metadata(client_hints)
+          client_hints['platform'] = platform
         end
 
-        user_agent = nil if user_agent == ""
-        @browsing_context.set_user_agent(user_agent).wait
+        @browsing_context.set_client_hints_override(
+          client_hints ? normalize_client_hints_metadata(client_hints) : nil
+        ).wait
+      end
+
+      # Get the client window ID for this page.
+      # @rbs return: String -- Window ID
+      def window_id
+        @browsing_context.window_id
       end
 
       # Get current viewport size
@@ -1518,6 +1571,23 @@ module Puppeteer
           JSON.generate(arg)
         else
           JSON.generate(arg.to_s)
+        end
+      end
+
+      # Normalize user agent metadata/client hints keys to camelCase.
+      # @rbs client_hints: Hash[Symbol | String, untyped]? -- Raw metadata hash
+      # @rbs return: Hash[String, untyped] -- Normalized metadata
+      def normalize_client_hints_metadata(client_hints)
+        hints = client_hints || {}
+        hints.each_with_object({}) do |(key, value), result|
+          key_string = key.to_s
+          normalized_key = if key_string.include?('_')
+                             parts = key_string.split('_')
+                             parts[0] + parts[1..].map(&:capitalize).join
+                           else
+                             key_string
+                           end
+          result[normalized_key] = value
         end
       end
 

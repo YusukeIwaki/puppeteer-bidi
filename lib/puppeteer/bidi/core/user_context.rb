@@ -47,16 +47,17 @@ module Puppeteer
         # Create a new browsing context (tab or window)
         # @rbs type: String -- 'tab' or 'window'
         # @rbs reference_context: BrowsingContext? -- Reference context
+        # @rbs background: bool? -- Whether to open in background
         # @rbs return: BrowsingContext -- New browsing context
-        def create_browsing_context(type, **options)
+        def create_browsing_context(type, reference_context: nil, background: nil)
           raise UserContextClosedError, @reason if closed?
 
           params = {
             type: type,
             userContext: @id
           }
-          params[:referenceContext] = options[:reference_context].id if options[:reference_context]
-          params.merge!(options.except(:reference_context))
+          params[:referenceContext] = reference_context.id if reference_context
+          params[:background] = background unless background.nil?
 
           result = session.async_send_command('browsingContext.create', params).wait
           context_id = result['context']
@@ -67,12 +68,14 @@ module Puppeteer
 
           # If not created by event handler, create it manually
           if browsing_context.nil?
+            info = fetch_browsing_context_info(context_id)
             browsing_context = BrowsingContext.from(
               self,
               nil, # parent
               context_id,
-              'about:blank',  # Initial URL
-              nil # originalOpener
+              info&.fetch('url', nil) || 'about:blank',
+              info&.fetch('originalOpener', nil),
+              info&.fetch('clientWindow', nil) || context_id
             )
             @browsing_contexts[context_id] = browsing_context
 
@@ -187,7 +190,8 @@ module Puppeteer
               nil, # parent
               info['context'],
               info['url'],
-              info['originalOpener']
+              info['originalOpener'],
+              info['clientWindow']
             )
 
             @browsing_contexts[browsing_context.id] = browsing_context
@@ -204,6 +208,24 @@ module Puppeteer
         def dispose_context(reason)
           @reason = reason
           dispose
+        end
+
+        # If the creation event races and is missed, query getTree and locate context info.
+        def fetch_browsing_context_info(context_id)
+          result = session.async_send_command('browsingContext.getTree', {}).wait
+          stack = result['contexts'] || []
+
+          until stack.empty?
+            info = stack.shift
+            return info if info['context'] == context_id
+
+            children = info['children']
+            stack.concat(children) if children
+          end
+
+          nil
+        rescue StandardError
+          nil
         end
       end
     end

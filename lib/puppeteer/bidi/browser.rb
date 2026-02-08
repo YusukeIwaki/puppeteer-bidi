@@ -139,9 +139,12 @@ module Puppeteer
       end
 
       # Create a new page (Puppeteer-like API)
+      # @rbs background: bool? -- Whether to open the page in background
+      # @rbs type: String? -- 'tab' or 'window'
+      # @rbs window_bounds: Hash[Symbol | String, untyped]? -- Initial window bounds for window pages
       # @rbs return: Page -- New page instance
-      def new_page
-        @default_browser_context.new_page
+      def new_page(background: nil, type: nil, window_bounds: nil)
+        @default_browser_context.new_page(background: background, type: type, window_bounds: window_bounds)
       end
 
       # Create a new browser context
@@ -187,6 +190,48 @@ module Puppeteer
       # @rbs return: void
       def delete_matching_cookies(*filters, **filter)
         @default_browser_context.delete_matching_cookies(*filters, **filter)
+      end
+
+      # Get browser window bounds for a given window ID.
+      # @rbs window_id: String -- Window ID
+      # @rbs return: Hash[Symbol, untyped] -- Window bounds hash
+      def get_window_bounds(window_id)
+        info = @core_browser.get_client_window_info(window_id).wait
+        {
+          left: info['x'],
+          top: info['y'],
+          width: info['width'],
+          height: info['height'],
+          window_state: info['state']
+        }
+      end
+
+      # Set browser window bounds for a given window ID.
+      # @rbs window_id: String -- Window ID
+      # @rbs window_bounds: Hash[Symbol | String, untyped] -- Bounds/state to apply
+      # @rbs return: void
+      def set_window_bounds(window_id, window_bounds)
+        normalized = window_bounds.transform_keys(&:to_sym)
+        window_state = normalized[:window_state] || normalized[:windowState] || 'normal'
+        window_state = window_state.to_s
+
+        params = if window_state == 'normal'
+                   {
+                     clientWindow: window_id,
+                     state: 'normal',
+                     x: normalized[:left],
+                     y: normalized[:top],
+                     width: normalized[:width],
+                     height: normalized[:height]
+                   }
+                 else
+                   {
+                     clientWindow: window_id,
+                     state: window_state
+                   }
+                 end
+
+        @core_browser.set_client_window_state(params).wait
       end
 
       # Register event handler

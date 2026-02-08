@@ -842,6 +842,18 @@ RSpec.describe 'Page' do
       end
     end
 
+    it 'should work with options parameter' do
+      with_test_state do |page:, server:, **|
+        expect(page.evaluate('() => navigator.userAgent')).to include('Mozilla')
+
+        page.set_user_agent(userAgent: 'foobar')
+
+        page.goto(server.empty_page)
+
+        expect(page.evaluate('() => navigator.userAgent')).to eq('foobar')
+      end
+    end
+
     it 'should work for subframes' do
       with_test_state do |page:, server:, **|
         expect(page.evaluate('() => navigator.userAgent')).to include('Mozilla')
@@ -866,18 +878,32 @@ RSpec.describe 'Page' do
     end
 
     it 'should work with additional userAgentMetadata' do
-      skip "userAgentMetadata not supported in BiDi-only mode"
-
       with_test_state do |page:, server:, **|
-        page.set_user_agent('MockBrowser', {
-          architecture: 'Mock1',
-          mobile: false,
-          model: 'Mockbook',
-          platform: 'MockOS',
-          platform_version: '3.1'
-        })
+        begin
+          page.set_user_agent('MockBrowser', {
+            architecture: 'Mock1',
+            mobile: false,
+            model: 'Mockbook',
+            platform: 'MockOS',
+            platform_version: '3.1'
+          })
+        rescue Puppeteer::Bidi::Connection::ProtocolError => error
+          pending "Client hints override is not supported by this browser: #{error.message}"
+          raise error
+        end
 
         page.goto(server.empty_page)
+
+        has_ua_data = page.evaluate(<<~JS)
+          () => {
+            return !!navigator.userAgentData &&
+                   typeof navigator.userAgentData.getHighEntropyValues === 'function';
+          }
+        JS
+        unless has_ua_data
+          pending 'navigator.userAgentData is not supported by this browser'
+          raise 'navigator.userAgentData is not supported by this browser'
+        end
 
         result = page.evaluate(<<~JS)
           async () => {
@@ -1625,6 +1651,15 @@ RSpec.describe 'Page' do
     end
   end
 
+  describe 'Page.windowId' do
+    it 'should return the window id' do
+      with_test_state do |page:, **|
+        expect(page.window_id).to be_a(String)
+        expect(page.window_id).not_to be_empty
+      end
+    end
+  end
+
   describe 'Page.bringToFront' do
     it 'should work' do
       pending 'Page.bringToFront not implemented'
@@ -1672,6 +1707,14 @@ RSpec.describe 'Page' do
 
         expect(viewport[:width]).to eq(1024)
         expect(viewport[:height]).to eq(768)
+      end
+    end
+
+    it 'should accept has_touch option' do
+      with_test_state do |page:, **|
+        expect {
+          page.set_viewport(width: 800, height: 600, has_touch: true)
+        }.not_to raise_error
       end
     end
   end

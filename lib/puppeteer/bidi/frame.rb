@@ -353,7 +353,7 @@ module Puppeteer
 
       # Get the frame element (iframe/frame DOM element) for this frame
       # Returns nil for the main frame
-      # Following Puppeteer's Frame.frameElement() implementation exactly
+      # Following Puppeteer's WebDriver BiDi frameElement() implementation.
       # @rbs return: ElementHandle? -- Frame element or nil for main frame
       def frame_element
         assert_not_detached
@@ -361,32 +361,13 @@ module Puppeteer
         parent = parent_frame
         return nil unless parent
 
-        # Query all iframe and frame elements in the parent frame
-        list = parent.isolated_realm.evaluate_handle('() => document.querySelectorAll("iframe,frame")')
+        nodes = parent.browsing_context.locate_nodes(
+          { type: 'context', value: { context: @browsing_context.id } }
+        ).wait
+        node = nodes.first
+        return nil unless node
 
-        begin
-          # Get the array of elements
-          length = list.evaluate('list => list.length')
-
-          length.times do |i|
-            iframe = list.evaluate_handle("(list, i) => list[i]", i)
-            begin
-              # Check if this iframe's content frame matches our frame
-              content_frame = iframe.as_element&.content_frame
-              if content_frame&.browsing_context&.id == @browsing_context.id
-                # Transfer the handle to the main realm (adopt handle)
-                # This ensures the returned handle is in the correct execution context
-                return parent.main_realm.transfer_handle(iframe.as_element)
-              end
-            ensure
-              iframe.dispose unless iframe.disposed?
-            end
-          end
-
-          nil
-        ensure
-          list.dispose unless list.disposed?
-        end
+        ElementHandle.from(node, parent.main_realm.core_realm)
       end
 
       # Wait for navigation to complete

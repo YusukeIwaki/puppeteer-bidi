@@ -356,7 +356,7 @@ RSpec.describe 'Frame specs' do
       end
     end
 
-    it 'should handle shadow roots', pending: 'BiDi protocol limitation: no DOM.getFrameOwner equivalent for shadow roots' do
+    it 'should handle shadow roots' do
       with_test_state do |page:, **|
         page.set_content(<<~HTML)
           <div id="shadow-host"></div>

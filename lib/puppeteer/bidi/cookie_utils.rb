@@ -50,8 +50,10 @@ module Puppeteer
           "Strict"
         when "lax"
           "Lax"
-        else
+        when "none"
           "None"
+        else
+          "Default"
         end
       end
 
@@ -66,7 +68,7 @@ module Puppeteer
         when "None"
           "none"
         else
-          nil
+          "default"
         end
       end
 
