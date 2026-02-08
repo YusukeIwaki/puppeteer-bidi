@@ -97,6 +97,46 @@ RSpec.describe 'Cookie specs' do
       end
     end
 
+    it 'should properly report "Default" sameSite cookie' do
+      with_cookie_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_cookie(name: 'a', value: 'b', sameSite: 'Default')
+
+        cookies = page.cookies
+        expect(cookies.length).to eq(1)
+        expect(cookies[0]['name']).to eq('a')
+        expect(['Default', 'Lax', nil]).to include(cookies[0]['sameSite'])
+      end
+    end
+
+    it 'should be able to delete "Default" sameSite cookie' do
+      with_cookie_state do |page:, server:, **|
+        page.goto(server.empty_page)
+        page.set_cookie(name: 'a', value: 'b', sameSite: 'Default')
+
+        cookies = page.cookies
+        expect(cookies.find { |cookie| cookie['name'] == 'a' }).not_to be_nil
+        page.delete_cookie(*cookies)
+        expect(page.cookies).to eq([])
+      end
+    end
+
+    it 'should report "Default" sameSite cookie when not specified' do
+      with_cookie_state do |page:, server:, browser:, **|
+        server.set_route('/empty.html') do |_request, writer|
+          writer.add_header('set-cookie', 'a=b')
+          writer.finish
+        end
+
+        page.goto(server.empty_page)
+        cookies = page.cookies
+        expect(cookies.length).to eq(1)
+        if browser.user_agent.include?('Firefox')
+          expect(cookies[0]['sameSite']).to eq('Default')
+        end
+      end
+    end
+
     it 'should get multiple cookies' do
       with_cookie_state do |page:, server:, browser:, **|
         page.goto(server.empty_page)

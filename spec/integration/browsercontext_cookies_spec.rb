@@ -79,6 +79,25 @@ RSpec.describe 'BrowserContext cookies' do
         end
       end
     end
+
+    it 'should properly report "Default" sameSite cookie' do
+      with_cookie_state do |context:, server:, page:, **|
+        page.goto(server.empty_page)
+        name = 'defaultSameSite'
+        context.set_cookie(
+          name: name,
+          value: 'b',
+          domain: 'localhost',
+          sameSite: 'Default'
+        )
+
+        cookies = context.cookies
+        cookie = cookies.find { |entry| entry['name'] == name }
+        expect(cookie).not_to be_nil
+        expect(['Default', 'Lax', nil]).to include(cookie['sameSite'])
+        context.delete_matching_cookies(name: name, domain: 'localhost')
+      end
+    end
   end
 
   describe 'BrowserContext.set_cookie' do
@@ -171,6 +190,25 @@ RSpec.describe 'BrowserContext cookies' do
           sourceScheme: 'NonSecure'
         )
         expect(page.evaluate('document.cookie')).to eq('cookie2=2')
+      end
+    end
+
+    it 'should be able to delete "Default" sameSite cookie' do
+      with_cookie_state do |page:, context:, server:, **|
+        page.goto(server.empty_page)
+        name = 'deleteDefaultSameSite'
+        context.set_cookie(
+          name: name,
+          value: 'b',
+          domain: 'localhost',
+          sameSite: 'Default'
+        )
+
+        cookies = context.cookies
+        expect(cookies.find { |entry| entry['name'] == name }).not_to be_nil
+        context.delete_matching_cookies(name: name, domain: 'localhost')
+        cookies_after = context.cookies
+        expect(cookies_after.find { |entry| entry['name'] == name }).to be_nil
       end
     end
   end

@@ -836,9 +836,79 @@ RSpec.describe 'Page' do
 
         page.set_user_agent('foobar')
 
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        request = server_request.wait
 
+        expect(request.headers['user-agent']).to eq('foobar')
         expect(page.evaluate('() => navigator.userAgent')).to eq('foobar')
+      end
+    end
+
+    it 'should work with options parameter' do
+      with_test_state do |page:, server:, **|
+        expect(page.evaluate('() => navigator.userAgent')).to include('Mozilla')
+
+        page.set_user_agent(userAgent: 'foobar')
+
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
+        page.goto(server.empty_page)
+        request = server_request.wait
+
+        expect(request.headers['user-agent']).to eq('foobar')
+        expect(page.evaluate('() => navigator.userAgent')).to eq('foobar')
+      end
+    end
+
+    it 'should work with platform option' do
+      with_test_state do |page:, server:, **|
+        expect(page.evaluate('() => navigator.platform')).not_to eq('MockPlatform')
+
+        begin
+          page.set_user_agent(userAgent: 'foobar', platform: 'MockPlatform')
+        rescue Puppeteer::Bidi::Connection::ProtocolError => error
+          pending "Client hints override is not supported by this browser: #{error.message}"
+          raise error
+        end
+
+        expect(page.evaluate('() => navigator.platform')).to eq('MockPlatform')
+
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
+        page.goto(server.empty_page)
+        request = server_request.wait
+
+        expect(request.headers['user-agent']).to eq('foobar')
+      end
+    end
+
+    it 'should work with platform option without userAgent' do
+      with_test_state do |page:, server:, **|
+        original_user_agent = page.evaluate('() => navigator.userAgent')
+        expect(page.evaluate('() => navigator.platform')).not_to eq('MockPlatform')
+
+        begin
+          page.set_user_agent(platform: 'MockPlatform')
+        rescue Puppeteer::Bidi::Connection::ProtocolError => error
+          pending "Client hints override is not supported by this browser: #{error.message}"
+          raise error
+        end
+
+        expect(page.evaluate('() => navigator.platform')).to eq('MockPlatform')
+        expect(page.evaluate('() => navigator.userAgent')).to eq(original_user_agent)
+
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
+        page.goto(server.empty_page)
+        request = server_request.wait
+
+        expect(request.headers['user-agent']).to eq(original_user_agent)
       end
     end
 
@@ -847,9 +917,15 @@ RSpec.describe 'Page' do
         expect(page.evaluate('() => navigator.userAgent')).to include('Mozilla')
 
         page.set_user_agent('foobar')
+
+        server_request = Async do
+          server.wait_for_request('/frames/frame.html')
+        end
         page.goto("#{server.prefix}/frames/one-frame.html")
+        request = server_request.wait
 
         frame = page.frames[1]
+        expect(request.headers['user-agent']).to eq('foobar')
         expect(frame.evaluate('() => navigator.userAgent')).to eq('foobar')
       end
     end
@@ -866,18 +942,36 @@ RSpec.describe 'Page' do
     end
 
     it 'should work with additional userAgentMetadata' do
-      skip "userAgentMetadata not supported in BiDi-only mode"
-
       with_test_state do |page:, server:, **|
-        page.set_user_agent('MockBrowser', {
-          architecture: 'Mock1',
-          mobile: false,
-          model: 'Mockbook',
-          platform: 'MockOS',
-          platform_version: '3.1'
-        })
+        begin
+          page.set_user_agent('MockBrowser', {
+            architecture: 'Mock1',
+            mobile: false,
+            model: 'Mockbook',
+            platform: 'MockOS',
+            platform_version: '3.1'
+          })
+        rescue Puppeteer::Bidi::Connection::ProtocolError => error
+          pending "Client hints override is not supported by this browser: #{error.message}"
+          raise error
+        end
 
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        request = server_request.wait
+
+        has_ua_data = page.evaluate(<<~JS)
+          () => {
+            return !!navigator.userAgentData &&
+                   typeof navigator.userAgentData.getHighEntropyValues === 'function';
+          }
+        JS
+        unless has_ua_data
+          pending 'navigator.userAgentData is not supported by this browser'
+          raise 'navigator.userAgentData is not supported by this browser'
+        end
 
         result = page.evaluate(<<~JS)
           async () => {
@@ -894,6 +988,7 @@ RSpec.describe 'Page' do
         expect(result['model']).to eq('Mockbook')
         expect(result['platform']).to eq('MockOS')
         expect(result['platformVersion']).to eq('3.1')
+        expect(request.headers['user-agent']).to eq('MockBrowser')
       end
     end
 
@@ -902,11 +997,19 @@ RSpec.describe 'Page' do
         original = page.evaluate('() => navigator.userAgent')
         page.set_user_agent('NewAgent')
 
+        request_with_override = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        expect(request_with_override.wait.headers['user-agent']).to eq('NewAgent')
         expect(page.evaluate('() => navigator.userAgent')).to eq('NewAgent')
 
         page.set_user_agent('')
+        request_after_reset = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        expect(request_after_reset.wait.headers['user-agent']).to eq(original)
         expect(page.evaluate('() => navigator.userAgent')).to eq(original)
       end
     end
@@ -1625,6 +1728,15 @@ RSpec.describe 'Page' do
     end
   end
 
+  describe 'Page.windowId' do
+    it 'should return the window id' do
+      with_test_state do |page:, **|
+        expect(page.window_id).to be_a(String)
+        expect(page.window_id).not_to be_empty
+      end
+    end
+  end
+
   describe 'Page.bringToFront' do
     it 'should work' do
       pending 'Page.bringToFront not implemented'
@@ -1672,6 +1784,14 @@ RSpec.describe 'Page' do
 
         expect(viewport[:width]).to eq(1024)
         expect(viewport[:height]).to eq(768)
+      end
+    end
+
+    it 'should accept has_touch option' do
+      with_test_state do |page:, **|
+        expect {
+          page.set_viewport(width: 800, height: 600, has_touch: true)
+        }.not_to raise_error
       end
     end
   end

@@ -132,6 +132,30 @@ module Puppeteer
           @session.async_send_command('network.removeIntercept', { intercept: intercept })
         end
 
+        # Set browser window state/position/size
+        # @rbs params: Hash[String | Symbol, untyped] -- browser.setClientWindowState parameters
+        # @rbs return: Async::Task[void]
+        def set_client_window_state(params)
+          raise BrowserDisconnectedError, @reason if disconnected?
+          @session.async_send_command('browser.setClientWindowState', params)
+        end
+
+        # Get browser client window info by window id
+        # @rbs window_id: String -- Client window ID
+        # @rbs return: Async::Task[Hash[String, untyped]]
+        def get_client_window_info(window_id)
+          raise BrowserDisconnectedError, @reason if disconnected?
+
+          Async do
+            result = @session.async_send_command('browser.getClientWindows', {}).wait
+            windows = result['clientWindows'] || []
+            window = windows.find { |item| item['clientWindow'] == window_id }
+            raise Error, 'Window not found' unless window
+
+            window
+          end
+        end
+
         protected
 
         def perform_dispose

@@ -277,10 +277,7 @@ RSpec.describe 'Mouse' do
 
   it 'should work with mobile viewports and cross process navigations' do
     with_test_state do |page:, server:, **|
-      # is_mobile is not yet supported in WebDriver BiDi protocol
-      # See: https://github.com/w3c/webdriver-bidi/issues/772
-      pending 'WebDriver BiDi does not support is_mobile yet'
-
+      # @see https://crbug.com/929806
       page.goto(server.empty_page)
       page.set_viewport(width: 360, height: 640, is_mobile: true)
       page.goto("#{server.cross_process_prefix}/mobile.html")

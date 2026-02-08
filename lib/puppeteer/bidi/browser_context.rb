@@ -42,13 +42,28 @@ module Puppeteer
         @browser = browser
         @user_context = user_context
         @pages = {}
+        @overrides = []
       end
 
       # Create a new page (tab/window)
+      # @rbs background: bool? -- Whether to open the page in background
+      # @rbs type: String? -- 'tab' or 'window'
+      # @rbs window_bounds: Hash[Symbol | String, untyped]? -- Initial window bounds for window pages
       # @rbs return: Page -- New page instance
-      def new_page
-        browsing_context = @user_context.create_browsing_context('tab')
-        page_for(browsing_context)
+      def new_page(background: nil, type: nil, window_bounds: nil)
+        create_type = type.to_s == 'window' ? 'window' : 'tab'
+        browsing_context = @user_context.create_browsing_context(create_type, background: background)
+        page = page_for(browsing_context)
+
+        if create_type == 'window' && window_bounds
+          begin
+            @browser.set_window_bounds(browsing_context.window_id, window_bounds)
+          rescue StandardError => error
+            debug_error(error)
+          end
+        end
+
+        page
       end
 
       # Get all pages in this context
@@ -186,11 +201,62 @@ module Puppeteer
           state = permissions_set.include?(permission) ? 'granted' : 'denied'
           begin
             @user_context.set_permissions(origin, { name: permission }, state).wait
+            @overrides << { origin: origin, permission: permission }
           rescue StandardError
             # Ignore errors for denied permissions (some may not be supported)
             raise if permissions_set.include?(permission)
           end
         end
+      end
+
+      # Set permission states for one or more permission descriptors.
+      # @rbs origin: String | Symbol -- Origin URL (must not be '*')
+      # @rbs *permissions: Hash[Symbol | String, untyped] -- Permission descriptors with states
+      # @rbs return: void
+      def set_permission(origin, *permissions)
+        if origin.to_s == '*'
+          raise UnsupportedOperationError, 'Origin (*) is not supported by WebDriver BiDi'
+        end
+
+        tasks = permissions.map do |permission_entry|
+          descriptor = permission_entry[:permission] || permission_entry['permission']
+          state = permission_entry[:state] || permission_entry['state']
+          raise ArgumentError, 'permission descriptor is required' unless descriptor.is_a?(Hash)
+          raise ArgumentError, 'permission state is required' if state.nil?
+          descriptor = descriptor.transform_keys(&:to_sym)
+
+          if descriptor[:allowWithoutSanitization] || descriptor[:allow_without_sanitization]
+            raise UnsupportedOperationError, 'allowWithoutSanitization is not supported by WebDriver BiDi'
+          end
+          if descriptor[:panTiltZoom] || descriptor[:pan_tilt_zoom]
+            raise UnsupportedOperationError, 'panTiltZoom is not supported by WebDriver BiDi'
+          end
+          if descriptor[:userVisibleOnly] || descriptor[:user_visible_only]
+            raise UnsupportedOperationError, 'userVisibleOnly is not supported by WebDriver BiDi'
+          end
+          raise ArgumentError, 'permission name is required' if descriptor[:name].nil?
+
+          -> { @user_context.set_permissions(origin.to_s, { name: descriptor[:name] }, state.to_s).wait }
+        end
+
+        AsyncUtils.await_promise_all(*tasks) unless tasks.empty?
+      end
+
+      # Clear permissions set through #override_permissions.
+      # @rbs return: void
+      def clear_permission_overrides
+        tasks = @overrides.map do |override|
+          lambda do
+            begin
+              @user_context.set_permissions(override[:origin], { name: override[:permission] }, 'prompt').wait
+            rescue StandardError => error
+              debug_error(error)
+            end
+          end
+        end
+
+        @overrides = []
+        AsyncUtils.await_promise_all(*tasks) unless tasks.empty?
       end
 
       # Close the browser context
@@ -239,6 +305,12 @@ module Puppeteer
         end
 
         true
+      end
+
+      def debug_error(error)
+        return unless ENV['DEBUG_BIDI_COMMAND']
+
+        warn(error.full_message)
       end
     end
   end
