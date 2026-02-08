@@ -65,6 +65,41 @@ RSpec.describe 'BrowserContext' do
         }.to raise_error(Puppeteer::Bidi::UnsupportedOperationError, /Origin \(\*\) is not supported/)
       end
     end
+
+    it 'should support multiple permissions' do
+      with_test_state do |page:, context:, server:, **|
+        page.goto(server.empty_page)
+
+        begin
+          context.set_permission(
+            server.empty_page,
+            { permission: { name: 'geolocation' }, state: 'granted' },
+            { permission: { name: 'midi' }, state: 'granted' }
+          )
+          expect(permission_state(page, 'geolocation')).to eq('granted')
+          expect(permission_state(page, 'midi')).to eq('granted')
+
+          context.set_permission(
+            server.empty_page,
+            { permission: { name: 'geolocation' }, state: 'denied' },
+            { permission: { name: 'midi' }, state: 'denied' }
+          )
+          expect(permission_state(page, 'geolocation')).to eq('denied')
+          expect(permission_state(page, 'midi')).to eq('denied')
+
+          context.set_permission(
+            server.empty_page,
+            { permission: { name: 'geolocation' }, state: 'prompt' },
+            { permission: { name: 'midi' }, state: 'prompt' }
+          )
+          expect(permission_state(page, 'geolocation')).to eq('prompt')
+          expect(permission_state(page, 'midi')).to eq('prompt')
+        rescue StandardError => error
+          pending "Multiple permission override is not supported by this browser: #{error.message}"
+          raise error
+        end
+      end
+    end
   end
 
   describe 'BrowserContext.clear_permission_overrides' do

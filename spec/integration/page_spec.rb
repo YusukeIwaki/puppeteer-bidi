@@ -836,8 +836,13 @@ RSpec.describe 'Page' do
 
         page.set_user_agent('foobar')
 
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        request = server_request.wait
 
+        expect(request.headers['user-agent']).to eq('foobar')
         expect(page.evaluate('() => navigator.userAgent')).to eq('foobar')
       end
     end
@@ -848,9 +853,62 @@ RSpec.describe 'Page' do
 
         page.set_user_agent(userAgent: 'foobar')
 
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        request = server_request.wait
 
+        expect(request.headers['user-agent']).to eq('foobar')
         expect(page.evaluate('() => navigator.userAgent')).to eq('foobar')
+      end
+    end
+
+    it 'should work with platform option' do
+      with_test_state do |page:, server:, **|
+        expect(page.evaluate('() => navigator.platform')).not_to eq('MockPlatform')
+
+        begin
+          page.set_user_agent(userAgent: 'foobar', platform: 'MockPlatform')
+        rescue Puppeteer::Bidi::Connection::ProtocolError => error
+          pending "Client hints override is not supported by this browser: #{error.message}"
+          raise error
+        end
+
+        expect(page.evaluate('() => navigator.platform')).to eq('MockPlatform')
+
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
+        page.goto(server.empty_page)
+        request = server_request.wait
+
+        expect(request.headers['user-agent']).to eq('foobar')
+      end
+    end
+
+    it 'should work with platform option without userAgent' do
+      with_test_state do |page:, server:, **|
+        original_user_agent = page.evaluate('() => navigator.userAgent')
+        expect(page.evaluate('() => navigator.platform')).not_to eq('MockPlatform')
+
+        begin
+          page.set_user_agent(platform: 'MockPlatform')
+        rescue Puppeteer::Bidi::Connection::ProtocolError => error
+          pending "Client hints override is not supported by this browser: #{error.message}"
+          raise error
+        end
+
+        expect(page.evaluate('() => navigator.platform')).to eq('MockPlatform')
+        expect(page.evaluate('() => navigator.userAgent')).to eq(original_user_agent)
+
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
+        page.goto(server.empty_page)
+        request = server_request.wait
+
+        expect(request.headers['user-agent']).to eq(original_user_agent)
       end
     end
 
@@ -859,9 +917,15 @@ RSpec.describe 'Page' do
         expect(page.evaluate('() => navigator.userAgent')).to include('Mozilla')
 
         page.set_user_agent('foobar')
+
+        server_request = Async do
+          server.wait_for_request('/frames/frame.html')
+        end
         page.goto("#{server.prefix}/frames/one-frame.html")
+        request = server_request.wait
 
         frame = page.frames[1]
+        expect(request.headers['user-agent']).to eq('foobar')
         expect(frame.evaluate('() => navigator.userAgent')).to eq('foobar')
       end
     end
@@ -892,7 +956,11 @@ RSpec.describe 'Page' do
           raise error
         end
 
+        server_request = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        request = server_request.wait
 
         has_ua_data = page.evaluate(<<~JS)
           () => {
@@ -920,6 +988,7 @@ RSpec.describe 'Page' do
         expect(result['model']).to eq('Mockbook')
         expect(result['platform']).to eq('MockOS')
         expect(result['platformVersion']).to eq('3.1')
+        expect(request.headers['user-agent']).to eq('MockBrowser')
       end
     end
 
@@ -928,11 +997,19 @@ RSpec.describe 'Page' do
         original = page.evaluate('() => navigator.userAgent')
         page.set_user_agent('NewAgent')
 
+        request_with_override = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        expect(request_with_override.wait.headers['user-agent']).to eq('NewAgent')
         expect(page.evaluate('() => navigator.userAgent')).to eq('NewAgent')
 
         page.set_user_agent('')
+        request_after_reset = Async do
+          server.wait_for_request('/empty.html')
+        end
         page.goto(server.empty_page)
+        expect(request_after_reset.wait.headers['user-agent']).to eq(original)
         expect(page.evaluate('() => navigator.userAgent')).to eq(original)
       end
     end
