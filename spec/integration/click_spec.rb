@@ -262,11 +262,16 @@ RSpec.describe 'Page.click' do
 
   it 'should not hang with touch-enabled viewports' do
     with_test_state do |page:, **|
-      # is_mobile / has_touch not supported by WebDriver BiDi yet
-      # https://github.com/w3c/webdriver-bidi/issues/772
-      pending 'Touch/mobile viewport not supported by WebDriver BiDi yet'
-
-      page.set_viewport(width: 375, height: 667, has_touch: true)
+      # @see https://github.com/puppeteer/puppeteer/issues/161
+      # Equivalent to KnownDevices['iPhone 6'].viewport in upstream spec.
+      page.set_viewport(
+        width: 375,
+        height: 667,
+        device_scale_factor: 2,
+        is_mobile: true,
+        has_touch: true,
+        is_landscape: false
+      )
       page.mouse.down
       page.mouse.move(100, 10)
       page.mouse.up
