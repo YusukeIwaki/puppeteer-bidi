@@ -20,7 +20,7 @@ jobs:
         id: puppeteer_ref
         run: echo "ref=$(cat development/puppeteer_revision.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: "Check out Puppeteer (sparse docs)"
+      - name: "Check out Puppeteer (sparse docs + metadata)"
         uses: actions/checkout@v4
         with:
           repository: puppeteer/puppeteer
@@ -32,6 +32,7 @@ jobs:
           sparse-checkout: |
             docs/api.md
             docs/api/
+            packages/puppeteer-core/package.json
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
