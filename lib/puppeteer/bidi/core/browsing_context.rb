@@ -360,7 +360,7 @@ module Puppeteer
             end
 
             @client_hints_are_set = true
-            session.async_send_command('emulation.setClientHintsOverride', {
+            session.async_send_command('userAgentClientHints.setClientHintsOverride', {
               clientHints: client_hints,
               contexts: [@id]
             }).wait
