@@ -5,12 +5,12 @@
 # Usage: bundle exec ruby scripts/update_injected_source.rb [VERSION]
 #
 # Example:
-#   bundle exec ruby scripts/update_injected_source.rb 24.31.0
+#   bundle exec ruby scripts/update_injected_source.rb 24.42.0
 
 require 'net/http'
 require 'json'
 
-VERSION = ARGV[0] || '24.31.0'
+VERSION = ARGV[0] || '24.42.0'
 URL = "https://unpkg.com/puppeteer-core@#{VERSION}/lib/esm/puppeteer/generated/injected.js"
 OUTPUT_FILE = File.join(__dir__, '..', 'lib', 'puppeteer', 'bidi', 'injected.js')
 

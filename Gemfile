@@ -6,6 +6,7 @@ source "https://rubygems.org"
 gemspec
 
 gem "chunky_png"
+gem "minitest"
 gem "rackup"
 gem "rake"
 gem "rspec"

@@ -424,6 +424,10 @@ module TestServer
 
       @body = @request.body.read
     end
+
+    def abort!
+      @request.connection.close
+    end
   end
 
   class RequestRecord

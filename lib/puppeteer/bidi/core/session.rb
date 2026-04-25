@@ -127,6 +127,7 @@ module Puppeteer
             'browsingContext.contextCreated',
             'browsingContext.contextDestroyed',
             'browsingContext.navigationStarted',
+            'browsingContext.navigationCommitted',
             'browsingContext.fragmentNavigated',
             'browsingContext.domContentLoaded',
             'browsingContext.load',

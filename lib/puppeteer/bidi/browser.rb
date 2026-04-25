@@ -162,6 +162,18 @@ module Puppeteer
         @default_browser_context.pages
       end
 
+      # Get all known targets.
+      # @rbs return: Array[BrowserTarget | PageTarget | FrameTarget] -- Known targets
+      def targets
+        each_target.to_a
+      end
+
+      # Get the browser target.
+      # @rbs return: BrowserTarget -- Browser target
+      def target
+        @target ||= BrowserTarget.new(self)
+      end
+
       # Get all cookies in the default browser context.
       # @rbs return: Array[Hash[String, untyped]] -- Cookies
       def cookies
@@ -190,6 +202,14 @@ module Puppeteer
       # @rbs return: void
       def delete_matching_cookies(*filters, **filter)
         @default_browser_context.delete_matching_cookies(*filters, **filter)
+      end
+
+      # Set permission states in the default browser context.
+      # @rbs origin: String | Symbol -- Origin URL (must not be '*')
+      # @rbs *permissions: Hash[Symbol | String, untyped] -- Permission descriptors with states
+      # @rbs return: void
+      def set_permission(origin, *permissions)
+        @default_browser_context.set_permission(origin, *permissions)
       end
 
       # Get browser window bounds for a given window ID.
@@ -296,7 +316,7 @@ module Puppeteer
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
       # @rbs timeout: Integer? -- Timeout in milliseconds (default: 30000)
-      # @rbs &predicate: (BrowserTarget | PageTarget | FrameTarget) -> boolish -- Predicate evaluated against each Target
+      # @rbs &predicate: (BrowserTarget | PageTarget | FrameTarget) -> boolish -- Predicate for each Target
       # @rbs return: BrowserTarget | PageTarget | FrameTarget -- Matching target
       def wait_for_target(timeout: nil, &predicate)
         predicate ||= ->(_target) { true }
@@ -341,6 +361,7 @@ module Puppeteer
         session_events = [
           :'browsingContext.contextCreated',
           :'browsingContext.navigationStarted',
+          :'browsingContext.navigationCommitted',
           :'browsingContext.historyUpdated',
           :'browsingContext.fragmentNavigated',
           :'browsingContext.domContentLoaded',
@@ -408,13 +429,13 @@ module Puppeteer
         warn(error.full_message)
       end
 
-      # @rbs &block: (BrowserTarget | PageTarget | FrameTarget) -> void -- Block to yield each target to
-      # @rbs return: Enumerator[BrowserTarget | PageTarget | FrameTarget, void] -- Enumerator of targets
+      # @rbs () -> Enumerator[BrowserTarget | PageTarget | FrameTarget, void]
+      #    | () { (BrowserTarget | PageTarget | FrameTarget) -> void } -> void
       def each_target(&block)
         return enum_for(:each_target) unless block_given?
         return unless @core_browser
 
-        yield BrowserTarget.new(self)
+        yield target
 
         @core_browser.user_contexts.each do |user_context|
           next if user_context.disposed?
@@ -422,12 +443,7 @@ module Puppeteer
           browser_context = browser_context_for(user_context)
           next unless browser_context
 
-          user_context.browsing_contexts.each do |browsing_context|
-            next if browsing_context.disposed?
-
-            page = browser_context.page_for(browsing_context)
-            yield PageTarget.new(page) if page
-          end
+          browser_context.targets.each { |target| yield target }
         end
       end
 

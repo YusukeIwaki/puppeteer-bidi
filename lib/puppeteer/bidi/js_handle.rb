@@ -290,7 +290,9 @@ module Puppeteer
 
         error_message = text
 
-        if exception && exception['type'] != 'error'
+        if exception && exception['type'] == 'object' && !exception.key?('value')
+          error_message = text
+        elsif exception && exception['type'] != 'error'
           thrown_value = Deserializer.deserialize(exception)
           error_message = "Evaluation failed: #{thrown_value}"
         end

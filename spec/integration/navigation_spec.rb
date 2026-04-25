@@ -15,6 +15,25 @@ RSpec.describe 'Page.waitForNavigation' do
     end
   end
 
+  it 'should navigate successfully after encountering network error' do
+    with_test_state do |page:, server:, **|
+      server.set_route('/network-error') do |request, _writer|
+        request.abort!
+      end
+
+      error = nil
+      begin
+        page.goto("#{server.prefix}/network-error")
+      rescue => e
+        error = e
+      end
+
+      expect(error).not_to be_nil
+      response = page.goto("#{server.prefix}/grid.html")
+      expect(response.status).to eq(200)
+    end
+  end
+
   it 'should work with both domcontentloaded and load' do
     with_test_state do |page:, server:, **|
       response_promise = Async::Promise.new

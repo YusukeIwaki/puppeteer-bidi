@@ -102,6 +102,32 @@ RSpec.describe 'BrowserContext' do
     end
   end
 
+  describe 'Browser.set_permission' do
+    it 'should set permission state in the default browser context' do
+      with_test_state do |page:, browser:, server:, **|
+        page.goto(server.empty_page)
+
+        browser.set_permission(server.empty_page, {
+          permission: { name: 'geolocation' },
+          state: 'granted'
+        })
+        expect(permission_state(page, 'geolocation')).to eq('granted')
+
+        browser.set_permission(server.empty_page, {
+          permission: { name: 'geolocation' },
+          state: 'denied'
+        })
+        expect(permission_state(page, 'geolocation')).to eq('denied')
+
+        browser.set_permission(server.empty_page, {
+          permission: { name: 'geolocation' },
+          state: 'prompt'
+        })
+        expect(permission_state(page, 'geolocation')).to eq('prompt')
+      end
+    end
+  end
+
   describe 'BrowserContext.clear_permission_overrides' do
     it 'should reset override_permissions back to prompt' do
       with_test_state do |page:, context:, server:, **|

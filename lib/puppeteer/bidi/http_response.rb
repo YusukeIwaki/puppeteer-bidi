@@ -133,7 +133,12 @@ module Puppeteer
 
       # @rbs return: String
       def text
-        content.dup.force_encoding("UTF-8")
+        text = content.dup.force_encoding("UTF-8")
+        unless text.valid_encoding?
+          raise Encoding::InvalidByteSequenceError, "Response body is not a valid UTF-8 string"
+        end
+
+        text
       end
 
       # @rbs return: untyped

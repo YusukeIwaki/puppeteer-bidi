@@ -671,6 +671,72 @@ module Puppeteer
             http_request.finalize_interceptions
           end
         end
+
+        @browsing_context.on(:log) do |data|
+          entry = data[:entry]
+          if entry["type"] == "console"
+            page.emit(:console, console_message_from_log_entry(entry))
+          elsif entry["type"] == "javascript"
+            page.emit(:pageerror, Error.new(entry["text"].to_s))
+          end
+        end
+      end
+
+      def console_message_from_log_entry(entry)
+        args = (entry["args"] || []).map { |arg| JSHandle.from(arg, main_realm.core_realm) }
+        text = args.each_with_index.map do |handle, index|
+          console_arg_text(entry["args"][index], handle)
+        end.join(" ")
+        type = console_message_type(entry["method"])
+
+        ConsoleMessage.new(
+          type: type,
+          text: text,
+          args: args,
+          location: console_message_location(entry["stackTrace"]),
+          stack_trace: console_message_stack_trace(entry["stackTrace"])
+        )
+      end
+
+      def console_message_type(method)
+        case method.to_s
+        when "group"
+          "startGroup"
+        when "groupCollapsed"
+          "startGroupCollapsed"
+        when "groupEnd"
+          "endGroup"
+        else
+          method.to_s
+        end
+      end
+
+      def console_arg_text(remote_value, handle)
+        return Deserializer.deserialize(remote_value).to_s if handle.primitive_value?
+
+        handle.to_s
+      end
+
+      def console_message_location(stack_trace)
+        frame = stack_trace&.dig("callFrames", 0)
+        return nil unless frame
+
+        {
+          url: frame["url"],
+          line_number: frame["lineNumber"],
+          column_number: frame["columnNumber"]
+        }
+      end
+
+      def console_message_stack_trace(stack_trace)
+        (stack_trace&.fetch("callFrames", nil) || []).map do |frame|
+          {
+            url: frame["url"],
+            line_number: frame["lineNumber"],
+            column_number: frame["columnNumber"],
+            function_name: frame["functionName"]
+          }
+        end
       end
 
       # Create a Frame for a child browsing context
