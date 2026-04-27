@@ -19,7 +19,10 @@
 Gemfile.lock
 
 # Test output artifacts
-/spec/output/
+/smartest/output/
+
+# Claude Code workspace artifacts
+/.claude/
 
 # Node tooling artifacts
 node_modules/

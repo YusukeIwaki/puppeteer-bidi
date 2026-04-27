@@ -85,8 +85,8 @@ jobs:
       - name: Run unit tests
         run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
 
-      - name: Run integration tests
-        run: FIREFOX_PATH=`which firefox` bundle exec rspec spec/integration/
+      - name: Run integration tests (smartest)
+        run: FIREFOX_PATH=`which firefox` bundle exec smartest
         env:
           HEADLESS: true
 
@@ -136,8 +136,8 @@ jobs:
           HOME: /root
           FIREFOX_PATH: /usr/bin/firefox-nightly
 
-      - name: Run integration tests (headless)
-        run: bundle exec rspec spec/integration/
+      - name: Run integration tests (smartest, headless)
+        run: bundle exec smartest
         env:
           HEADLESS: true
           # Fix Firefox crash in GitHub Actions
@@ -145,8 +145,8 @@ jobs:
           HOME: /root
           FIREFOX_PATH: /usr/bin/firefox-nightly
 
-      - name: Run integration tests (headful, xvfb)
-        run: xvfb-run --server-args="-screen 0 1024x768x24" bundle exec rspec spec/integration/
+      - name: Run integration tests (smartest, headful, xvfb)
+        run: xvfb-run --server-args="-screen 0 1024x768x24" bundle exec smartest
         env:
           HEADLESS: "false"
           HOME: /root
@@ -213,14 +213,14 @@ jobs:
       - name: Run usecase tests (headless)
         run: bundle exec rake test
 
-      - name: Run integration tests (headless)
-        run: bundle exec rspec spec/integration/
+      - name: Run integration tests (smartest, headless)
+        run: bundle exec smartest
         env:
           HEADLESS: true
           FIREFOX_PATH: ${{ steps.firefox.outputs.path }}
 
-      - name: Run integration tests (headful)
-        run: bundle exec rspec spec/integration/
+      - name: Run integration tests (smartest, headful)
+        run: bundle exec smartest
         env:
           HEADLESS: "false"
           FIREFOX_PATH: ${{ steps.firefox.outputs.path }}
