@@ -105,6 +105,14 @@ RSpec.describe 'Evaluation', type: :integration do
       end
     end
 
+    it 'should support thrown platform objects as error messages' do
+      with_test_state do |page:, **|
+        expect do
+          page.evaluate("() => { throw new DOMException('some DOMException message'); }")
+        end.to raise_error(/some DOMException message/)
+      end
+    end
+
     it 'should accept element handle as an argument' do
       with_test_state do |page:, server:, **|
         page.set_content('<section>42</section>')

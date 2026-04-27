@@ -344,6 +344,36 @@ RSpec.describe "Locator" do
       end
     end
 
+    it "should work for large text" do
+      with_test_state do |page:, **|
+        page.set_content("<textarea></textarea>")
+        text = "a" * 1000
+        page.locator("textarea").fill(text)
+        expect(page.evaluate("() => document.querySelector('textarea')?.value.length")).to eq(1000)
+      end
+    end
+
+    it "should work for large text in contenteditable" do
+      with_test_state do |page:, **|
+        page.set_content('<div contenteditable="true"></div>')
+        text = "a" * 1000
+        page.locator("div").fill(text)
+        expect(page.evaluate("() => document.querySelector('div')?.innerText.length")).to eq(1000)
+      end
+    end
+
+    it "should work with a custom typing threshold" do
+      with_test_state do |page:, **|
+        page.set_content("<input />")
+        page.locator("input").fill("abc", typing_threshold: 10)
+        expect(page.evaluate("() => document.querySelector('input')?.value")).to eq("abc")
+
+        page.set_content("<input />")
+        page.locator("input").fill("abc", typing_threshold: 2)
+        expect(page.evaluate("() => document.querySelector('input')?.value")).to eq("abc")
+      end
+    end
+
     it "should work if the input becomes enabled later" do
       with_test_state do |page:, **|
         page.set_content("<input disabled />")

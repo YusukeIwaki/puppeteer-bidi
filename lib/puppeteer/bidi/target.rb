@@ -15,6 +15,11 @@ module Puppeteer
         nil
       end
 
+      # @rbs return: nil
+      def as_page
+        nil
+      end
+
       # @rbs return: String
       def url
         ''
@@ -45,6 +50,11 @@ module Puppeteer
 
       # @rbs return: Page
       def page
+        @page
+      end
+
+      # @rbs return: Page
+      def as_page
         @page
       end
 
@@ -81,6 +91,11 @@ module Puppeteer
         @frame.page
       end
 
+      # @rbs return: Page
+      def as_page
+        @frame.page
+      end
+
       # @rbs return: String
       def url
         @frame.url
@@ -98,7 +113,7 @@ module Puppeteer
 
       # @rbs return: BrowserContext
       def browser_context
-        @frame.browser_context
+        @frame.page.browser_context
       end
     end
   end

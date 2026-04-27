@@ -178,8 +178,11 @@ module Puppeteer
 
       # Fill the located element with the provided value.
       # @rbs value: String -- Value to fill
+      # @rbs typing_threshold: Integer -- Number of characters below which real typing is used
       # @rbs return: void
-      def fill(value)
+      def fill(value, typing_threshold: 100)
+        typing_threshold ||= 100
+
         perform_action("Locator.fill", wait_for_enabled: true) do |handle|
           input_type = handle.evaluate(<<~JS)
             (el) => {
@@ -219,47 +222,41 @@ module Puppeteer
           when "select"
             handle.select(value)
           when "contenteditable", "typeable-input"
-            text_to_type = handle.evaluate(<<~JS, value)
-              (input, newValue) => {
-                const currentValue = input.isContentEditable
-                  ? input.innerText
-                  : input.value;
+            if value.length < typing_threshold
+              text_to_type = handle.evaluate(<<~JS, value)
+                (input, newValue) => {
+                  const currentValue = input.isContentEditable
+                    ? input.innerText
+                    : input.value;
 
-                if (
-                  newValue.length <= currentValue.length ||
-                  !newValue.startsWith(input.value)
-                ) {
+                  if (
+                    newValue.length <= currentValue.length ||
+                    !newValue.startsWith(currentValue)
+                  ) {
+                    if (input.isContentEditable) {
+                      input.innerText = "";
+                    } else {
+                      input.value = "";
+                    }
+                    return newValue;
+                  }
+
                   if (input.isContentEditable) {
                     input.innerText = "";
+                    input.innerText = currentValue;
                   } else {
                     input.value = "";
+                    input.value = currentValue;
                   }
-                  return newValue;
+                  return newValue.substring(currentValue.length);
                 }
-                const originalValue = input.isContentEditable
-                  ? input.innerText
-                  : input.value;
-
-                if (input.isContentEditable) {
-                  input.innerText = "";
-                  input.innerText = originalValue;
-                } else {
-                  input.value = "";
-                  input.value = originalValue;
-                }
-                return newValue.substring(originalValue.length);
-              }
-            JS
-            handle.type(text_to_type)
+              JS
+              handle.type(text_to_type) unless text_to_type.to_s.empty?
+            else
+              fill_directly(handle, value)
+            end
           when "other-input"
-            handle.focus
-            handle.evaluate(<<~JS, value)
-              (input, newValue) => {
-                input.value = newValue;
-                input.dispatchEvent(new Event("input", {bubbles: true}));
-                input.dispatchEvent(new Event("change", {bubbles: true}));
-              }
-            JS
+            fill_directly(handle, value)
           else
             raise StandardError, "Element cannot be filled out."
           end
@@ -342,6 +339,27 @@ module Puppeteer
                   :wait_for_enabled,
                   :ensure_element_is_in_viewport,
                   :wait_for_stable_bounding_box
+
+      def fill_directly(handle, value)
+        handle.focus
+        handle.evaluate(<<~JS, value)
+          (input, newValue) => {
+            const currentValue = input.isContentEditable
+              ? input.innerText
+              : input.value;
+            if (currentValue === newValue) {
+              return;
+            }
+            if (input.isContentEditable) {
+              input.innerText = newValue;
+            } else {
+              input.value = newValue;
+            }
+            input.dispatchEvent(new Event("input", {bubbles: true}));
+            input.dispatchEvent(new Event("change", {bubbles: true}));
+          }
+        JS
+      end
 
       # @rbs cause: String -- Action name
       # @rbs wait_for_enabled: bool -- Whether to wait for enabled

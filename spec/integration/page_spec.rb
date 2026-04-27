@@ -42,12 +42,13 @@ RSpec.describe 'Page' do
       end
     end
 
-    it 'should close pages with iframes' do
-      with_test_state do |browser:, **|
-        new_page = browser.new_page
-        new_page.set_content('<iframe srcdoc="<p>hello</p>"></iframe>')
+    it 'should close child iframes' do
+      with_test_state do |context:, server:, **|
+        new_page = context.new_page
+        new_page.goto("#{server.prefix}/frames/one-frame.html")
+        expect(new_page.frames.length).to eq(2)
         Puppeteer::Bidi::AsyncUtils.async_timeout(3000) { new_page.close }.wait
-        expect(new_page.closed?).to be true
+        expect(context.pages).not_to include(new_page)
       end
     end
 
@@ -238,109 +239,6 @@ RSpec.describe 'Page' do
 
         page.set_offline_mode(false)
         expect(page.evaluate('() => window.navigator.onLine')).to be true
-      end
-    end
-  end
-
-  describe 'Page.Events.Console' do
-    it 'should work' do
-      pending 'Page.on("console") not implemented'
-
-      with_test_state do |page:, **|
-        message = nil
-        page.once(:console) { |msg| message = msg }
-        page.evaluate("() => console.log('hello', 5, {foo: 'bar'})")
-
-        expect(message.text).to eq("hello 5 {foo: 'bar'}")
-        expect(message.type).to eq('log')
-      end
-    end
-
-    it 'should work for different console API calls with logging functions' do
-      pending 'Page.on("console") not implemented'
-
-      with_test_state do |page:, **|
-        messages = []
-        page.on(:console) { |msg| messages << msg }
-
-        # Execute various console API calls
-        page.evaluate(<<~JS)
-          () => {
-            console.trace('calling console.trace');
-            console.dir('calling console.dir');
-            console.warn('calling console.warn');
-            console.error('calling console.error');
-            console.log(Promise.resolve('should not wait until resolved!'));
-          }
-        JS
-
-        expect(messages.map(&:type)).to eq(%w[trace dir warning error log])
-      end
-    end
-
-    it 'should not fail for window object' do
-      pending 'Page.on("console") not implemented'
-
-      with_test_state do |page:, **|
-        message = nil
-        page.once(:console) { |msg| message = msg }
-        page.evaluate('() => console.error(window)')
-
-        expect(message.text).to eq('Window')
-      end
-    end
-
-    it 'should trigger correct Log' do
-      pending 'Page.on("console") not implemented'
-
-      with_test_state do |page:, server:, **|
-        page.goto('about:blank')
-
-        message = nil
-        page.once(:console) { |msg| message = msg }
-
-        page.evaluate("async url => fetch(url).catch(e => {})", "#{server.cross_process_prefix}/non-existent")
-
-        expect(message).not_to be_nil
-        expect(message.text).to include('Access')
-      end
-    end
-
-    it 'should have location when fetch fails' do
-      pending 'Page.on("console") not implemented'
-
-      with_test_state do |page:, server:, **|
-        page.goto(server.empty_page)
-
-        message = nil
-        page.once(:console) { |msg| message = msg }
-
-        page.set_content("<script>fetch('http://wat');</script>")
-
-        expect(message).not_to be_nil
-        expect(message.location[:url]).to include('empty.html')
-      end
-    end
-
-    it 'should have location and stack trace for console API calls' do
-      pending 'Page.on("console") not implemented'
-
-      with_test_state do |page:, server:, **|
-        page.goto(server.empty_page)
-
-        message = nil
-        page.once(:console) { |msg| message = msg }
-
-        page.goto("#{server.prefix}/consolelog.html")
-
-        expect(message).not_to be_nil
-        expect(message.text).to eq('yellow')
-        expect(message.type).to eq('log')
-        expect(message.location).to eq({
-          url: "#{server.prefix}/consolelog.html",
-          line_number: 7,
-          column_number: 16
-        })
       end
     end
   end

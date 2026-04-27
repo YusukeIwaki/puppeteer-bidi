@@ -611,6 +611,12 @@ module Puppeteer
         @main_frame ||= Frame.from(self, @browsing_context)
       end
 
+      # Get the target associated with this page.
+      # @rbs return: PageTarget -- Page target
+      def target
+        @target ||= PageTarget.new(self)
+      end
+
       # Reloads the page.
       # @rbs timeout: Numeric? -- Navigation timeout in ms (0 for infinite)
       # @rbs wait_until: String | Array[String] -- When to consider navigation complete

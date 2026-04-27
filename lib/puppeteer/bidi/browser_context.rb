@@ -42,6 +42,7 @@ module Puppeteer
         @browser = browser
         @user_context = user_context
         @pages = {}
+        @frame_targets = {}
         @overrides = []
       end
 
@@ -78,6 +79,28 @@ module Puppeteer
         @user_context.browsing_contexts
                      .reject(&:disposed?)
                      .map { |browsing_context| page_for(browsing_context) }
+      end
+
+      # Get all known targets in this browser context.
+      # @rbs return: Array[PageTarget | FrameTarget] -- Known targets
+      def targets
+        pages.flat_map do |page|
+          [page.target] + page.frames.drop(1).map { |frame| target_for_frame(frame) }
+        end
+      end
+
+      # Wait until a target in this context satisfies the predicate.
+      # @rbs timeout: Integer? -- Timeout in milliseconds (default: 30000)
+      # @rbs &predicate: (PageTarget | FrameTarget) -> boolish -- Predicate evaluated against each target
+      # @rbs return: PageTarget | FrameTarget -- Matching target
+      def wait_for_target(timeout: nil, &predicate)
+        predicate ||= ->(_target) { true }
+
+        browser.wait_for_target(timeout: timeout) do |target|
+          (target.is_a?(PageTarget) || target.is_a?(FrameTarget)) &&
+            target.browser_context == self &&
+            predicate.call(target)
+        end #: PageTarget | FrameTarget
       end
 
       # Get all cookies in this context.
@@ -274,6 +297,19 @@ module Puppeteer
       end
 
       private
+
+      # @rbs frame: Frame -- Frame to get target for
+      # @rbs return: FrameTarget -- Frame target
+      def target_for_frame(frame)
+        context_id = frame.browsing_context.id
+        @frame_targets[context_id] ||= begin
+          target = FrameTarget.new(frame)
+          frame.browsing_context.once(:closed) do
+            @frame_targets.delete(context_id)
+          end
+          target
+        end
+      end
 
       def cookie_matches_filter?(cookie, raw_filter)
         filter = CookieUtils.normalize_cookie_input(raw_filter)

@@ -81,7 +81,11 @@ module Puppeteer
           end
 
           # Listen for navigation completion events
-          %w[browsingContext.domContentLoaded browsingContext.load].each do |event_name|
+          %w[
+            browsingContext.domContentLoaded
+            browsingContext.load
+            browsingContext.navigationCommitted
+          ].each do |event_name|
             session.on(event_name) do |info|
               next unless info['context'] == @browsing_context.id
               next if info['navigation'].nil?
