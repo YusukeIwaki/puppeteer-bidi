@@ -33,16 +33,12 @@ around_suite do |suite|
   use_matcher RSpecCompatMatchers
 
   around_test do |test|
+    use_helper SmartestHelpers
     Sync do
       Timeout.timeout(15) do
         test.run
       end
     end
-  end
-
-  around_test do |test|
-    use_helper SmartestHelpers
-    test.run
   end
 
   Sync do
