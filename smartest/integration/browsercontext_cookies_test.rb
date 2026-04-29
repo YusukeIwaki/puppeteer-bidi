@@ -2,19 +2,14 @@
 
 require "test_helper"
 
-  def with_cookie_state
-    with_test_state do |browser:, server:, **|
-      context = browser.create_browser_context
-      page = context.new_page
+  def with_cookie_state(browser:, server:)
+    context = browser.create_browser_context
+    page = context.new_page
 
-      begin
-        yield(page: page, server: server, https_server: BrowserTestResources.https_server,
-              browser: browser, context: context)
-      ensure
-        page.close unless page.closed?
-        context.close
-      end
-    end
+    yield(page: page, server: server, browser: browser, context: context)
+  ensure
+    page&.close unless page&.closed?
+    context&.close
   end
 
     test(['BrowserContext cookies', 'BrowserContext.cookies', 'should find no cookies in new context'].join(" ")) do |cookie_state:|
@@ -213,7 +208,7 @@ require "test_helper"
       expect(cookies_after.find { |entry| entry['name'] == name }).to be_nil
     end
 
-    test(['BrowserContext cookies', 'BrowserContext.delete_matching_cookies', 'should delete cookies matching filters'].join(" ")) do
+    test(['BrowserContext cookies', 'BrowserContext.delete_matching_cookies', 'should delete cookies matching filters'].join(" ")) do |browser:, server:|
       filters = [
         {
           name: 'cookie1',
@@ -239,7 +234,7 @@ require "test_helper"
       ]
 
       filters.each do |filter|
-        with_cookie_state do |page:, context:, server:, browser:, **|
+        with_cookie_state(browser: browser, server: server) do |page:, context:, server:, browser:|
           page.goto(server.empty_page)
           expect(context.cookies.length).to eq(0)
           top_level_site = 'https://example.test'

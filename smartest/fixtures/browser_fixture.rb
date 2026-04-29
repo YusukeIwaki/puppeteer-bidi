@@ -2,28 +2,17 @@
 
 class BrowserFixture < Smartest::Fixture
   suite_fixture :browser do
-    BrowserTestResources.start
-    BrowserTestResources.browser
-  end
-
-  suite_fixture :test_server do
-    BrowserTestResources.start
-    BrowserTestResources.server
-  end
-
-  suite_fixture :test_https_server do
-    BrowserTestResources.start
-    BrowserTestResources.https_server
-  end
-
-  fixture :server do |test_server:|
-    cleanup { test_server.clear_routes }
-    test_server
-  end
-
-  fixture :https_server do |test_https_server:|
-    cleanup { test_https_server.clear_routes }
-    test_https_server
+    headless = !%w[0 false].include?(ENV["HEADLESS"])
+    browser = Puppeteer::Bidi.launch_browser_instance(
+      headless: headless,
+      accept_insecure_certs: true
+    )
+    cleanup do
+      browser.close unless browser.closed?
+      puts "\n[Test Suite] Browser closed"
+    end
+    puts "\n[Test Suite] Browser started (will be reused across tests)"
+    browser
   end
 
   fixture :context do |browser:|
@@ -53,5 +42,4 @@ class BrowserFixture < Smartest::Fixture
       context: context,
     }
   end
-
 end

@@ -563,13 +563,11 @@ require "test_helper"
     end
 
     test(['ElementHandle specs', 'Custom queries', 'should throw with invalid query names'].join(" ")) do
-      with_test_state do |**|
-        skip 'Custom query handlers not yet fully implemented'
+      skip 'Custom query handlers not yet fully implemented'
 
-        expect {
-          Puppeteer::Bidi.register_custom_query_handler('1/2/3') { 'foo' }
-        }.to raise_error(/Custom query handler names may only contain/)
-      end
+      expect {
+        Puppeteer::Bidi.register_custom_query_handler('1/2/3') { 'foo' }
+      }.to raise_error(/Custom query handler names may only contain/)
     end
 
     test(['ElementHandle specs', 'Custom queries', 'should work for multiple elements'].join(" ")) do |page:|

@@ -2,21 +2,6 @@
 
 require "test_helper"
 
-  def with_cookie_state
-    with_test_state do |browser:, server:, **|
-      context = browser.create_browser_context
-      page = context.new_page
-
-      begin
-        yield(page: page, server: server, https_server: BrowserTestResources.https_server,
-              browser: browser, context: context)
-      ensure
-        page.close unless page.closed?
-        context.close
-      end
-    end
-  end
-
   def origin_for(url)
     uri = URI.parse(url)
     origin = "#{uri.scheme}://#{uri.host}"

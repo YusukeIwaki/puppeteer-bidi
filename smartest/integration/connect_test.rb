@@ -2,11 +2,11 @@
 
 require "test_helper"
 
-  test(["Puppeteer::Bidi.connect", "should be able to reconnect"].join(" ")) do
+  test(["Puppeteer::Bidi.connect", "should be able to reconnect"].join(" ")) do |server:|
     with_browser do |browser|
       ws_endpoint = browser.ws_endpoint
       page = browser.new_page
-      page.goto(BrowserTestResources.server.empty_page)
+      page.goto(server.empty_page)
       pages_before_disconnect = browser.pages.count
       browser.disconnect
       expect(browser.pages.count).to eq(0)

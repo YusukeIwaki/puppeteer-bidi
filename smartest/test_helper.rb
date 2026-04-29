@@ -20,45 +20,6 @@ Puppeteer::Bidi::Page.prepend(TestShortInspect)
 Puppeteer::Bidi::ElementHandle.prepend(TestShortInspect)
 Puppeteer::Bidi::HTTPRequest.prepend(TestShortInspect)
 
-module BrowserTestResources
-  class << self
-    attr_reader :browser, :server, :https_server
-
-    def start
-      return if @browser
-
-      headless = !%w[0 false].include?(ENV["HEADLESS"])
-      @browser = Puppeteer::Bidi.launch_browser_instance(headless: headless, accept_insecure_certs: true)
-      @server = TestServer::Server.new
-      @https_server = TestServer::Server.new(
-        scheme: "https",
-        ssl_context: TestServer.ssl_context
-      )
-      @server.start
-      @https_server.start
-      puts "\n[Test Suite] Browser and server started (will be reused across tests)"
-    end
-
-    def stop
-      if @browser
-        @browser.close
-        @browser = nil
-        puts "\n[Test Suite] Browser closed"
-      end
-      if @server
-        @server.stop
-        @server = nil
-        puts "[Test Suite] Server stopped"
-      end
-      if @https_server
-        @https_server.stop
-        @https_server = nil
-        puts "[Test Suite] HTTPS server stopped"
-      end
-    end
-  end
-end
-
 Dir[File.join(__dir__, "fixtures", "**", "*.rb")].sort.each do |fixture_file|
   require fixture_file
 end
@@ -89,30 +50,11 @@ module BrowserTestHelpers
       yield(browser)
     end
   end
-
-  def with_test_state
-    BrowserTestResources.start
-    page = BrowserTestResources.browser.new_page
-    context = BrowserTestResources.browser.default_browser_context
-
-    begin
-      yield(
-        page: page,
-        server: BrowserTestResources.server,
-        https_server: BrowserTestResources.https_server,
-        browser: BrowserTestResources.browser,
-        context: context
-      )
-    ensure
-      page.close unless page.closed?
-      BrowserTestResources.server.clear_routes
-      BrowserTestResources.https_server.clear_routes
-    end
-  end
 end
 
 around_suite do |suite|
   use_fixture BrowserFixture
+  use_fixture ServerFixture
   use_matcher PredicateMatcher
 
   around_test do |test|
@@ -126,11 +68,8 @@ around_suite do |suite|
   puts "\n[Test Suite] Starting..."
   result = nil
   Sync do |parent|
-    BrowserTestResources.start
     result = suite.run
     parent.reactor.print_hierarchy if ENV["DEBUG_ASYNC_HIERARCHY"]
-  ensure
-    BrowserTestResources.stop
   end
   result
 end

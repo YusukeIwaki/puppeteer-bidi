@@ -189,7 +189,7 @@ require "test_helper"
       expect(content).to eq('contents of the file')
     end
 
-    test(['input tests', 'FileChooser.accept', 'should be able to reset selected files with empty file list'].join(" ")) do
+    test(['input tests', 'FileChooser.accept', 'should be able to reset selected files with empty file list'].join(" ")) do |page:|
       if linux?
         if headless_mode?
           skip 'Firefox crashes in headless mode on Linux'
@@ -198,26 +198,24 @@ require "test_helper"
         end
       end
 
-      with_test_state do |page:, **|
-        page.set_content('<input type="file" />')
-        file_to_upload = asset_path("file-to-upload.txt")
+      page.set_content('<input type="file" />')
+      file_to_upload = asset_path("file-to-upload.txt")
 
-        chooser = page.wait_for_file_chooser do
-          page.click('input')
-        end
-        chooser.accept([file_to_upload])
-
-        file_count = page.eval_on_selector('input', 'input => input.files.length')
-        expect(file_count).to eq(1)
-
-        chooser = page.wait_for_file_chooser do
-          page.click('input')
-        end
-        chooser.accept([])
-
-        file_count = page.eval_on_selector('input', 'input => input.files.length')
-        expect(file_count).to eq(0)
+      chooser = page.wait_for_file_chooser do
+        page.click('input')
       end
+      chooser.accept([file_to_upload])
+
+      file_count = page.eval_on_selector('input', 'input => input.files.length')
+      expect(file_count).to eq(1)
+
+      chooser = page.wait_for_file_chooser do
+        page.click('input')
+      end
+      chooser.accept([])
+
+      file_count = page.eval_on_selector('input', 'input => input.files.length')
+      expect(file_count).to eq(0)
     end
 
     test(['input tests', 'FileChooser.accept', 'should not accept multiple files for single-file input'].join(" ")) do |page:|
@@ -236,49 +234,45 @@ require "test_helper"
       }.to raise_error(RuntimeError)
     end
 
-    test(['input tests', 'FileChooser.accept', 'should succeed even for non-existent files'].join(" ")) do
+    test(['input tests', 'FileChooser.accept', 'should succeed even for non-existent files'].join(" ")) do |page:|
       skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
 
       # Firefox BiDi rejects non-existent files with NS_ERROR_FILE_NOT_FOUND
       pending 'Firefox BiDi rejects non-existent files'
 
-      with_test_state do |page:, **|
-        page.set_content('<input type="file" />')
+      page.set_content('<input type="file" />')
 
-        chooser = page.wait_for_file_chooser do
-          page.click('input')
-        end
-
-        expect {
-          chooser.accept(['file-does-not-exist.txt'])
-        }.not_to raise_error(StandardError)
+      chooser = page.wait_for_file_chooser do
+        page.click('input')
       end
+
+      expect {
+        chooser.accept(['file-does-not-exist.txt'])
+      }.not_to raise_error(StandardError)
     end
 
-    test(['input tests', 'FileChooser.accept', 'should error on read of non-existent files'].join(" ")) do
+    test(['input tests', 'FileChooser.accept', 'should error on read of non-existent files'].join(" ")) do |page:|
       skip 'Firefox crashes in headless mode on Linux' if headless_mode? && linux?
 
       # Firefox BiDi rejects non-existent files with NS_ERROR_FILE_NOT_FOUND
       pending 'Firefox BiDi rejects non-existent files'
 
-      with_test_state do |page:, **|
-        page.set_content('<input type="file" />')
+      page.set_content('<input type="file" />')
 
-        chooser = page.wait_for_file_chooser do
-          page.click('input')
-        end
-        chooser.accept(['file-does-not-exist.txt'])
-
-        result = page.eval_on_selector('input', <<~JS)
-          (pick) => {
-            const reader = new FileReader();
-            const promise = new Promise(fulfill => reader.onerror = fulfill);
-            reader.readAsText(pick.files[0]);
-            return promise.then(() => false);
-          }
-        JS
-        expect(result).to eq(false)
+      chooser = page.wait_for_file_chooser do
+        page.click('input')
       end
+      chooser.accept(['file-does-not-exist.txt'])
+
+      result = page.eval_on_selector('input', <<~JS)
+        (pick) => {
+          const reader = new FileReader();
+          const promise = new Promise(fulfill => reader.onerror = fulfill);
+          reader.readAsText(pick.files[0]);
+          return promise.then(() => false);
+        }
+      JS
+      expect(result).to eq(false)
     end
 
     test(['input tests', 'FileChooser.accept', 'should fail when accepting file chooser twice'].join(" ")) do |page:|
@@ -296,7 +290,7 @@ require "test_helper"
       }.to raise_error(/Cannot accept FileChooser which is already handled!/)
     end
 
-    test(['input tests', 'FileChooser.cancel', 'should cancel dialog'].join(" ")) do
+    test(['input tests', 'FileChooser.cancel', 'should cancel dialog'].join(" ")) do |page:|
       if linux?
         if headless_mode?
           skip 'Firefox crashes in headless mode on Linux'
@@ -305,23 +299,21 @@ require "test_helper"
         end
       end
 
-      with_test_state do |page:, **|
-        # Consider file chooser canceled if we can summon another one.
-        # There's no reliable way in WebPlatform to see that FileChooser was
-        # canceled.
-        page.set_content('<input type="file" />')
+      # Consider file chooser canceled if we can summon another one.
+      # There's no reliable way in WebPlatform to see that FileChooser was
+      # canceled.
+      page.set_content('<input type="file" />')
 
-        chooser1 = page.wait_for_file_chooser do
-          page.click('input')
-        end
-        chooser1.cancel
-
-        # If this resolves, then we successfully canceled file chooser.
-        chooser2 = page.wait_for_file_chooser do
-          page.click('input')
-        end
-        expect(chooser2).not_to be_nil
+      chooser1 = page.wait_for_file_chooser do
+        page.click('input')
       end
+      chooser1.cancel
+
+      # If this resolves, then we successfully canceled file chooser.
+      chooser2 = page.wait_for_file_chooser do
+        page.click('input')
+      end
+      expect(chooser2).not_to be_nil
     end
 
     test(['input tests', 'FileChooser.cancel', 'should fail when canceling file chooser twice'].join(" ")) do |page:|
