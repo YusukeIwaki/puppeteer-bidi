@@ -6,12 +6,12 @@ require "test_helper"
 
     response = page.go_back
     expect(response).not_to be_nil
-    expect(response.ok?).to be true
+    expect(response.ok?).to eq(true)
     expect(response.url).to include(server.empty_page)
 
     response = page.go_forward
     expect(response).not_to be_nil
-    expect(response.ok?).to be true
+    expect(response.ok?).to eq(true)
     expect(response.url).to include('/grid.html')
 
     response = page.go_forward

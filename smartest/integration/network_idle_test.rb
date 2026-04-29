@@ -9,7 +9,7 @@ require "test_helper"
     # Wait for network idle (should complete immediately since page is loaded)
     expect do
       page.wait_for_network_idle(idle_time: 100, timeout: 5000, concurrency: 0)
-    end.not_to raise_error
+    end.not_to raise_error(StandardError)
   end
 
   test(['Page#wait_for_network_idle', 'waits for network idle after triggering requests'].join(" ")) do |page:, server:|
@@ -25,7 +25,7 @@ require "test_helper"
     # Wait for network idle
     expect do
       page.wait_for_network_idle(idle_time: 500, timeout: 3000, concurrency: 0)
-    end.not_to raise_error
+    end.not_to raise_error(StandardError)
   end
 
   test(['Page#wait_for_network_idle', 'wait_for_navigation with networkidle0'].join(" ")) do |page:, server:|

@@ -16,4 +16,4 @@ gem "oj"
 
 gem "steep", group: :development
 
-gem "smartest", "~> 0.2.2"
+gem "smartest", "~> 0.3.0"

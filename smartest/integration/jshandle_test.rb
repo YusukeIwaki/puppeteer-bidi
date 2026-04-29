@@ -24,13 +24,13 @@ require "test_helper"
     test(['JSHandle', 'Page.evaluateHandle', 'should accept object handle to primitive types'].join(" ")) do |page:, server:|
       a_handle = page.evaluate_handle('5')
       is_five = page.evaluate('(e) => Object.is(e, 5)', a_handle)
-      expect(is_five).to be true
+      expect(is_five).to eq(true)
     end
 
     test(['JSHandle', 'Page.evaluateHandle', 'should accept object handle to unserializable value'].join(" ")) do |page:, server:|
       a_handle = page.evaluate_handle('Infinity')
       is_infinity = page.evaluate('(e) => Object.is(e, Infinity)', a_handle)
-      expect(is_infinity).to be true
+      expect(is_infinity).to eq(true)
     end
 
     test(['JSHandle', 'JSHandle#get_property', 'should work'].join(" ")) do |page:, server:|
@@ -77,7 +77,7 @@ require "test_helper"
         })()
       JS
 
-      expect { handle.json_value }.not_to raise_error
+      expect { handle.json_value }.not_to raise_error(StandardError)
     end
 
     test(['JSHandle', 'JSHandle#get_properties', 'should work'].join(" ")) do |page:, server:|
@@ -135,7 +135,7 @@ require "test_helper"
 
       # Verify it's actually a text node
       is_text_node = page.evaluate('(e) => e.nodeType === Node.TEXT_NODE', element)
-      expect(is_text_node).to be true
+      expect(is_text_node).to eq(true)
     end
 
     test(['JSHandle', 'JSHandle#to_s', 'should work for primitives'].join(" ")) do |page:, server:|
@@ -174,10 +174,10 @@ require "test_helper"
 
     test(['JSHandle', 'JSHandle disposal', 'should work'].join(" ")) do |page:, server:|
       window_handle = page.evaluate_handle('window')
-      expect(window_handle.disposed?).to be false
+      expect(window_handle.disposed?).to eq(false)
 
       window_handle.dispose
-      expect(window_handle.disposed?).to be true
+      expect(window_handle.disposed?).to eq(true)
     end
 
     test(['JSHandle', 'JSHandle disposal', 'should throw after disposal'].join(" ")) do |page:, server:|

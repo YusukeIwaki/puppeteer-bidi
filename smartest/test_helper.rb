@@ -114,7 +114,6 @@ end
 around_suite do |suite|
   use_fixture BrowserFixture
   use_matcher PredicateMatcher
-  use_matcher RSpecCompatMatchers
 
   around_test do |test|
     use_helper BrowserTestHelpers

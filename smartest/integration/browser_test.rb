@@ -5,13 +5,14 @@ require "test_helper"
     test(['Browser', 'targets', 'returns browser and page targets'].join(" ")) do |browser:, page:, context:|
       targets = browser.targets
 
-      expect(targets.map(&:type)).to include('browser', 'page')
+      expect(targets.map(&:type)).to include('browser').and include('page')
       expect(targets).to include(browser.target)
       expect(targets).to include(page.target)
       expect(context.targets).to include(page.target)
       expect(page.target.page).to eq(page)
       expect(page.target.as_page).to eq(page)
-      expect(page.target).to equal(page.target)
+      target = page.target
+      expect(target.equal?(page.target)).to eq(true)
     end
 
     test(['Browser', 'targets', 'returns frame targets'].join(" ")) do |browser:, page:, context:, server:|
@@ -26,7 +27,7 @@ require "test_helper"
       expect(frame_target.as_page).to eq(page)
       expect(frame_target.url).to eq(frame.url)
       expect(browser.targets).to include(frame_target)
-      expect(context.wait_for_target { |target| target == frame_target }).to equal(frame_target)
+      expect(context.wait_for_target { |target| target == frame_target }.equal?(frame_target)).to eq(true)
     end
 
     test(['Browser', 'targets', 'waits for a context target'].join(" ")) do |context:|
@@ -35,7 +36,7 @@ require "test_helper"
         page = context.new_page
         target = context.wait_for_target { |candidate| candidate.page == page }
 
-        expect(target).to equal(page.target)
+        expect(target.equal?(page.target)).to eq(true)
       ensure
         page&.close unless page&.closed?
       end
@@ -52,11 +53,11 @@ require "test_helper"
 
         initial_bounds = { left: 10, top: 20, width: 800, height: 600 }
         browser.set_window_bounds(window_id, initial_bounds)
-        expect(browser.get_window_bounds(window_id)).to include(initial_bounds)
+        expect(browser.get_window_bounds(window_id).slice(*initial_bounds.keys)).to eq(initial_bounds)
 
         updated_bounds = { left: 100, top: 200, width: 1600, height: 1200 }
         browser.set_window_bounds(window_id, updated_bounds)
-        expect(browser.get_window_bounds(window_id)).to include(updated_bounds)
+        expect(browser.get_window_bounds(window_id).slice(*updated_bounds.keys)).to eq(updated_bounds)
 
         browser.set_window_bounds(window_id, { window_state: 'maximized' })
         expect(browser.get_window_bounds(window_id)[:window_state]).to eq('maximized')

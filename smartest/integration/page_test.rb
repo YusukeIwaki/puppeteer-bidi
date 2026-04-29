@@ -29,9 +29,9 @@ require "test_helper"
 
     test(['Page', 'Page.close', 'should set the page close state'].join(" ")) do |browser:|
       new_page = browser.new_page
-      expect(new_page.closed?).to be false
+      expect(new_page.closed?).to eq(false)
       new_page.close
-      expect(new_page.closed?).to be true
+      expect(new_page.closed?).to eq(true)
     end
 
     test(['Page', 'Page.close', 'should close child iframes'].join(" ")) do |context:, server:|
@@ -66,7 +66,7 @@ require "test_helper"
       JS
       # Should close without waiting for beforeunload
       new_page.close
-      expect(new_page.closed?).to be true
+      expect(new_page.closed?).to eq(true)
     end
 
     test(['Page', 'Page.Events.Load', 'should fire when expected'].join(" ")) do |page:, server:|
@@ -77,7 +77,7 @@ require "test_helper"
 
       page.goto(server.empty_page)
 
-      expect(load_fired).to be true
+      expect(load_fired).to eq(true)
     end
 
     test(['Page', 'Page.Events.DOMContentLoaded', 'should fire when expected'].join(" ")) do |page:|
@@ -88,7 +88,7 @@ require "test_helper"
 
       page.goto('about:blank')
 
-      expect(dom_loaded).to be true
+      expect(dom_loaded).to eq(true)
     end
 
     test(['Page', 'Removing and Adding Event Handlers', 'should correctly fire event handlers as they are added and then removed'].join(" ")) do |page:, server:|
@@ -97,12 +97,12 @@ require "test_helper"
 
       page.on(:request, &handler)
       page.goto(server.empty_page)
-      expect(handler_called).to be true
+      expect(handler_called).to eq(true)
 
       handler_called = false
       page.off(:request, &handler)
       page.goto(server.empty_page)
-      expect(handler_called).to be false
+      expect(handler_called).to eq(false)
     end
 
     test(['Page', 'Page.Events.error', 'should throw when page crashes'].join(" ")) do |page:|
@@ -173,7 +173,7 @@ require "test_helper"
       page.set_offline_mode(true)
       expect {
         page.goto(server.empty_page)
-      }.to raise_error
+      }.to raise_error(StandardError)
 
       page.set_offline_mode(false)
       response = page.goto(server.empty_page)
@@ -183,13 +183,13 @@ require "test_helper"
     test(['Page', 'Page.setOfflineMode', 'should emulate navigator.onLine'].join(" ")) do |page:|
       pending 'Page.setOfflineMode not implemented'
 
-      expect(page.evaluate('() => window.navigator.onLine')).to be true
+      expect(page.evaluate('() => window.navigator.onLine')).to eq(true)
 
       page.set_offline_mode(true)
-      expect(page.evaluate('() => window.navigator.onLine')).to be false
+      expect(page.evaluate('() => window.navigator.onLine')).to eq(false)
 
       page.set_offline_mode(false)
-      expect(page.evaluate('() => window.navigator.onLine')).to be true
+      expect(page.evaluate('() => window.navigator.onLine')).to eq(true)
     end
 
     test(['Page', 'Page.metrics', 'should get metrics from a page'].join(" ")) do |page:|
@@ -199,19 +199,19 @@ require "test_helper"
       metrics = page.metrics
 
       # Check for expected properties
-      expect(metrics).to have_key('Timestamp')
-      expect(metrics).to have_key('Documents')
-      expect(metrics).to have_key('Frames')
-      expect(metrics).to have_key('JSEventListeners')
-      expect(metrics).to have_key('Nodes')
-      expect(metrics).to have_key('LayoutCount')
-      expect(metrics).to have_key('RecalcStyleCount')
-      expect(metrics).to have_key('LayoutDuration')
-      expect(metrics).to have_key('RecalcStyleDuration')
-      expect(metrics).to have_key('ScriptDuration')
-      expect(metrics).to have_key('TaskDuration')
-      expect(metrics).to have_key('JSHeapUsedSize')
-      expect(metrics).to have_key('JSHeapTotalSize')
+      expect(metrics).to include('Timestamp')
+      expect(metrics).to include('Documents')
+      expect(metrics).to include('Frames')
+      expect(metrics).to include('JSEventListeners')
+      expect(metrics).to include('Nodes')
+      expect(metrics).to include('LayoutCount')
+      expect(metrics).to include('RecalcStyleCount')
+      expect(metrics).to include('LayoutDuration')
+      expect(metrics).to include('RecalcStyleDuration')
+      expect(metrics).to include('ScriptDuration')
+      expect(metrics).to include('TaskDuration')
+      expect(metrics).to include('JSHeapUsedSize')
+      expect(metrics).to include('JSHeapTotalSize')
     end
 
     test(['Page', 'Page.metrics', 'metrics event fired on console.timeStamp'].join(" ")) do |page:|
@@ -319,7 +319,7 @@ require "test_helper"
         idle_reached = true
       end
 
-      expect(idle_reached).to be true
+      expect(idle_reached).to eq(true)
     end
 
     test(['Page', 'Page.waitForNetworkIdle', 'should respect timeout'].join(" ")) do |page:, server:|
@@ -818,7 +818,7 @@ require "test_helper"
       end
 
       page.set_content("<img src='#{img_path}'>")
-      expect(img_loaded).to be true
+      expect(img_loaded).to eq(true)
     end
 
     test(['Page', 'Page.setContent', 'should work fast enough'].join(" ")) do |page:|
@@ -1064,7 +1064,7 @@ require "test_helper"
       pending 'emulation.setScriptingEnabled not supported by Firefox yet'
 
       page.set_javascript_enabled(false)
-      expect(page.javascript_enabled?).to be false
+      expect(page.javascript_enabled?).to eq(false)
 
       page.goto('data:text/html, <script>var something = "forbidden"</script>')
 
@@ -1079,7 +1079,7 @@ require "test_helper"
       expect(error.message).to include('something is not defined')
 
       page.set_javascript_enabled(true)
-      expect(page.javascript_enabled?).to be true
+      expect(page.javascript_enabled?).to eq(true)
 
       page.goto('data:text/html, <script>var something = "forbidden"</script>')
       result = page.evaluate('something')
@@ -1107,7 +1107,7 @@ require "test_helper"
 
       new_counter = page.evaluate('globalThis.intervalCounter')
 
-      expect(new_counter).to be <= (interval_counter + 2)
+      expect(new_counter <= (interval_counter + 2)).to eq(true)
     end
 
     test(['Page', 'Page.setJavaScriptEnabled', 'setTimeout should stop'].join(" ")) do |page:|
@@ -1173,8 +1173,8 @@ require "test_helper"
       page.on(:request) { |req| request2 = req }
       page.reload
 
-      expect(request1['fromCache']).to be true
-      expect(request2['fromCache']).to be false
+      expect(request1['fromCache']).to eq(true)
+      expect(request2['fromCache']).to eq(false)
     end
 
     test(['Page', 'Page.pdf', 'should generate a pdf'].join(" ")) do |page:, server:|
@@ -1182,7 +1182,7 @@ require "test_helper"
       pdf = page.pdf
 
       expect(pdf).not_to be_nil
-      expect(pdf.bytesize).to be > 0
+      expect(pdf.bytesize > 0).to eq(true)
     end
 
     test(['Page', 'Page.pdf', 'should generate a pdf and save to file'].join(" ")) do |page:, server:|
@@ -1192,8 +1192,8 @@ require "test_helper"
         page.goto("#{server.prefix}/grid.html")
         page.pdf(path: output_path)
 
-        expect(File.exist?(output_path)).to be true
-        expect(File.size(output_path)).to be > 0
+        expect(File.exist?(output_path)).to eq(true)
+        expect(File.size(output_path) > 0).to eq(true)
       end
     end
 
@@ -1283,7 +1283,7 @@ require "test_helper"
       page.select('select', 'blue', 'black', 'magenta')
       page.select('select')
       # For multiple select, all options should be deselected
-      expect(page.eval_on_selector('select', "select => Array.from(select.options).every(option => !option.selected)")).to be true
+      expect(page.eval_on_selector('select', "select => Array.from(select.options).every(option => !option.selected)")).to eq(true)
     end
 
     test(['Page', 'Page.select', 'should deselect all options when passed no values for a select without multiple'].join(" ")) do |page:, server:|
@@ -1318,7 +1318,7 @@ require "test_helper"
 
       new_page.evaluate("() => { window.close(); }")
 
-      expect(closed).to be true
+      expect(closed).to eq(true)
     end
 
     test(['Page', 'Page.Events.Close', 'should work with page.close'].join(" ")) do |browser:|
@@ -1330,7 +1330,7 @@ require "test_helper"
 
       new_page.close
 
-      expect(closed).to be true
+      expect(closed).to eq(true)
     end
 
     test(['Page', 'Page.browser', 'should return the correct browser instance'].join(" ")) do |page:, browser:|
@@ -1390,7 +1390,7 @@ require "test_helper"
     test(['Page', 'Page.setViewport', 'should accept has_touch option'].join(" ")) do |page:|
       expect {
         page.set_viewport(width: 800, height: 600, has_touch: true)
-      }.not_to raise_error
+      }.not_to raise_error(StandardError)
     end
 
     test(['Page', 'Page.setDefaultTimeout', 'should set default timeout'].join(" ")) do |page:|
@@ -1433,7 +1433,7 @@ require "test_helper"
 
       frames = page.frames
       # nested-frames.html has 4 frames total (1 main + 3 iframes including nested)
-      expect(frames.length).to be >= 2
+      expect(frames.length >= 2).to eq(true)
     end
 
     test(['Page', 'Page.waitForFunction', 'should work'].join(" ")) do |page:|
@@ -1636,13 +1636,13 @@ require "test_helper"
 
     test(['Page', 'Page.goto', 'should work'].join(" ")) do |page:, server:|
       response = page.goto(server.empty_page)
-      expect(response.ok?).to be true
+      expect(response.ok?).to eq(true)
       expect(response.url).to eq(server.empty_page)
     end
 
     test(['Page', 'Page.goto', 'should work with domcontentloaded'].join(" ")) do |page:, server:|
       response = page.goto(server.empty_page, wait_until: 'domcontentloaded')
-      expect(response.ok?).to be true
+      expect(response.ok?).to eq(true)
     end
 
     test(['Page', 'Page.goto', 'should work with file:// urls'].join(" ")) do |page:|
@@ -1650,5 +1650,5 @@ require "test_helper"
 
       file_path = asset_path("empty.html")
       response = page.goto("file://#{file_path}")
-      expect(response.ok?).to be true
+      expect(response.ok?).to eq(true)
     end

@@ -36,11 +36,11 @@ require "set"
           next
         end
         begin
-          expect(request).to be_truthy
+          expect(request).not_to be_nil
           expect(request.url).to include("empty.html")
-          expect(request.headers["user-agent"]).to be_truthy
+          expect(request.headers["user-agent"]).not_to be_nil
           expect(request.method).to eq("GET")
-          expect(request.navigation_request?).to be(true)
+          expect(request.navigation_request?).to eq(true)
           expect(request.frame).to eq(page.main_frame)
           expect(request.frame.url).to eq("about:blank")
         rescue => error
@@ -53,7 +53,7 @@ require "set"
       response = page.goto(server.empty_page)
       raise request_error if request_error
 
-      expect(response.ok?).to be(true)
+      expect(response.ok?).to eq(true)
     end
 
     test(["Request interception", "Page.set_request_interception", "should work when POST is redirected with 302"].join(" ")) do |page:, server:|
@@ -214,7 +214,7 @@ require "set"
       response = page.goto(server.empty_page)
       raise request_error if request_error
 
-      expect(response.ok?).to be(true)
+      expect(response.ok?).to eq(true)
     end
 
     test(["Request interception", "Page.set_request_interception", "should work with redirect inside sync XHR"].join(" ")) do |page:, server:|
@@ -252,7 +252,7 @@ require "set"
       response = page.goto(server.empty_page)
       raise request_error if request_error
 
-      expect(response.ok?).to be(true)
+      expect(response.ok?).to eq(true)
     end
 
     test(["Request interception", "Page.set_request_interception", "should be abortable"].join(" ")) do |page:, server:|
@@ -268,7 +268,7 @@ require "set"
       page.on(:requestfailed) { failed_requests += 1 }
 
       response = page.goto("#{server.prefix}/one-style.html")
-      expect(response.ok?).to be(true)
+      expect(response.ok?).to eq(true)
       expect(response.request.failure).to be_nil
       expect(failed_requests).to eq(1)
     end
@@ -312,7 +312,7 @@ require "set"
         error = e
       end
 
-      expect(error).to be_truthy
+      expect(error).not_to be_nil
     end
 
     test(["Request interception", "Page.set_request_interception", "should work with redirects"].join(" ")) do |page:, server:|
@@ -337,7 +337,7 @@ require "set"
       expect(redirect_chain[0].url).to include("/non-existing-page.html")
       expect(redirect_chain[2].url).to include("/non-existing-page-3.html")
       redirect_chain.each_with_index do |request, index|
-        expect(request.navigation_request?).to be(true)
+        expect(request.navigation_request?).to eq(true)
         expect(request.redirect_chain.index(request)).to eq(index)
       end
     end
@@ -529,7 +529,7 @@ require "set"
         end
       end
       page.goto(server.empty_page)
-      expect(error).to be_truthy
+      expect(error).not_to be_nil
       expect(error.message).to include("Request Interception is not enabled")
     end
 
@@ -548,8 +548,8 @@ require "set"
         ),
       )
       expect(urls.size).to eq(2)
-      expect(urls.include?("one-style.html")).to be(true)
-      expect(urls.include?("one-style.css")).to be(true)
+      expect(urls.include?("one-style.html")).to eq(true)
+      expect(urls.include?("one-style.css")).to eq(true)
     end
 
     [
@@ -784,7 +784,7 @@ require "set"
 
       img = page.query_selector("img")
       screenshot = img.screenshot
-      expect(compare_with_golden(screenshot, "mock-binary-response.png")).to be(true)
+      expect(compare_with_golden(screenshot, "mock-binary-response.png")).to eq(true)
     end
 
     test(["Request interception", "Request.respond", "should stringify intercepted request response headers"].join(" ")) do |page:, server:|

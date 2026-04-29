@@ -7,7 +7,7 @@ require "test_helper"
       page.goto("#{server.prefix}/grid.html")
       screenshot = page.screenshot
 
-      expect(compare_with_golden(screenshot, 'screenshot-sanity.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-sanity.png')).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should clip rect'].join(" ")) do |page:, server:|
@@ -22,7 +22,7 @@ require "test_helper"
         }
       )
 
-      expect(compare_with_golden(screenshot, 'screenshot-clip-rect.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-clip-rect.png')).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should get screenshot bigger than the viewport'].join(" ")) do |page:, server:|
@@ -37,7 +37,7 @@ require "test_helper"
         }
       )
 
-      expect(compare_with_golden(screenshot, 'screenshot-offscreen-clip.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-offscreen-clip.png')).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should clip clip bigger than the viewport without "captureBeyondViewport"'].join(" ")) do |page:, server:|
@@ -53,7 +53,7 @@ require "test_helper"
         }
       )
 
-      expect(compare_with_golden(screenshot, 'screenshot-offscreen-clip-2.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-offscreen-clip-2.png')).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should run in parallel'].join(" ")) do |page:, server:|
@@ -76,7 +76,7 @@ require "test_helper"
 
       screenshots = threads.map(&:value)
 
-      expect(compare_with_golden(screenshots[1], 'grid-cell-1.png')).to be true
+      expect(compare_with_golden(screenshots[1], 'grid-cell-1.png')).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should take fullPage screenshots'].join(" ")) do |page:, server:|
@@ -84,7 +84,7 @@ require "test_helper"
       page.goto("#{server.prefix}/grid.html")
       screenshot = page.screenshot(full_page: true)
 
-      expect(compare_with_golden(screenshot, 'screenshot-grid-fullpage.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-grid-fullpage.png')).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should take fullPage screenshots without captureBeyondViewport'].join(" ")) do |page:, server:|
@@ -95,7 +95,7 @@ require "test_helper"
         capture_beyond_viewport: false
       )
 
-      expect(compare_with_golden(screenshot, 'screenshot-grid-fullpage-2.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-grid-fullpage-2.png')).to eq(true)
       expect(page.viewport).to eq({ width: 500, height: 500 })
     end
 
@@ -125,7 +125,7 @@ require "test_helper"
 
       # Verify each screenshot
       (0...n).each do |i|
-        expect(compare_with_golden(screenshots[i], "grid-cell-#{i}.png")).to be true
+        expect(compare_with_golden(screenshots[i], "grid-cell-#{i}.png")).to eq(true)
       end
 
       # Close all pages
@@ -145,7 +145,7 @@ require "test_helper"
         }
       )
 
-      expect(compare_with_golden(screenshot, 'screenshot-clip-odd-size.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-clip-odd-size.png')).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should return base64'].join(" ")) do |page:, server:|
@@ -154,7 +154,7 @@ require "test_helper"
       screenshot = page.screenshot
 
       # Ruby's screenshot method already returns base64 by default
-      expect(compare_with_golden(screenshot, 'screenshot-sanity.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-sanity.png')).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should take fullPage screenshots when defaultViewport is null'].join(" ")) do |page:, server:|
@@ -163,7 +163,7 @@ require "test_helper"
 
       # Screenshot should be a base64 string
       expect(screenshot).to be_a(String)
-      expect(screenshot.length).to be > 0
+      expect(screenshot.length > 0).to eq(true)
     end
 
     test(['Screenshot', 'Page.screenshot', 'should restore to original viewport size after taking fullPage screenshots when defaultViewport is null'].join(" ")) do |page:, server:|
@@ -190,7 +190,7 @@ require "test_helper"
 
       screenshot = element.screenshot
 
-      expect(compare_with_golden(screenshot, 'screenshot-element-bounding-box.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-element-bounding-box.png')).to eq(true)
     end
 
     test(['Screenshot', 'ElementHandle.screenshot', 'should take into account padding and border'].join(" ")) do |page:|
@@ -211,7 +211,7 @@ require "test_helper"
 
       screenshot = element.screenshot
 
-      expect(compare_with_golden(screenshot, 'screenshot-element-padding-border.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-element-padding-border.png')).to eq(true)
     end
 
     test(['Screenshot', 'ElementHandle.screenshot', 'should capture full element when larger than viewport'].join(" ")) do |page:|
@@ -233,7 +233,7 @@ require "test_helper"
 
       screenshot = element.screenshot
 
-      expect(compare_with_golden(screenshot, 'screenshot-element-larger-than-viewport.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-element-larger-than-viewport.png')).to eq(true)
 
       # Verify inner dimensions are unchanged
       viewport = page.evaluate('({ width: window.innerWidth, height: window.innerHeight })')
@@ -265,7 +265,7 @@ require "test_helper"
 
       screenshot = element.screenshot
 
-      expect(compare_with_golden(screenshot, 'screenshot-element-scrolled-into-view.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-element-scrolled-into-view.png')).to eq(true)
     end
 
     test(['Screenshot', 'ElementHandle.screenshot', 'should work with a rotated element'].join(" ")) do |page:|
@@ -282,7 +282,7 @@ require "test_helper"
 
       # Use max_diff_pixels tolerance for rendering differences across Firefox versions
       # Anti-aliasing on rotated edges causes ~800 pixel differences
-      expect(compare_with_golden(screenshot, 'screenshot-element-rotate.png', max_diff_pixels: 1000)).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-element-rotate.png', max_diff_pixels: 1000)).to eq(true)
     end
 
     test(['Screenshot', 'ElementHandle.screenshot', 'should fail if element has 0 height'].join(" ")) do |page:|
@@ -290,7 +290,7 @@ require "test_helper"
       page.set_content('<div style="width: 50px; height: 0;"></div>')
       element = page.query_selector('div')
 
-      expect { element.screenshot }.to raise_error('Node has 0 height.')
+      expect { element.screenshot }.to raise_error(/Node has 0 height\./)
     end
 
     test(['Screenshot', 'ElementHandle.screenshot', 'should fail if element has 0 width'].join(" ")) do |page:|
@@ -298,7 +298,7 @@ require "test_helper"
       page.set_content('<div style="width: 0; height: 50px;"></div>')
       element = page.query_selector('div')
 
-      expect { element.screenshot }.to raise_error('Node has 0 width.')
+      expect { element.screenshot }.to raise_error(/Node has 0 width\./)
     end
 
     # between Firefox versions. The screenshot functionality works correctly,
@@ -310,7 +310,7 @@ require "test_helper"
 
       screenshot = element.screenshot
 
-      expect(compare_with_golden(screenshot, 'screenshot-element-fractional.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-element-fractional.png')).to eq(true)
     end
 
     test(['Screenshot', 'ElementHandle.screenshot', 'should work for an element with an offset'].join(" ")) do |page:|
@@ -325,7 +325,7 @@ require "test_helper"
 
       screenshot = element.screenshot
 
-      expect(compare_with_golden(screenshot, 'screenshot-element-fractional-offset.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-element-fractional-offset.png')).to eq(true)
     end
 
     test(['Screenshot', 'ElementHandle.screenshot', 'should work with element clip'].join(" ")) do |page:|
@@ -346,5 +346,5 @@ require "test_helper"
 
       screenshot = element.screenshot(clip: { x: 10, y: 10, width: 20, height: 20 })
 
-      expect(compare_with_golden(screenshot, 'screenshot-element-clip.png')).to be true
+      expect(compare_with_golden(screenshot, 'screenshot-element-clip.png')).to eq(true)
     end

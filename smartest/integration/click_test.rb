@@ -178,7 +178,7 @@ require "test_helper"
     HTML
 
     page.click('#target')
-    expect(page.evaluate('() => globalThis.CLICKED')).to be true
+    expect(page.evaluate('() => globalThis.CLICKED')).to eq(true)
 
     element = page.query_selector('#target')
     bounding_box = element.bounding_box
@@ -195,29 +195,29 @@ require "test_helper"
   test(['Page.click', 'should click wrapped links'].join(" ")) do |page:, server:|
     page.goto("#{server.prefix}/wrappedlink.html")
     page.click('a')
-    expect(page.evaluate('() => globalThis.__clicked')).to be true
+    expect(page.evaluate('() => globalThis.__clicked')).to eq(true)
   end
 
   test(['Page.click', 'should click on checkbox input and toggle'].join(" ")) do |page:, server:|
     page.goto("#{server.prefix}/input/checkbox.html")
     expect(page.evaluate('() => globalThis.result.check')).to be_nil
     page.click('input#agree')
-    expect(page.evaluate('() => globalThis.result.check')).to be true
+    expect(page.evaluate('() => globalThis.result.check')).to eq(true)
     expect(page.evaluate('() => globalThis.result.events')).to eq(
       %w[mouseover mouseenter mousemove mousedown mouseup click input change]
     )
     page.click('input#agree')
-    expect(page.evaluate('() => globalThis.result.check')).to be false
+    expect(page.evaluate('() => globalThis.result.check')).to eq(false)
   end
 
   test(['Page.click', 'should click on checkbox label and toggle'].join(" ")) do |page:, server:|
     page.goto("#{server.prefix}/input/checkbox.html")
     expect(page.evaluate('() => globalThis.result.check')).to be_nil
     page.click('label[for="agree"]')
-    expect(page.evaluate('() => globalThis.result.check')).to be true
+    expect(page.evaluate('() => globalThis.result.check')).to eq(true)
     expect(page.evaluate('() => globalThis.result.events')).to eq(%w[click input change])
     page.click('label[for="agree"]')
-    expect(page.evaluate('() => globalThis.result.check')).to be false
+    expect(page.evaluate('() => globalThis.result.check')).to eq(false)
   end
 
   test(['Page.click', 'should fail to click a missing button'].join(" ")) do |page:, server:|
@@ -265,7 +265,7 @@ require "test_helper"
 
     button = page.query_selector('button')
     button.click(count: 2)
-    expect(page.evaluate('double')).to be true
+    expect(page.evaluate('double')).to eq(true)
     expect(page.evaluate('result')).to eq('Clicked')
   end
 

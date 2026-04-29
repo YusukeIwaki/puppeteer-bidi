@@ -68,7 +68,7 @@ require "test_helper"
       page.goto(server.empty_page)
       cookies = page.cookies
       expect(cookies.length).to eq(1)
-      expect(cookies[0]['httpOnly']).to be(true)
+      expect(cookies[0]['httpOnly']).to eq(true)
     end
 
     test(['Cookie specs', 'Page.cookies', 'should properly report "Strict" sameSite cookie'].join(" ")) do |cookie_state:|
@@ -341,7 +341,7 @@ require "test_helper"
       page.goto(server.empty_page)
       page.set_cookie(name: 'password', value: '123456')
       cookies = page.cookies
-      expect(cookies[0]['session']).to be(true)
+      expect(cookies[0]['session']).to eq(true)
       expect(cookies[0]['expires']).to eq(-1)
     end
 
@@ -516,9 +516,9 @@ require "test_helper"
       page.set_cookie(url: secure_url, name: 'foo', value: 'bar')
       cookie = page.cookies(secure_url)[0]
       if browser.user_agent.include?("Chrome")
-        expect(cookie['secure']).to be(true)
+        expect(cookie['secure']).to eq(true)
       else
-        expect(cookie['secure']).to be(false)
+        expect(cookie['secure']).to eq(false)
       end
     end
 
@@ -529,7 +529,7 @@ require "test_helper"
       http_url = 'http://example.com'
       page.set_cookie(url: http_url, name: 'foo', value: 'bar')
       cookie = page.cookies(http_url)[0]
-      expect(cookie['secure']).to be(false)
+      expect(cookie['secure']).to eq(false)
     end
 
     test(['Cookie specs', 'Page.set_cookie', 'should set a cookie on a different domain'].join(" ")) do |cookie_state:|

@@ -70,7 +70,7 @@ require "test_helper"
     expect(event['detail']).to eq(1)
     expect(event['clientX']).to eq(50)
     expect(event['clientY']).to eq(60)
-    expect(event['isTrusted']).to be true
+    expect(event['isTrusted']).to eq(true)
     expect(event['button']).to eq(0)
   end
 
@@ -173,7 +173,7 @@ require "test_helper"
       page.click('#button-3')
 
       result = page.evaluate("(mod) => globalThis.lastEvent[mod]", key)
-      expect(result).to be(true), "#{key} should be true"
+      expect(result).to eq(true)
 
       page.keyboard.up(modifier)
     end
@@ -182,7 +182,7 @@ require "test_helper"
 
     modifiers.each do |_modifier, key|
       result = page.evaluate("(mod) => globalThis.lastEvent[mod]", key)
-      expect(result).to be(false), "#{key} should be false"
+      expect(result).to eq(false)
     end
   end
 
@@ -230,7 +230,7 @@ require "test_helper"
     page.keyboard.up('Control')
 
     ctrl_key = page.evaluate('() => globalThis.ctrlKeyPromise')
-    expect(ctrl_key).to be true
+    expect(ctrl_key).to eq(true)
   end
 
   test(['Mouse', 'should tween mouse movement'].join(" ")) do |page:|
@@ -323,7 +323,7 @@ require "test_helper"
     data = page.evaluate('() => window.clicks')
 
     # Verify we got mouseup events
-    expect(data.length).to be >= 2
+    expect(data.length >= 2).to eq(true)
 
     # First mouseup should be for right button
     expect(data[0]['type']).to eq('mouseup')

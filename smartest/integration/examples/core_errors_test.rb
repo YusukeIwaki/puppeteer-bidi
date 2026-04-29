@@ -16,13 +16,16 @@ require "test_helper"
       browsing_context.send(:dispose_context, 'Test closure')
 
       # Verify BrowsingContextClosedError is raised
-      expect {
+      error = nil
+      begin
         browsing_context.navigate('https://example.com').wait
-      }.to raise_error(Puppeteer::Bidi::Core::BrowsingContextClosedError) do |error|
-        expect(error.resource_type).to eq('Browsing context')
-        expect(error.reason).to eq('Test closure')
-        expect(error.message).to include('Browsing context already disposed')
+      rescue Puppeteer::Bidi::Core::BrowsingContextClosedError => e
+        error = e
       end
+      expect(error).to be_a(Puppeteer::Bidi::Core::BrowsingContextClosedError)
+      expect(error.resource_type).to eq('Browsing context')
+      expect(error.reason).to eq('Test closure')
+      expect(error.message).to include('Browsing context already disposed')
 
       browser.close
     end
@@ -30,21 +33,18 @@ require "test_helper"
 
   test(['Core error handling', 'custom exceptions have proper inheritance'].join(" ")) do
     # Verify exception hierarchy
-    expect(Puppeteer::Bidi::Core::RealmDestroyedError.new('test').class.ancestors).to include(
-      Puppeteer::Bidi::Core::DisposedError,
-      Puppeteer::Bidi::Core::Error,
-      Puppeteer::Bidi::Error,
-      StandardError
-    )
+    ancestors = Puppeteer::Bidi::Core::RealmDestroyedError.new('test').class.ancestors
+    expect(ancestors).to include(Puppeteer::Bidi::Core::DisposedError)
+    expect(ancestors).to include(Puppeteer::Bidi::Core::Error)
+    expect(ancestors).to include(Puppeteer::Bidi::Error)
+    expect(ancestors).to include(StandardError)
 
-    expect(Puppeteer::Bidi::Core::BrowsingContextClosedError.new('test').class.ancestors).to include(
-      Puppeteer::Bidi::Core::DisposedError,
-      Puppeteer::Bidi::Core::Error
-    )
+    ancestors = Puppeteer::Bidi::Core::BrowsingContextClosedError.new('test').class.ancestors
+    expect(ancestors).to include(Puppeteer::Bidi::Core::DisposedError)
+    expect(ancestors).to include(Puppeteer::Bidi::Core::Error)
 
-    expect(Puppeteer::Bidi::Core::UserContextClosedError.new('test').class.ancestors).to include(
-      Puppeteer::Bidi::Core::DisposedError
-    )
+    ancestors = Puppeteer::Bidi::Core::UserContextClosedError.new('test').class.ancestors
+    expect(ancestors).to include(Puppeteer::Bidi::Core::DisposedError)
   end
 
   test(['Core error handling', 'disposed errors have informative messages'].join(" ")) do

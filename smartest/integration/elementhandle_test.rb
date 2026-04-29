@@ -172,11 +172,11 @@ require "test_helper"
     test(['ElementHandle specs', 'ElementHandle.isVisible and ElementHandle.isHidden', 'should work'].join(" ")) do |page:|
       page.set_content('<div style="display: none">text</div>')
       element = page.wait_for_selector('div')
-      expect(element.visible?).to be false
-      expect(element.hidden?).to be true
+      expect(element.visible?).to eq(false)
+      expect(element.hidden?).to eq(true)
       element.evaluate("e => e.style.removeProperty('display')")
-      expect(element.visible?).to be true
-      expect(element.hidden?).to be false
+      expect(element.visible?).to eq(true)
+      expect(element.hidden?).to eq(false)
     end
 
     test(['ElementHandle specs', 'ElementHandle.click', 'should work'].join(" ")) do |page:, server:|
@@ -219,7 +219,7 @@ require "test_helper"
       page.goto("#{server.prefix}/shadow.html")
       button_handle = page.evaluate_handle('() => button')
       button_handle.click
-      expect(page.evaluate('() => clicked')).to be true
+      expect(page.evaluate('() => clicked')).to eq(true)
     end
 
     test(['ElementHandle specs', 'ElementHandle.click', 'should not work for TextNodes'].join(" ")) do |page:, server:|
@@ -496,7 +496,7 @@ require "test_helper"
       (0..10).each do |i|
         # All but last button are visible
         visible = i < 10
-        expect(button_visibility[i]).to eq(visible), "Button #btn#{i} visibility should be #{visible}"
+        expect(button_visibility[i]).to eq(visible)
       end
     end
 
@@ -504,7 +504,7 @@ require "test_helper"
       page.goto("#{server.prefix}/offscreenbuttons.html")
       # a button almost cannot be seen
       button = page.query_selector('#btn11')
-      expect(button.intersecting_viewport?(threshold: 0.001)).to be false
+      expect(button.intersecting_viewport?(threshold: 0.001)).to eq(false)
     end
 
     test(['ElementHandle specs', 'ElementHandle.isIntersectingViewport', 'should work with threshold of 1'].join(" ")) do |page:, server:|
@@ -514,7 +514,7 @@ require "test_helper"
 
       page.goto("#{server.prefix}/offscreenbuttons.html")
       button = page.query_selector('#btn0')
-      expect(button.intersecting_viewport?(threshold: 1)).to be true
+      expect(button.intersecting_viewport?(threshold: 1)).to eq(true)
     end
 
     test(['ElementHandle specs', 'ElementHandle.isIntersectingViewport', 'should work with svg elements'].join(" ")) do |page:, server:|
@@ -524,18 +524,18 @@ require "test_helper"
       visible_circle = page.query_selector('circle')
       visible_svg = page.query_selector('svg')
 
-      expect(visible_circle.intersecting_viewport?(threshold: 1)).to be true
-      expect(visible_circle.intersecting_viewport?(threshold: 0)).to be true
-      expect(visible_svg.intersecting_viewport?(threshold: 1)).to be true
-      expect(visible_svg.intersecting_viewport?(threshold: 0)).to be true
+      expect(visible_circle.intersecting_viewport?(threshold: 1)).to eq(true)
+      expect(visible_circle.intersecting_viewport?(threshold: 0)).to eq(true)
+      expect(visible_svg.intersecting_viewport?(threshold: 1)).to eq(true)
+      expect(visible_svg.intersecting_viewport?(threshold: 0)).to eq(true)
 
       invisible_circle = page.query_selector('div circle')
       invisible_svg = page.query_selector('div svg')
 
-      expect(invisible_circle.intersecting_viewport?(threshold: 1)).to be false
-      expect(invisible_circle.intersecting_viewport?(threshold: 0)).to be false
-      expect(invisible_svg.intersecting_viewport?(threshold: 1)).to be false
-      expect(invisible_svg.intersecting_viewport?(threshold: 0)).to be false
+      expect(invisible_circle.intersecting_viewport?(threshold: 1)).to eq(false)
+      expect(invisible_circle.intersecting_viewport?(threshold: 0)).to eq(false)
+      expect(invisible_svg.intersecting_viewport?(threshold: 1)).to eq(false)
+      expect(invisible_svg.intersecting_viewport?(threshold: 0)).to eq(false)
     end
 
     test(['ElementHandle specs', 'Custom queries', 'should register and unregister'].join(" ")) do |page:|
@@ -559,7 +559,7 @@ require "test_helper"
       Puppeteer::Bidi.unregister_custom_query_handler('getById')
       expect {
         page.query_selector('getById/foo')
-      }.to raise_error
+      }.to raise_error(StandardError)
     end
 
     test(['ElementHandle specs', 'Custom queries', 'should throw with invalid query names'].join(" ")) do
@@ -609,7 +609,7 @@ require "test_helper"
     test(['ElementHandle specs', 'ElementHandle.dispose', 'should dispose the element handle'].join(" ")) do |page:|
       page.set_content('<button>Click me!</button>')
       button = page.wait_for_selector('button')
-      expect(button.disposed?).to be false
+      expect(button.disposed?).to eq(false)
       button.dispose
-      expect(button.disposed?).to be true
+      expect(button.disposed?).to eq(true)
     end

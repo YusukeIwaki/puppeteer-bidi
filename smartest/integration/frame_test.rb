@@ -130,7 +130,7 @@ require "test_helper"
       # Test framedetached
       detach_frame(page, 'frame1')
       expect(detached_frames.length).to eq(1)
-      expect(detached_frames[0].detached?).to be true
+      expect(detached_frames[0].detached?).to eq(true)
     end
 
     test(['Frame specs', 'Frame Management', 'should send "framenavigated" when navigating on anchor URLs'].join(" ")) do |page:, server:|
@@ -140,7 +140,7 @@ require "test_helper"
       page.on(:framenavigated) { navigated = true }
       page.goto("#{server.empty_page}#foo")
 
-      expect(navigated).to be true
+      expect(navigated).to eq(true)
       expect(page.url).to eq("#{server.empty_page}#foo")
     end
 
@@ -158,7 +158,7 @@ require "test_helper"
       page.on(:frameattached) { has_events = true }
       page.on(:framedetached) { has_events = true }
       page.goto(server.empty_page)
-      expect(has_events).to be false
+      expect(has_events).to eq(false)
     end
 
     test(['Frame specs', 'Frame Management', 'should detach child frames on navigation'].join(" ")) do |page:, server:|
@@ -212,7 +212,7 @@ require "test_helper"
       page.goto("#{server.prefix}/frames/frameset.html")
       frame = page.wait_for_frame { |f| f.url.end_with?('/frames/frame.html') }
       div = frame.wait_for_selector('div')
-      expect(div).to be_truthy
+      expect(div).not_to be_nil
       div.click
     end
 
@@ -250,13 +250,13 @@ require "test_helper"
           globalThis.frame.remove();
         }
       JS
-      expect(frame1.detached?).to be true
+      expect(frame1.detached?).to eq(true)
 
       frame_attached_promise = Promise.new { |resolve| page.once('frameattached') { |f| resolve.call(f) } }
       page.evaluate('() => document.body.appendChild(globalThis.frame)')
       frame2 = frame_attached_promise.value
 
-      expect(frame2.detached?).to be false
+      expect(frame2.detached?).to eq(false)
       expect(frame1).not_to eq(frame2)
     end
 
@@ -298,12 +298,12 @@ require "test_helper"
       expect(frame0).to be_nil
 
       frame1 = page.frames[1].frame_element
-      expect(frame1).to be_truthy
+      expect(frame1).not_to be_nil
       name1 = frame1.evaluate('frame => frame.id')
       expect(name1).to eq('theFrameId')
 
       frame2 = page.frames[2].frame_element
-      expect(frame2).to be_truthy
+      expect(frame2).not_to be_nil
       name2 = frame2.evaluate('frame => frame.name')
       expect(name2).to eq('theFrameName')
     end
@@ -334,7 +334,7 @@ require "test_helper"
       expect(page.frames.length).to eq(2)
 
       frame1 = page.frames[1].frame_element
-      expect(frame1).to be_truthy
+      expect(frame1).not_to be_nil
       is_main_world = frame1.evaluate('() => globalThis.isMainWorld')
-      expect(is_main_world).to be true
+      expect(is_main_world).to eq(true)
     end

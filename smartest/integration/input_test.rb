@@ -96,7 +96,7 @@ require "test_helper"
           }
         JS
       end
-      expect(chooser).to be_truthy
+      expect(chooser).not_to be_nil
     end
 
     test(['input tests', 'Page.waitForFileChooser', 'should respect timeout'].join(" ")) do |page:|
@@ -251,7 +251,7 @@ require "test_helper"
 
         expect {
           chooser.accept(['file-does-not-exist.txt'])
-        }.not_to raise_error
+        }.not_to raise_error(StandardError)
       end
     end
 
@@ -277,7 +277,7 @@ require "test_helper"
             return promise.then(() => false);
           }
         JS
-        expect(result).to be_falsy
+        expect(result).to eq(false)
       end
     end
 
@@ -320,7 +320,7 @@ require "test_helper"
         chooser2 = page.wait_for_file_chooser do
           page.click('input')
         end
-        expect(chooser2).to be_truthy
+        expect(chooser2).not_to be_nil
       end
     end
 
@@ -348,7 +348,7 @@ require "test_helper"
         page.click('input')
       end
 
-      expect(chooser.multiple?).to be false
+      expect(chooser.multiple?).to eq(false)
     end
 
     test(['input tests', 'FileChooser.isMultiple', 'should work for "multiple"'].join(" ")) do |page:|
@@ -360,7 +360,7 @@ require "test_helper"
         page.click('input')
       end
 
-      expect(chooser.multiple?).to be true
+      expect(chooser.multiple?).to eq(true)
     end
 
     test(['input tests', 'FileChooser.isMultiple', 'should work for "webkitdirectory"'].join(" ")) do |page:|
@@ -372,5 +372,5 @@ require "test_helper"
         page.click('input')
       end
 
-      expect(chooser.multiple?).to be true
+      expect(chooser.multiple?).to eq(true)
     end

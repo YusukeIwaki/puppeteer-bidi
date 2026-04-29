@@ -158,7 +158,7 @@ require "test_helper"
         expect(element).not_to be_nil
 
         text_matches = element.evaluate('e => e.textContent === "a"')
-        expect(text_matches).to be true
+        expect(text_matches).to eq(true)
       end
 
       test(['QueryHandler', 'XPath selectors', 'in Page', 'should return multiple elements'].join(" ")) do |page:|

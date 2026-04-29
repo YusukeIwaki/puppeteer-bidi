@@ -51,7 +51,7 @@ require "test_helper"
     watchdog.wait
     elapsed = ((Time.now - start_time) * 1000).to_i
 
-    expect(elapsed).to be >= 250
+    expect(elapsed >= 250).to eq(true)
   end
 
   test(['Frame.waitForFunction', 'should poll on interval with block'].join(" ")) do |page:, server:|
@@ -66,7 +66,7 @@ require "test_helper"
 
     elapsed = ((Time.now - start_time) * 1000).to_i
 
-    expect(elapsed).to be >= 250
+    expect(elapsed >= 250).to eq(true)
   end
 
   test(['Frame.waitForFunction', 'should poll on mutation'].join(" ")) do |page:, server:|
@@ -82,12 +82,12 @@ require "test_helper"
     end
 
     page.evaluate("() => window.__FOO = 'hit'")
-    expect(success).to be false
+    expect(success).to eq(false)
 
     page.evaluate("() => document.body.appendChild(document.createElement('div'))")
 
     watchdog.wait
-    expect(success).to be true
+    expect(success).to eq(true)
   end
 
   test(['Frame.waitForFunction', 'should poll on mutation async'].join(" ")) do |page:, server:|
@@ -103,12 +103,12 @@ require "test_helper"
     end
 
     page.evaluate("async () => window.__FOO = 'hit'")
-    expect(success).to be false
+    expect(success).to eq(false)
 
     page.evaluate("async () => document.body.appendChild(document.createElement('div'))")
 
     handle = watchdog.wait
-    expect(success).to be true
+    expect(success).to eq(true)
     handle.dispose
   end
 
@@ -195,12 +195,12 @@ require "test_helper"
       ).tap { resolved = true }
     end
 
-    expect(resolved).to be false
+    expect(resolved).to eq(false)
 
     page.evaluate('element => element.remove()', div)
 
     handle = watchdog.wait
-    expect(resolved).to be true
+    expect(resolved).to eq(true)
     handle.dispose
 
     div.dispose
@@ -254,19 +254,19 @@ require "test_helper"
     end
 
     page.goto(server.empty_page)
-    expect(foo_found).to be false
+    expect(foo_found).to eq(false)
 
     # page.reload
     page.goto(server.empty_page)
-    expect(foo_found).to be false
+    expect(foo_found).to eq(false)
 
     page.goto("#{server.cross_process_prefix}/grid.html")
-    expect(foo_found).to be false
+    expect(foo_found).to eq(false)
 
     page.evaluate("() => window.__FOO = 1")
 
     watchdog.wait
-    expect(foo_found).to be true
+    expect(foo_found).to eq(true)
   end
 
   test(['Frame.waitForFunction', 'should survive navigations'].join(" ")) do |page:, server:|
@@ -277,15 +277,15 @@ require "test_helper"
     end
 
     page.goto(server.empty_page)
-    expect(done).to be false
+    expect(done).to eq(false)
 
     page.goto("#{server.prefix}/grid.html")
-    expect(done).to be false
+    expect(done).to eq(false)
 
     page.evaluate("() => window.__DONE = true")
 
     watchdog.wait
-    expect(done).to be true
+    expect(done).to eq(true)
   end
 
   test(['Frame.waitForFunction', 'should be cancellable with an abort signal'].join(" ")) do
@@ -408,7 +408,7 @@ require "test_helper"
       page.evaluate(add_element, 'div')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(page.evaluate('() => !!document.querySelector("div >>> h1")')).to be false
+      expect(page.evaluate('() => !!document.querySelector("div >>> h1")')).to eq(false)
 
       page.evaluate(<<~JS)
         () => {
@@ -486,7 +486,7 @@ require "test_helper"
       message.include?('Waiting for selector `.box` failed') ||
       message.include?('Frame detached') ||
       message.include?('Browsing context already disposed')
-    ).to be true
+    ).to eq(true)
   end
 
   test(['Frame.waitForSelector', 'should survive cross-process navigation'].join(" ")) do |page:, server:|
@@ -515,13 +515,13 @@ require "test_helper"
       element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.removeProperty("display")')
     end
 
     promise_resolved = true
-    expect(handle).to be_truthy
+    expect(handle).not_to be_nil
     handle.dispose if handle
     element_handle&.dispose
   end
@@ -542,7 +542,7 @@ require "test_helper"
       expect(element_handle).not_to be_nil
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       page.evaluate(<<~JS)
         () => {
@@ -554,7 +554,7 @@ require "test_helper"
     end
 
     promise_resolved = true
-    expect(handle).to be_truthy
+    expect(handle).not_to be_nil
     handle.dispose if handle
     element_handle&.dispose
   end
@@ -568,18 +568,18 @@ require "test_helper"
       element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.setProperty("visibility", "collapse")')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.removeProperty("visibility")')
     end
 
     promise_resolved = true
-    expect(handle).to be_truthy
+    expect(handle).not_to be_nil
     handle.dispose if handle
     element_handle&.dispose
   end
@@ -593,18 +593,18 @@ require "test_helper"
       element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => { element.style.setProperty("height", "0"); element.style.removeProperty("width"); }')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.removeProperty("height")')
     end
 
     promise_resolved = true
-    expect(handle).to be_truthy
+    expect(handle).not_to be_nil
     handle.dispose if handle
     element_handle&.dispose
   end
@@ -618,18 +618,18 @@ require "test_helper"
       element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.removeProperty("display")')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.removeProperty("visibility")')
     end
 
     promise_resolved = true
-    expect(handle).to be_truthy
+    expect(handle).not_to be_nil
     handle.dispose if handle
     element_handle&.dispose
   end
@@ -643,13 +643,13 @@ require "test_helper"
       element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.setProperty("visibility", "hidden")')
     end
 
     promise_resolved = true
-    expect(result).to be_truthy
+    expect(result).not_to be_nil
     result.dispose if result.respond_to?(:dispose)
     element_handle&.dispose
   end
@@ -663,13 +663,13 @@ require "test_helper"
       element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.setProperty("display", "none")')
     end
 
     promise_resolved = true
-    expect(result).to be_truthy
+    expect(result).not_to be_nil
     result.dispose if result.respond_to?(:dispose)
     element_handle&.dispose
   end
@@ -683,13 +683,13 @@ require "test_helper"
       element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.style.setProperty("height", "0")')
     end
 
     promise_resolved = true
-    expect(result).to be_truthy
+    expect(result).not_to be_nil
     result.dispose if result.respond_to?(:dispose)
     element_handle&.dispose
   end
@@ -703,13 +703,13 @@ require "test_helper"
       element_handle = page.evaluate_handle('() => document.getElementsByTagName("div")[0]')
 
       page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-      expect(promise_resolved).to be false
+      expect(promise_resolved).to eq(false)
 
       element_handle.evaluate('element => element.remove()')
     end
 
     promise_resolved = true
-    expect(result).to be_falsey
+    expect(result).to be_nil
     result.dispose if result.respond_to?(:dispose)
     element_handle&.dispose
   end
@@ -758,11 +758,15 @@ require "test_helper"
   end
 
   test(['Frame.waitForSelector', 'should have correct stack trace for timeout'].join(" ")) do |page:|
-    expect {
+    error = nil
+    begin
       page.wait_for_selector('.zombo', timeout: 10)
-    }.to raise_error(/Waiting for selector `.zombo` faile/) do |err|
-        expect(err.backtrace.join("\n")).to include('waittask_test.rb')
+    rescue Puppeteer::Bidi::TimeoutError => e
+      error = e
     end
+    expect(error).to be_a(Puppeteer::Bidi::TimeoutError)
+    expect(error.message).to match(/Waiting for selector `.zombo` faile/)
+    expect(error.backtrace.join("\n")).to include('waittask_test.rb')
   end
 
     def xpath_add_element
@@ -824,7 +828,7 @@ require "test_helper"
         message.include?('Waiting for selector `.//*[@class="box"]` failed') ||
         message.include?('Frame detached') ||
         message.include?('Browsing context already disposed')
-      ).to be true
+      ).to eq(true)
     end
 
     test(['Frame.waitForSelector', 'xpath', 'hidden should wait for display: none'].join(" ")) do |page:|
@@ -835,7 +839,7 @@ require "test_helper"
         page.evaluate('() => { document.querySelector("div").style.setProperty("display", "none"); }')
       end
 
-      expect(handle).to be_truthy
+      expect(handle).not_to be_nil
       handle.dispose if handle.respond_to?(:dispose)
     end
 

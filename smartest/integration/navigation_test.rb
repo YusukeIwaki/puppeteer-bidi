@@ -8,7 +8,7 @@ require "test_helper"
     end
 
     expect(response).not_to be_nil
-    expect(response.ok?).to be true
+    expect(response.ok?).to eq(true)
     expect(response.url).to include('grid.html')
   end
 

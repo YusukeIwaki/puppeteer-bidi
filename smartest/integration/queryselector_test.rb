@@ -115,7 +115,7 @@ require "test_helper"
       element_handle = page.query_selector('#myId')
       expect {
         element_handle.eval_on_selector('.a', 'node => node.innerText')
-      }.to raise_error('Error: failed to find element matching selector ".a"')
+      }.to raise_error(/Error: failed to find element matching selector "\.a"/)
     end
 
     test(['QuerySelector', 'Page.eval_on_selector_all', 'should work'].join(" ")) do |page:, server:|

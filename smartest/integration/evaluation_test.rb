@@ -11,7 +11,7 @@
 
     test(['Evaluation', 'Page.evaluate', 'should transfer NaN'].join(" ")) do |page:|
       result = page.evaluate('(a) => a', Float::NAN)
-      expect(result.nan?).to be true
+      expect(result.nan?).to eq(true)
     end
 
     test(['Evaluation', 'Page.evaluate', 'should transfer -0'].join(" ")) do |page:|
@@ -54,7 +54,7 @@
 
     test(['Evaluation', 'Page.evaluate', 'should transfer arrays as arrays, not objects'].join(" ")) do |page:|
       result = page.evaluate('(a) => Array.isArray(a)', [1, 2, 3])
-      expect(result).to be true
+      expect(result).to eq(true)
     end
 
     test(['Evaluation', 'Page.evaluate', 'should work with unicode chars'].join(" ")) do |page:|
@@ -106,7 +106,7 @@
 
     test(['Evaluation', 'Page.evaluate', 'should return proper type for booleans'].join(" ")) do |page:|
       result = page.evaluate('() => true')
-      expect(result).to be true
+      expect(result).to eq(true)
     end
 
     test(['Evaluation', 'Page.evaluate', 'should return undefined for objects with undefined properties'].join(" ")) do |page:|

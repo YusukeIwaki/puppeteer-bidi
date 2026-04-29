@@ -190,7 +190,7 @@ require "test_helper"
       HTML
       expect do
         page.locator("button").click
-      end.to raise_error(Puppeteer::Bidi::TimeoutError, "Timed out after waiting 200ms")
+      end.to raise_error(Puppeteer::Bidi::TimeoutError, /Timed out after waiting 200ms/)
     end
 
     test(["Locator", "Locator.click", "should retry clicks on errors"].join(" ")) do |page:|
@@ -203,7 +203,7 @@ require "test_helper"
       HTML
       expect do
         page.locator("button").click
-      end.to raise_error(Puppeteer::Bidi::TimeoutError, "Timed out after waiting 200ms")
+      end.to raise_error(Puppeteer::Bidi::TimeoutError, /Timed out after waiting 200ms/)
     end
 
     test(["Locator", "Locator.click", "can be aborted"].join(" ")) do
@@ -392,7 +392,7 @@ require "test_helper"
           page.locator("not-found"),
           page.locator("not-found"),
         ]).set_timeout(200).click
-      end.to raise_error(Puppeteer::Bidi::TimeoutError, "Timed out after waiting 200ms")
+      end.to raise_error(Puppeteer::Bidi::TimeoutError, /Timed out after waiting 200ms/)
     end
 
     test(["Locator", "Locator.race", "should not time out when one of the locators matches"].join(" ")) do |page:|
@@ -402,7 +402,7 @@ require "test_helper"
           page.locator("not-found"),
           page.locator("button"),
         ]).click
-      end.not_to raise_error
+      end.not_to raise_error(StandardError)
     end
 
     test(["Locator", "Locator.prototype.map", "should work"].join(" ")) do |page:|

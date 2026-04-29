@@ -13,7 +13,8 @@ module CookieHelpers
 
     expect(cookies.length).to eq(normalized_expected.length)
     cookies.each_with_index do |cookie, index|
-      expect(cookie).to include(normalized_expected[index])
+      expected = normalized_expected[index]
+      expect(cookie.slice(*expected.keys)).to eq(expected)
     end
   end
 end
