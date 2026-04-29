@@ -3,338 +3,338 @@
 require "test_helper"
 
   # Helper method to attach an iframe to the page
-  def attach_frame(page, frame_id, url)
-    handle = page.evaluate_handle(<<~JS, frame_id, url)
-      async (frameId, url) => {
-        const frame = document.createElement('iframe');
-        frame.src = url;
-        frame.id = frameId;
-        document.body.appendChild(frame);
-        await new Promise(x => frame.onload = x);
-        return frame;
-      }
-    JS
-    handle.as_element.content_frame
-  end
+def attach_frame(page, frame_id, url)
+  handle = page.evaluate_handle(<<~JS, frame_id, url)
+    async (frameId, url) => {
+      const frame = document.createElement('iframe');
+      frame.src = url;
+      frame.id = frameId;
+      document.body.appendChild(frame);
+      await new Promise(x => frame.onload = x);
+      return frame;
+    }
+  JS
+  handle.as_element.content_frame
+end
 
   # Helper method to detach an iframe from the page
-  def detach_frame(page, frame_id)
-    page.evaluate(<<~JS, frame_id)
-      (frameId) => {
-        const frame = document.getElementById(frameId);
-        frame.remove();
-      }
-    JS
-  end
+def detach_frame(page, frame_id)
+  page.evaluate(<<~JS, frame_id)
+    (frameId) => {
+      const frame = document.getElementById(frameId);
+      frame.remove();
+    }
+  JS
+end
 
   # Helper method to navigate a frame
-  def navigate_frame(page, frame_id, url)
-    page.evaluate(<<~JS, frame_id, url)
-      (frameId, url) => {
-        const frame = document.getElementById(frameId);
-        frame.src = url;
-        return new Promise(x => frame.onload = x);
-      }
-    JS
-  end
+def navigate_frame(page, frame_id, url)
+  page.evaluate(<<~JS, frame_id, url)
+    (frameId, url) => {
+      const frame = document.getElementById(frameId);
+      frame.src = url;
+      return new Promise(x => frame.onload = x);
+    }
+  JS
+end
 
   # Helper method to dump frame tree structure
   # Following Puppeteer's dumpFrames implementation from test/src/utils.ts
-  def dump_frames(frame, indentation = '')
-    result = []
-    # Replace port number with placeholder
-    url = frame.url.gsub(/:\d+\//, ':<PORT>/')
-    description = url
+def dump_frames(frame, indentation = '')
+  result = []
+  # Replace port number with placeholder
+  url = frame.url.gsub(/:\d+\//, ':<PORT>/')
+  description = url
 
-    # Get frame name from frameElement, following Puppeteer's pattern
-    element = frame.frame_element
-    if element
-      name_or_id = element.evaluate('frame => frame.name || frame.id')
-      description += " (#{name_or_id})" if name_or_id && !name_or_id.empty?
-      element.dispose
-    end
-
-    result << "#{indentation}#{description}"
-
-    frame.child_frames.each do |child|
-      result.concat(dump_frames(child, "#{indentation}    "))
-    end
-    result
+  # Get frame name from frameElement, following Puppeteer's pattern
+  element = frame.frame_element
+  if element
+    name_or_id = element.evaluate('frame => frame.name || frame.id')
+    description += " (#{name_or_id})" if name_or_id && !name_or_id.empty?
+    element.dispose
   end
 
-    test(['Frame specs', 'Frame.evaluateHandle', 'should work'].join(" ")) do |page:, server:|
-      page.goto(server.empty_page)
-      main_frame = page.main_frame
-      window_handle = main_frame.evaluate_handle('() => window')
-      expect(window_handle).to be_a(Puppeteer::Bidi::JSHandle)
-    end
+  result << "#{indentation}#{description}"
 
-    test(['Frame specs', 'Frame.evaluate', 'should throw for detached frames'].join(" ")) do |page:, server:|
-      frame1 = attach_frame(page, 'frame1', server.empty_page)
-      detach_frame(page, 'frame1')
+  frame.child_frames.each do |child|
+    result.concat(dump_frames(child, "#{indentation}    "))
+  end
+  result
+end
 
-      expect {
-        frame1.evaluate('() => 7 * 8')
-      }.to raise_error(Puppeteer::Bidi::FrameDetachedError, /Attempted to use detached Frame/)
-    end
+test(['Frame specs', 'Frame.evaluateHandle', 'should work'].join(" ")) do |page:, server:|
+  page.goto(server.empty_page)
+  main_frame = page.main_frame
+  window_handle = main_frame.evaluate_handle('() => window')
+  expect(window_handle).to be_a(Puppeteer::Bidi::JSHandle)
+end
 
-    test(['Frame specs', 'Frame.evaluate', 'allows readonly array to be an argument'].join(" ")) do |page:, server:|
-      page.goto(server.empty_page)
-      main_frame = page.main_frame
+test(['Frame specs', 'Frame.evaluate', 'should throw for detached frames'].join(" ")) do |page:, server:|
+  frame1 = attach_frame(page, 'frame1', server.empty_page)
+  detach_frame(page, 'frame1')
 
-      # This test checks if Frame.evaluate allows a readonly array to be an argument.
-      readonly_array = %w[a b c].freeze
-      result = main_frame.evaluate('arr => arr', readonly_array)
-      expect(result).to eq(%w[a b c])
-    end
+  expect {
+    frame1.evaluate('() => 7 * 8')
+  }.to raise_error(Puppeteer::Bidi::FrameDetachedError, /Attempted to use detached Frame/)
+end
 
-    test(['Frame specs', 'Frame.page', 'should retrieve the page from a frame'].join(" ")) do |page:, server:|
-      page.goto(server.empty_page)
-      main_frame = page.main_frame
-      expect(main_frame.page).to eq(page)
-    end
+test(['Frame specs', 'Frame.evaluate', 'allows readonly array to be an argument'].join(" ")) do |page:, server:|
+  page.goto(server.empty_page)
+  main_frame = page.main_frame
 
-    test(['Frame specs', 'Frame Management', 'should handle nested frames'].join(" ")) do |page:, server:|
-      page.goto("#{server.prefix}/frames/nested-frames.html")
-      expect(dump_frames(page.main_frame)).to eq([
-        'http://localhost:<PORT>/frames/nested-frames.html',
-        '    http://localhost:<PORT>/frames/two-frames.html (2frames)',
-        '        http://localhost:<PORT>/frames/frame.html (uno)',
-        '        http://localhost:<PORT>/frames/frame.html (dos)',
-        '    http://localhost:<PORT>/frames/frame.html (aframe)'
-      ])
-    end
+  # This test checks if Frame.evaluate allows a readonly array to be an argument.
+  readonly_array = %w[a b c].freeze
+  result = main_frame.evaluate('arr => arr', readonly_array)
+  expect(result).to eq(%w[a b c])
+end
 
-    test(['Frame specs', 'Frame Management', 'should send events when frames are manipulated dynamically'].join(" ")) do |page:, server:|
-      page.goto(server.empty_page)
+test(['Frame specs', 'Frame.page', 'should retrieve the page from a frame'].join(" ")) do |page:, server:|
+  page.goto(server.empty_page)
+  main_frame = page.main_frame
+  expect(main_frame.page).to eq(page)
+end
 
-      # Set up all event listeners before any frame operations
-      attached_frames = []
-      navigated_frames = []
-      detached_frames = []
-      page.on(:frameattached) { |frame| attached_frames << frame }
-      page.on(:framenavigated) { |frame| navigated_frames << frame }
-      page.on(:framedetached) { |frame| detached_frames << frame }
+test(['Frame specs', 'Frame Management', 'should handle nested frames'].join(" ")) do |page:, server:|
+  page.goto("#{server.prefix}/frames/nested-frames.html")
+  expect(dump_frames(page.main_frame)).to eq([
+    'http://localhost:<PORT>/frames/nested-frames.html',
+    '    http://localhost:<PORT>/frames/two-frames.html (2frames)',
+    '        http://localhost:<PORT>/frames/frame.html (uno)',
+    '        http://localhost:<PORT>/frames/frame.html (dos)',
+    '    http://localhost:<PORT>/frames/frame.html (aframe)'
+  ])
+end
 
-      # Test frameattached
-      attach_frame(page, 'frame1', "#{server.prefix}/frames/frame.html")
-      expect(attached_frames.length).to eq(1)
-      expect(attached_frames[0].url).to include('/frames/frame.html')
+test(['Frame specs', 'Frame Management', 'should send events when frames are manipulated dynamically'].join(" ")) do |page:, server:|
+  page.goto(server.empty_page)
 
-      # Test framenavigated (clear to only count new events)
-      initial_navigated_count = navigated_frames.length
-      navigate_frame(page, 'frame1', server.empty_page)
-      expect(navigated_frames.length - initial_navigated_count).to eq(1)
-      expect(navigated_frames.last.url).to eq(server.empty_page)
+  # Set up all event listeners before any frame operations
+  attached_frames = []
+  navigated_frames = []
+  detached_frames = []
+  page.on(:frameattached) { |frame| attached_frames << frame }
+  page.on(:framenavigated) { |frame| navigated_frames << frame }
+  page.on(:framedetached) { |frame| detached_frames << frame }
 
-      # Test framedetached
-      detach_frame(page, 'frame1')
-      expect(detached_frames.length).to eq(1)
-      expect(detached_frames[0].detached?).to eq(true)
-    end
+  # Test frameattached
+  attach_frame(page, 'frame1', "#{server.prefix}/frames/frame.html")
+  expect(attached_frames.length).to eq(1)
+  expect(attached_frames[0].url).to include('/frames/frame.html')
 
-    test(['Frame specs', 'Frame Management', 'should send "framenavigated" when navigating on anchor URLs'].join(" ")) do |page:, server:|
-      page.goto(server.empty_page)
+  # Test framenavigated (clear to only count new events)
+  initial_navigated_count = navigated_frames.length
+  navigate_frame(page, 'frame1', server.empty_page)
+  expect(navigated_frames.length - initial_navigated_count).to eq(1)
+  expect(navigated_frames.last.url).to eq(server.empty_page)
 
-      navigated = false
-      page.on(:framenavigated) { navigated = true }
-      page.goto("#{server.empty_page}#foo")
+  # Test framedetached
+  detach_frame(page, 'frame1')
+  expect(detached_frames.length).to eq(1)
+  expect(detached_frames[0].detached?).to eq(true)
+end
 
-      expect(navigated).to eq(true)
-      expect(page.url).to eq("#{server.empty_page}#foo")
-    end
+test(['Frame specs', 'Frame Management', 'should send "framenavigated" when navigating on anchor URLs'].join(" ")) do |page:, server:|
+  page.goto(server.empty_page)
 
-    test(['Frame specs', 'Frame Management', 'should persist mainFrame on cross-process navigation'].join(" ")) do |page:, server:|
-      skip 'Cross-process navigation not yet implemented'
+  navigated = false
+  page.on(:framenavigated) { navigated = true }
+  page.goto("#{server.empty_page}#foo")
 
-      page.goto(server.empty_page)
-      main_frame = page.main_frame
-      page.goto("#{server.cross_process_prefix}/empty.html")
-      expect(page.main_frame).to eq(main_frame)
-    end
+  expect(navigated).to eq(true)
+  expect(page.url).to eq("#{server.empty_page}#foo")
+end
 
-    test(['Frame specs', 'Frame Management', 'should not send attach/detach events for main frame'].join(" ")) do |page:, server:|
-      has_events = false
-      page.on(:frameattached) { has_events = true }
-      page.on(:framedetached) { has_events = true }
-      page.goto(server.empty_page)
-      expect(has_events).to eq(false)
-    end
+test(['Frame specs', 'Frame Management', 'should persist mainFrame on cross-process navigation'].join(" ")) do |page:, server:|
+  skip 'Cross-process navigation not yet implemented'
 
-    test(['Frame specs', 'Frame Management', 'should detach child frames on navigation'].join(" ")) do |page:, server:|
-      attached_frames = []
-      detached_frames = []
-      navigated_frames = []
-      page.on(:frameattached) { |frame| attached_frames << frame }
-      page.on(:framedetached) { |frame| detached_frames << frame }
-      page.on(:framenavigated) { |frame| navigated_frames << frame }
-      page.goto("#{server.prefix}/frames/nested-frames.html")
+  page.goto(server.empty_page)
+  main_frame = page.main_frame
+  page.goto("#{server.cross_process_prefix}/empty.html")
+  expect(page.main_frame).to eq(main_frame)
+end
 
-      expect(attached_frames.length).to eq(4)
-      expect(detached_frames.length).to eq(0)
-      expect(navigated_frames.length).to eq(5)
+test(['Frame specs', 'Frame Management', 'should not send attach/detach events for main frame'].join(" ")) do |page:, server:|
+  has_events = false
+  page.on(:frameattached) { has_events = true }
+  page.on(:framedetached) { has_events = true }
+  page.goto(server.empty_page)
+  expect(has_events).to eq(false)
+end
 
-      attached_frames.clear
-      detached_frames.clear
-      navigated_frames.clear
-      page.goto(server.empty_page)
-      expect(attached_frames.length).to eq(0)
-      expect(detached_frames.length).to eq(4)
-      expect(navigated_frames.length).to eq(1)
-    end
+test(['Frame specs', 'Frame Management', 'should detach child frames on navigation'].join(" ")) do |page:, server:|
+  attached_frames = []
+  detached_frames = []
+  navigated_frames = []
+  page.on(:frameattached) { |frame| attached_frames << frame }
+  page.on(:framedetached) { |frame| detached_frames << frame }
+  page.on(:framenavigated) { |frame| navigated_frames << frame }
+  page.goto("#{server.prefix}/frames/nested-frames.html")
 
-    test(['Frame specs', 'Frame Management', 'should support framesets'].join(" ")) do |page:, server:|
-      skip 'Framesets not yet implemented'
+  expect(attached_frames.length).to eq(4)
+  expect(detached_frames.length).to eq(0)
+  expect(navigated_frames.length).to eq(5)
 
-      attached_frames = []
-      detached_frames = []
-      navigated_frames = []
-      page.on('frameattached') { |frame| attached_frames << frame }
-      page.on('framedetached') { |frame| detached_frames << frame }
-      page.on('framenavigated') { |frame| navigated_frames << frame }
-      page.goto("#{server.prefix}/frames/frameset.html")
-      expect(attached_frames.length).to eq(4)
-      expect(detached_frames.length).to eq(0)
-      expect(navigated_frames.length).to eq(5)
+  attached_frames.clear
+  detached_frames.clear
+  navigated_frames.clear
+  page.goto(server.empty_page)
+  expect(attached_frames.length).to eq(0)
+  expect(detached_frames.length).to eq(4)
+  expect(navigated_frames.length).to eq(1)
+end
 
-      attached_frames.clear
-      detached_frames.clear
-      navigated_frames.clear
-      page.goto(server.empty_page)
-      expect(attached_frames.length).to eq(0)
-      expect(detached_frames.length).to eq(4)
-      expect(navigated_frames.length).to eq(1)
-    end
+test(['Frame specs', 'Frame Management', 'should support framesets'].join(" ")) do |page:, server:|
+  skip 'Framesets not yet implemented'
 
-    test(['Frame specs', 'Frame Management', 'should click elements in a frameset'].join(" ")) do |page:, server:|
-      skip 'Frameset click not yet implemented'
+  attached_frames = []
+  detached_frames = []
+  navigated_frames = []
+  page.on('frameattached') { |frame| attached_frames << frame }
+  page.on('framedetached') { |frame| detached_frames << frame }
+  page.on('framenavigated') { |frame| navigated_frames << frame }
+  page.goto("#{server.prefix}/frames/frameset.html")
+  expect(attached_frames.length).to eq(4)
+  expect(detached_frames.length).to eq(0)
+  expect(navigated_frames.length).to eq(5)
 
-      page.goto("#{server.prefix}/frames/frameset.html")
-      frame = page.wait_for_frame { |f| f.url.end_with?('/frames/frame.html') }
-      div = frame.wait_for_selector('div')
-      expect(div).not_to be_nil
-      div.click
-    end
+  attached_frames.clear
+  detached_frames.clear
+  navigated_frames.clear
+  page.goto(server.empty_page)
+  expect(attached_frames.length).to eq(0)
+  expect(detached_frames.length).to eq(4)
+  expect(navigated_frames.length).to eq(1)
+end
 
-    test(['Frame specs', 'Frame Management', 'should report frame from inside shadow DOM'].join(" ")) do |page:, server:|
-      skip 'Shadow DOM frames not yet implemented'
+test(['Frame specs', 'Frame Management', 'should click elements in a frameset'].join(" ")) do |page:, server:|
+  skip 'Frameset click not yet implemented'
 
-      page.goto("#{server.prefix}/shadow.html")
-      page.evaluate(<<~JS, server.empty_page)
-        async (url) => {
-          const frame = document.createElement('iframe');
-          frame.src = url;
-          document.body.shadowRoot.appendChild(frame);
-          await new Promise(x => frame.onload = x);
-        }
-      JS
-      expect(page.frames.length).to eq(2)
-      expect(page.frames[1].url).to eq(server.empty_page)
-    end
+  page.goto("#{server.prefix}/frames/frameset.html")
+  frame = page.wait_for_frame { |f| f.url.end_with?('/frames/frame.html') }
+  div = frame.wait_for_selector('div')
+  expect(div).not_to be_nil
+  div.click
+end
 
-    test(['Frame specs', 'Frame Management', 'should report frame.parent()'].join(" ")) do |page:, server:|
-      attach_frame(page, 'frame1', server.empty_page)
-      attach_frame(page, 'frame2', server.empty_page)
-      expect(page.frames[0].parent_frame).to be_nil
-      expect(page.frames[1].parent_frame).to eq(page.main_frame)
-      expect(page.frames[2].parent_frame).to eq(page.main_frame)
-    end
+test(['Frame specs', 'Frame Management', 'should report frame from inside shadow DOM'].join(" ")) do |page:, server:|
+  skip 'Shadow DOM frames not yet implemented'
 
-    test(['Frame specs', 'Frame Management', 'should report different frame instance when frame re-attaches'].join(" ")) do |page:, server:|
-      skip 'Frame re-attachment not yet implemented'
+  page.goto("#{server.prefix}/shadow.html")
+  page.evaluate(<<~JS, server.empty_page)
+    async (url) => {
+      const frame = document.createElement('iframe');
+      frame.src = url;
+      document.body.shadowRoot.appendChild(frame);
+      await new Promise(x => frame.onload = x);
+    }
+  JS
+  expect(page.frames.length).to eq(2)
+  expect(page.frames[1].url).to eq(server.empty_page)
+end
 
-      frame1 = attach_frame(page, 'frame1', server.empty_page)
-      page.evaluate(<<~JS)
-        () => {
-          globalThis.frame = document.querySelector('#frame1');
-          globalThis.frame.remove();
-        }
-      JS
-      expect(frame1.detached?).to eq(true)
+test(['Frame specs', 'Frame Management', 'should report frame.parent()'].join(" ")) do |page:, server:|
+  attach_frame(page, 'frame1', server.empty_page)
+  attach_frame(page, 'frame2', server.empty_page)
+  expect(page.frames[0].parent_frame).to be_nil
+  expect(page.frames[1].parent_frame).to eq(page.main_frame)
+  expect(page.frames[2].parent_frame).to eq(page.main_frame)
+end
 
-      frame_attached_promise = Promise.new { |resolve| page.once('frameattached') { |f| resolve.call(f) } }
-      page.evaluate('() => document.body.appendChild(globalThis.frame)')
-      frame2 = frame_attached_promise.value
+test(['Frame specs', 'Frame Management', 'should report different frame instance when frame re-attaches'].join(" ")) do |page:, server:|
+  skip 'Frame re-attachment not yet implemented'
 
-      expect(frame2.detached?).to eq(false)
-      expect(frame1).not_to eq(frame2)
-    end
+  frame1 = attach_frame(page, 'frame1', server.empty_page)
+  page.evaluate(<<~JS)
+    () => {
+      globalThis.frame = document.querySelector('#frame1');
+      globalThis.frame.remove();
+    }
+  JS
+  expect(frame1.detached?).to eq(true)
 
-    test(['Frame specs', 'Frame Management', 'should support url fragment'].join(" ")) do |page:, server:|
-      skip 'URL fragment in frames not yet implemented'
+  frame_attached_promise = Promise.new { |resolve| page.once('frameattached') { |f| resolve.call(f) } }
+  page.evaluate('() => document.body.appendChild(globalThis.frame)')
+  frame2 = frame_attached_promise.value
 
-      page.goto("#{server.prefix}/frames/one-frame-url-fragment.html")
+  expect(frame2.detached?).to eq(false)
+  expect(frame1).not_to eq(frame2)
+end
 
-      expect(page.frames.length).to eq(2)
-      expect(page.frames[1].url).to eq("#{server.prefix}/frames/frame.html?param=value#fragment")
-    end
+test(['Frame specs', 'Frame Management', 'should support url fragment'].join(" ")) do |page:, server:|
+  skip 'URL fragment in frames not yet implemented'
 
-    test(['Frame specs', 'Frame Management', 'should support lazy frames'].join(" ")) do |page:, server:|
-      skip 'Lazy frames not yet implemented'
+  page.goto("#{server.prefix}/frames/one-frame-url-fragment.html")
 
-      page.set_viewport(width: 1000, height: 1000)
-      page.goto("#{server.prefix}/frames/lazy-frame.html")
+  expect(page.frames.length).to eq(2)
+  expect(page.frames[1].url).to eq("#{server.prefix}/frames/frame.html?param=value#fragment")
+end
 
-      expect(page.frames.map(&:_has_started_loading)).to eq([true, true, false])
-    end
+test(['Frame specs', 'Frame Management', 'should support lazy frames'].join(" ")) do |page:, server:|
+  skip 'Lazy frames not yet implemented'
 
-    test(['Frame specs', 'Frame.client', 'should return the client instance'].join(" ")) do
-      skip 'Frame.client is CDP-specific, not applicable to WebDriver BiDi'
-    end
+  page.set_viewport(width: 1000, height: 1000)
+  page.goto("#{server.prefix}/frames/lazy-frame.html")
 
-    test(['Frame specs', 'Frame.frameElement', 'should work'].join(" ")) do |page:, server:|
-      attach_frame(page, 'theFrameId', server.empty_page)
-      page.evaluate(<<~JS, server.empty_page)
-        (url) => {
-          const frame = document.createElement('iframe');
-          frame.name = 'theFrameName';
-          frame.src = url;
-          document.body.appendChild(frame);
-          return new Promise(x => frame.onload = x);
-        }
-      JS
+  expect(page.frames.map(&:_has_started_loading)).to eq([true, true, false])
+end
 
-      frame0 = page.frames[0].frame_element
-      expect(frame0).to be_nil
+test(['Frame specs', 'Frame.client', 'should return the client instance'].join(" ")) do
+  skip 'Frame.client is CDP-specific, not applicable to WebDriver BiDi'
+end
 
-      frame1 = page.frames[1].frame_element
-      expect(frame1).not_to be_nil
-      name1 = frame1.evaluate('frame => frame.id')
-      expect(name1).to eq('theFrameId')
+test(['Frame specs', 'Frame.frameElement', 'should work'].join(" ")) do |page:, server:|
+  attach_frame(page, 'theFrameId', server.empty_page)
+  page.evaluate(<<~JS, server.empty_page)
+    (url) => {
+      const frame = document.createElement('iframe');
+      frame.name = 'theFrameName';
+      frame.src = url;
+      document.body.appendChild(frame);
+      return new Promise(x => frame.onload = x);
+    }
+  JS
 
-      frame2 = page.frames[2].frame_element
-      expect(frame2).not_to be_nil
-      name2 = frame2.evaluate('frame => frame.name')
-      expect(name2).to eq('theFrameName')
-    end
+  frame0 = page.frames[0].frame_element
+  expect(frame0).to be_nil
 
-    test(['Frame specs', 'Frame.frameElement', 'should handle shadow roots'].join(" ")) do |page:|
-      page.set_content(<<~HTML)
-        <div id="shadow-host"></div>
-        <script>
-          const host = document.getElementById('shadow-host');
-          const shadowRoot = host.attachShadow({mode: 'closed'});
-          const frame = document.createElement('iframe');
-          frame.srcdoc = '<p>Inside frame</p>';
-          shadowRoot.appendChild(frame);
-        </script>
-      HTML
+  frame1 = page.frames[1].frame_element
+  expect(frame1).not_to be_nil
+  name1 = frame1.evaluate('frame => frame.id')
+  expect(name1).to eq('theFrameId')
 
-      frame = page.frames[1]
-      frame_element = frame.frame_element
-      tag_name = frame_element.evaluate('el => el.tagName.toLocaleLowerCase()')
-      expect(tag_name).to eq('iframe')
-    end
+  frame2 = page.frames[2].frame_element
+  expect(frame2).not_to be_nil
+  name2 = frame2.evaluate('frame => frame.name')
+  expect(name2).to eq('theFrameName')
+end
 
-    test(['Frame specs', 'Frame.frameElement', 'should return ElementHandle in the correct world'].join(" ")) do |page:, server:|
-      skip 'Frame.frameElement world isolation not yet implemented'
+test(['Frame specs', 'Frame.frameElement', 'should handle shadow roots'].join(" ")) do |page:|
+  page.set_content(<<~HTML)
+    <div id="shadow-host"></div>
+    <script>
+      const host = document.getElementById('shadow-host');
+      const shadowRoot = host.attachShadow({mode: 'closed'});
+      const frame = document.createElement('iframe');
+      frame.srcdoc = '<p>Inside frame</p>';
+      shadowRoot.appendChild(frame);
+    </script>
+  HTML
 
-      attach_frame(page, 'theFrameId', server.empty_page)
-      page.evaluate('() => { globalThis.isMainWorld = true; }')
-      expect(page.frames.length).to eq(2)
+  frame = page.frames[1]
+  frame_element = frame.frame_element
+  tag_name = frame_element.evaluate('el => el.tagName.toLocaleLowerCase()')
+  expect(tag_name).to eq('iframe')
+end
 
-      frame1 = page.frames[1].frame_element
-      expect(frame1).not_to be_nil
-      is_main_world = frame1.evaluate('() => globalThis.isMainWorld')
-      expect(is_main_world).to eq(true)
-    end
+test(['Frame specs', 'Frame.frameElement', 'should return ElementHandle in the correct world'].join(" ")) do |page:, server:|
+  skip 'Frame.frameElement world isolation not yet implemented'
+
+  attach_frame(page, 'theFrameId', server.empty_page)
+  page.evaluate('() => { globalThis.isMainWorld = true; }')
+  expect(page.frames.length).to eq(2)
+
+  frame1 = page.frames[1].frame_element
+  expect(frame1).not_to be_nil
+  is_main_world = frame1.evaluate('() => globalThis.isMainWorld')
+  expect(is_main_world).to eq(true)
+end
