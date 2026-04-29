@@ -57,7 +57,7 @@ jobs:
         run: git diff --exit-code API_COVERAGE.md
 
   rspec:
-    name: RSpec (${{ matrix.ruby-version }})
+    name: Tests (${{ matrix.ruby-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -82,16 +82,16 @@ jobs:
       - name: Verify Firefox installation
         run: firefox --version
 
-      - name: Run unit tests
-        run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
+      - name: Run RSpec unit tests
+        run: bundle exec rspec
 
-      - name: Run integration tests
-        run: FIREFOX_PATH=`which firefox` bundle exec rspec spec/integration/
+      - name: Run Smartest integration tests
+        run: FIREFOX_PATH=`which firefox` bundle exec smartest
         env:
           HEADLESS: true
 
   rspec_ruby4_debian:
-    name: RSpec (debian / Ruby 4.0)
+    name: Tests (debian / Ruby 4.0)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container:
@@ -124,8 +124,8 @@ jobs:
       - name: Install dependencies
         run: bundle install
 
-      - name: Run unit tests
-        run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
+      - name: Run RSpec unit tests
+        run: bundle exec rspec
 
       - name: Run usecase tests (headless)
         run: bundle exec rake test
@@ -136,8 +136,8 @@ jobs:
           HOME: /root
           FIREFOX_PATH: /usr/bin/firefox-nightly
 
-      - name: Run integration tests (headless)
-        run: bundle exec rspec spec/integration/
+      - name: Run Smartest integration tests (headless)
+        run: bundle exec smartest
         env:
           HEADLESS: true
           # Fix Firefox crash in GitHub Actions
@@ -145,15 +145,15 @@ jobs:
           HOME: /root
           FIREFOX_PATH: /usr/bin/firefox-nightly
 
-      - name: Run integration tests (headful, xvfb)
-        run: xvfb-run --server-args="-screen 0 1024x768x24" bundle exec rspec spec/integration/
+      - name: Run Smartest integration tests (headful, xvfb)
+        run: xvfb-run --server-args="-screen 0 1024x768x24" bundle exec smartest
         env:
           HEADLESS: "false"
           HOME: /root
           FIREFOX_PATH: /usr/bin/firefox-nightly
 
   rspec_ruby4_macos:
-    name: RSpec (macos / Ruby 4.0+)
+    name: Tests (macos / Ruby 4.0+)
     runs-on: macos-latest
     timeout-minutes: 30
 
@@ -207,20 +207,20 @@ jobs:
       - name: Verify Firefox installation
         run: ${{ steps.firefox.outputs.path }} --version
 
-      - name: Run unit tests
-        run: bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
+      - name: Run RSpec unit tests
+        run: bundle exec rspec
 
       - name: Run usecase tests (headless)
         run: bundle exec rake test
 
-      - name: Run integration tests (headless)
-        run: bundle exec rspec spec/integration/
+      - name: Run Smartest integration tests (headless)
+        run: bundle exec smartest
         env:
           HEADLESS: true
           FIREFOX_PATH: ${{ steps.firefox.outputs.path }}
 
-      - name: Run integration tests (headful)
-        run: bundle exec rspec spec/integration/
+      - name: Run Smartest integration tests (headful)
+        run: bundle exec smartest
         env:
           HEADLESS: "false"
           FIREFOX_PATH: ${{ steps.firefox.outputs.path }}

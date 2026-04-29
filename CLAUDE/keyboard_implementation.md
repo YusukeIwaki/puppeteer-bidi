@@ -214,7 +214,7 @@ end
 
 ### Test Assets
 
-**Important**: `spec/assets/input/textarea.html` must define:
+**Important**: `smartest/assets/input/textarea.html` must define:
 ```html
 <script>
   globalThis.result = '';

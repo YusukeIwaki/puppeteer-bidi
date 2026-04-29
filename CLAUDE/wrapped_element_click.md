@@ -174,7 +174,7 @@ async #clickableBox(): Promise<BoundingBox | null> {
 
 ### Test Asset
 
-Official Puppeteer test asset: `spec/assets/wrappedlink.html`
+Official Puppeteer test asset: `smartest/assets/wrappedlink.html`
 
 ```html
 <div style="width: 10ch; word-wrap: break-word; transform: rotate(33deg);">
@@ -240,7 +240,7 @@ end
 
 - `lib/puppeteer/bidi/element_handle.rb`: clickable_box, intersect methods
 - `spec/integration/click_spec.rb`: Test case for wrapped links
-- `spec/assets/wrappedlink.html`: Official test asset (never modify!)
+- `smartest/assets/wrappedlink.html`: Official test asset (never modify!)
 
 ## Commit Reference
 

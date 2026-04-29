@@ -4,7 +4,7 @@ This document describes the dynamic route handling functionality added to the te
 
 ## Overview
 
-The test server (`spec/support/test_server.rb`) has been extended to support dynamic route interception and request synchronization, matching Puppeteer's test server capabilities.
+The test server (`smartest/support/test_server.rb`) has been extended to support dynamic route interception and request synchronization, matching Puppeteer's test server capabilities.
 
 ## Features
 
@@ -97,7 +97,7 @@ server = Async::HTTP::Server.for(endpoint) do |request|
 end
 ```
 
-Static assets are served from `spec/assets`, while dynamic route handlers receive a lightweight wrapper (`RouteRequest`) exposing `path`, `headers`, `params`, and optional `body` accessors.
+Static assets are served from `smartest/assets`, while dynamic route handlers receive a lightweight wrapper (`RouteRequest`) exposing `path`, `headers`, `params`, and optional `body` accessors.
 
 ### Response Writer
 
@@ -251,10 +251,10 @@ expect(requests.map(&:path)).to include('/one-style.css')
 
 ## Related Files
 
-- `spec/support/test_server.rb` - Test server implementation
-- `spec/integration/navigation_spec.rb` - Navigation tests using dynamic routes
-- `spec/assets/one-style.html` - Test asset with external CSS
-- `spec/assets/one-style.css` - CSS file for testing resource loading
+- `smartest/support/test_server.rb` - Test server implementation
+- `smartest/integration/navigation_test.rb` - Navigation tests using dynamic routes
+- `smartest/assets/one-style.html` - Test asset with external CSS
+- `smartest/assets/one-style.css` - CSS file for testing resource loading
 
 ## References
 

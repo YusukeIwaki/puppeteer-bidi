@@ -117,14 +117,15 @@ spec/
 │   ├── examples/           # Example-based tests
 │   │   └── screenshot_spec.rb
 │   └── screenshot_spec.rb  # Feature test suites
-├── assets/                 # Test HTML/CSS/JS files
+├── assets/                 # Browser test HTML/CSS/JS files
 │   ├── grid.html
 │   ├── scrollbar.html
 │   ├── empty.html
 │   └── digits/*.png
 ├── golden-firefox/         # Reference images
 │   └── screenshot-*.png
-└── support/               # Test utilities
+smartest/
+└── support/               # Browser-test utilities
     ├── test_server.rb
     └── golden_comparator.rb
 ```
@@ -229,7 +230,7 @@ HEADLESS=false  # Run browser in non-headless mode for debugging
 #### 1. Save Screenshots for Inspection
 
 ```ruby
-# In golden_comparator.rb
+# In smartest/support/golden_comparator.rb
 def save_screenshot(screenshot_base64, filename)
   output_dir = File.join(__dir__, '../output')
   FileUtils.mkdir_p(output_dir)
@@ -244,7 +245,7 @@ end
 cat > /tmp/compare.rb << 'EOF'
 require 'chunky_png'
 
-golden = ChunkyPNG::Image.from_file('spec/golden-firefox/screenshot.png')
+golden = ChunkyPNG::Image.from_file('smartest/golden-firefox/screenshot.png')
 actual = ChunkyPNG::Image.from_file('spec/output/debug.png')
 
 diff_count = 0
@@ -338,4 +339,3 @@ screenshots = threads.map(&:value)
 3. Check BiDi spec for protocol details
 4. Implement Ruby version maintaining same logic
 5. Download golden images and verify pixel-perfect match (with tolerance)
-

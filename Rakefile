@@ -12,11 +12,16 @@ end
 
 RSpec::Core::RakeTask.new(:spec)
 
+desc "Run Smartest browser integration tests"
+task :smartest do
+  sh "bundle", "exec", "smartest"
+end
+
 require "rubocop/rake_task"
 
 RuboCop::RakeTask.new
 
-task default: %i[spec rubocop]
+task default: %i[spec smartest rubocop]
 
 # Generate RBS files from rbs-inline annotations
 desc "Generate RBS files with rbs-inline"

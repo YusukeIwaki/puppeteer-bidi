@@ -7,21 +7,25 @@ This document covers integration test organization, performance optimization str
 
 ```
 spec/
-├── unit/                    # Fast unit tests (future)
-├── integration/             # Browser automation tests
-│   ├── examples/           # Example-based tests
-│   │   └── screenshot_spec.rb
-│   └── screenshot_spec.rb  # Feature test suites
-├── assets/                 # Test HTML/CSS/JS files
+└── unit/                    # Fast unit tests (future)
+
+smartest/
+├── assets/                 # Browser test HTML/CSS/JS files
 │   ├── grid.html
 │   ├── scrollbar.html
 │   ├── empty.html
 │   └── digits/*.png
 ├── golden-firefox/         # Reference images
 │   └── screenshot-*.png
-└── support/               # Test utilities
-    ├── test_server.rb
-    └── golden_comparator.rb
+├── fixtures/               # Browser, server, page, and cookie-state fixtures
+├── matchers/               # Smartest matcher extensions used by browser tests
+├── support/                # Browser-test utilities
+│   ├── test_server.rb
+│   ├── golden_comparator.rb
+│   └── cookie_helpers.rb
+└── integration/            # Browser automation tests
+    ├── examples/           # Example-based tests
+    └── screenshot_test.rb  # Feature test suites
 ```
 
 #### Implemented Screenshot Tests
@@ -43,8 +47,8 @@ All 12 tests ported from [Puppeteer's screenshot.spec.ts](https://github.com/pup
 
 Run tests:
 ```bash
-bundle exec rspec spec/integration/screenshot_spec.rb
-# Expected: 12 examples, 0 failures (completes in ~8 seconds with optimized spec_helper)
+bundle exec smartest smartest/integration/screenshot_test.rb
+# Expected: 12 tests, 0 failures (completes in ~8 seconds with shared browser fixtures)
 ```
 
 #### Test Performance Optimization
@@ -71,29 +75,21 @@ end
 
 ##### After Optimization (Shared Browser)
 ```ruby
-# In spec_helper.rb
-config.before(:suite) do
-  if RSpec.configuration.files_to_run.any? { |f| f.include?('spec/integration') }
-    $shared_browser = Puppeteer::Bidi.launch_browser_instance(headless: headless_mode?)
-    $shared_test_server = TestServer::Server.new
-    $shared_test_server.start
-  end
+# In smartest/fixtures/browser_fixture.rb
+suite_fixture :browser do
+  BrowserTestResources.start
+  BrowserTestResources.browser
 end
 
-def with_test_state(**options)
-  if $shared_browser && options.empty?
-    # Create new page (tab) per test
-    page = $shared_browser.new_page
-    context = $shared_browser.default_browser_context
+fixture :page do |browser:|
+  page = browser.new_page
+  cleanup { page.close unless page.closed? }
+  page
+end
 
-    begin
-      yield(page: page, server: $shared_test_server, browser: $shared_browser, context: context)
-    ensure
-      page.close unless page.closed?  # Clean up tab
-    end
-  else
-    # Fall back to per-test browser for custom options
-  end
+fixture :server do |test_server:|
+  cleanup { test_server.clear_routes }
+  test_server
 end
 ```
 
@@ -103,8 +99,8 @@ end
 
 | Test Suite | Before | After | Improvement |
 |------------|--------|-------|-------------|
-| **evaluation_spec (23 tests)** | 127s | **7.17s** | **17.7x faster** |
-| **screenshot_spec (12 tests)** | 68s | **8.47s** | **8.0x faster** |
+| **evaluation_test (23 tests)** | 127s | **7.17s** | **17.7x faster** |
+| **screenshot_test (12 tests)** | 68s | **8.47s** | **8.0x faster** |
 | **Combined (35 tests)** | 195s | **10.33s** | **18.9x faster** 🚀 |
 
 **Key Benefits**:
@@ -124,7 +120,7 @@ HEADLESS=false  # Run browser in non-headless mode for debugging
 #### 1. Save Screenshots for Inspection
 
 ```ruby
-# In golden_comparator.rb
+# In smartest/support/golden_comparator.rb
 def save_screenshot(screenshot_base64, filename)
   output_dir = File.join(__dir__, '../output')
   FileUtils.mkdir_p(output_dir)
@@ -139,7 +135,7 @@ end
 cat > /tmp/compare.rb << 'EOF'
 require 'chunky_png'
 
-golden = ChunkyPNG::Image.from_file('spec/golden-firefox/screenshot.png')
+golden = ChunkyPNG::Image.from_file('smartest/golden-firefox/screenshot.png')
 actual = ChunkyPNG::Image.from_file('spec/output/debug.png')
 
 diff_count = 0
@@ -233,4 +229,3 @@ screenshots = threads.map(&:value)
 3. Check BiDi spec for protocol details
 4. Implement Ruby version maintaining same logic
 5. Download golden images and verify pixel-perfect match (with tolerance)
-

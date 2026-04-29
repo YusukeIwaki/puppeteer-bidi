@@ -220,7 +220,7 @@ server.set_csp("/empty.html", "script-src 'self'")
 
 ### Test Asset
 
-`spec/assets/tamperable.html` captures `window.injected` before page scripts run:
+`smartest/assets/tamperable.html` captures `window.injected` before page scripts run:
 
 ```html
 <script>

@@ -13,7 +13,7 @@ Best practices for implementing Puppeteer features in puppeteer-bidi.
 
 - **Test files**:
   - `test/src/screenshot.spec.ts` - Screenshot test suite
-  - `test/golden-firefox/` - Golden images for visual regression testing
+  - `test/golden-firefox/` - Golden images for visual regression testing, copied under `smartest/golden-firefox/`
 
 **Example workflow:**
 
@@ -29,7 +29,7 @@ Best practices for implementing Puppeteer features in puppeteer-bidi.
 **Use async-http for test servers** (lightweight + Async-friendly):
 
 ```ruby
-# spec/support/test_server.rb
+# smartest/support/test_server.rb
 endpoint = Async::HTTP::Endpoint.parse("http://127.0.0.1:#{@port}")
 
 server = Async::HTTP::Server.for(endpoint) do |request|
@@ -199,16 +199,16 @@ end
 **CRITICAL**: Always use Puppeteer's official test assets without modification.
 
 - **Source**: https://github.com/puppeteer/puppeteer/tree/main/test/assets
-- **Rule**: Never modify test asset files (HTML, CSS, images) in `spec/assets/`
-- **Verification**: Before creating PR, verify all `spec/assets/` files match Puppeteer's official versions
+- **Rule**: Never modify test asset files (HTML, CSS, images) in `smartest/assets/`
+- **Verification**: Before creating PR, verify all `smartest/assets/` files match Puppeteer's official versions
 
 ```bash
 # During development - OK to experiment
-vim spec/assets/test.html  # Temporary modification for debugging
+vim smartest/assets/test.html  # Temporary modification for debugging
 
 # Before PR - MUST revert to official
 curl -sL https://raw.githubusercontent.com/puppeteer/puppeteer/main/test/assets/test.html \
-  -o spec/assets/test.html
+  -o smartest/assets/test.html
 ```
 
 **Why this matters**: Test assets are designed to test specific edge cases (rotated elements, complex layouts, etc.). Using simplified versions defeats the purpose of these tests.

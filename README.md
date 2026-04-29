@@ -112,7 +112,8 @@ Puppeteer::Bidi.launch(headless: false) do |browser|
 end
 ```
 
-For more examples, see the [examples](examples/) directory and integration tests in [spec/integration/](spec/integration/).
+For more examples, see the [examples](examples/) directory and browser integration tests in
+[smartest/integration/](smartest/integration/).
 
 For development and testing commands, see [DEVELOPMENT.md](DEVELOPMENT.md).
 

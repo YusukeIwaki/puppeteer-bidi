@@ -15,3 +15,5 @@ gem "rubocop"
 gem "oj"
 
 gem "steep", group: :development
+
+gem "smartest", "~> 0.2.2"

@@ -17,19 +17,19 @@ Port the WebDriver BiDi protocol portions of Puppeteer to Ruby, providing a stan
 
 ```bash
 # All integration tests (requires Firefox Nightly for full functionality)
-bundle exec rspec spec/integration/
+bundle exec smartest
 
 # Single test file
-bundle exec rspec spec/integration/click_spec.rb
+bundle exec smartest smartest/integration/click_test.rb
 
 # Non-headless mode
-HEADLESS=false bundle exec rspec spec/integration/
+HEADLESS=false bundle exec smartest
 
 # Debug protocol messages
-DEBUG_BIDI_COMMAND=1 bundle exec rspec spec/integration/click_spec.rb
+DEBUG_BIDI_COMMAND=1 bundle exec smartest smartest/integration/click_test.rb
 
 # Use specific Firefox path (e.g., Nightly)
-FIREFOX_PATH="/Applications/Firefox Nightly.app/Contents/MacOS/firefox" bundle exec rspec
+FIREFOX_PATH="/Applications/Firefox Nightly.app/Contents/MacOS/firefox" bundle exec smartest
 ```
 
 **Note**: Some features (e.g., FileChooser) require Firefox Nightly. The browser launcher prioritizes Nightly automatically.
@@ -166,9 +166,9 @@ bundle exec steep check    # Run type checker
 
 ### Testing
 
-- Use RSpec for unit and integration tests
-- Integration tests in `spec/integration/`
-- Use `with_test_state` helper for browser reuse
+- Use RSpec for non-browser tests
+- Use Smartest for browser integration tests in `smartest/integration/`
+- Prefer Smartest fixtures (`page:`, `server:`, `browser:`, `context:`) for browser reuse
 
 ### Test Assets
 
