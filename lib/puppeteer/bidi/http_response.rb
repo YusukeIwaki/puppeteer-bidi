@@ -75,7 +75,7 @@ module Puppeteer
           next unless value.is_a?(Hash)
           next unless value["type"] == "string"
 
-          headers[header["name"].to_s.downcase] = value["value"]
+          headers[header["name"].to_s.downcase] = HTTPUtils.normalize_header_value(value["value"])
         end
         headers
       end
