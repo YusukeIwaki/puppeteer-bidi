@@ -381,6 +381,18 @@ module Puppeteer
           })
         end
 
+        # Set locale override
+        # @rbs locale: String? -- Locale, or nil to restore the default
+        # @rbs return: Async::Task[void]
+        def set_locale_override(locale = nil)
+          raise BrowsingContextClosedError, @reason if closed?
+
+          session.async_send_command("emulation.setLocaleOverride", {
+            locale: locale,
+            contexts: [@id]
+          })
+        end
+
         # Set files on an input element
         # @rbs element: Hash[String, untyped] -- Element reference
         # @rbs files: Array[String] -- File paths

@@ -1196,6 +1196,15 @@ module Puppeteer
         end
       end
 
+      # Emulate locale
+      # @rbs locale: String? -- Locale, or nil to restore the default
+      # @rbs return: void
+      def emulate_locale(locale = nil)
+        assert_not_closed
+
+        @browsing_context.set_locale_override(locale).wait
+      end
+
       # Set geolocation override
       # @rbs longitude: Numeric -- Longitude between -180 and 180
       # @rbs latitude: Numeric -- Latitude between -90 and 90
