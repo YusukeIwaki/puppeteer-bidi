@@ -95,6 +95,18 @@ module Puppeteer
           @execution_context_id = result['executionContextId']
         end
 
+        # Emit :destroyed before EventEmitter is marked as disposed so Realm
+        # consumers can terminate their pending tasks.
+        # @rbs return: void
+        def dispose
+          return if disposed?
+
+          @reason ||= "Realm destroyed, probably because all associated browsing contexts closed"
+          emit(:destroyed, { reason: @reason })
+
+          super
+        end
+
         protected
 
         # Abstract method - must be implemented by subclasses
@@ -104,8 +116,6 @@ module Puppeteer
         end
 
         def perform_dispose
-          @reason ||= 'Realm destroyed, probably because all associated browsing contexts closed'
-          emit(:destroyed, { reason: @reason })
           @disposables.dispose
           super
         end
