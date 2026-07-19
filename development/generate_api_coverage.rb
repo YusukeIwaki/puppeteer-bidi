@@ -219,7 +219,10 @@ NODE_OWNER_ALIASES = {
   "HTTPResponse" => "HTTPResponse",
   "filechooser" => "FileChooser",
   "fileChooser" => "FileChooser",
-  "FileChooser" => "FileChooser"
+  "FileChooser" => "FileChooser",
+  "webworker" => "WebWorker",
+  "webWorker" => "WebWorker",
+  "WebWorker" => "WebWorker"
   # Note: Target is excluded from coverage tracking due to significant
   # implementation differences between Node.js and Ruby versions.
 }.freeze
@@ -240,7 +243,8 @@ RUBY_OWNER_CONSTANTS = {
   "Mouse" => "Puppeteer::Bidi::Mouse",
   "HTTPRequest" => "Puppeteer::Bidi::HTTPRequest",
   "HTTPResponse" => "Puppeteer::Bidi::HTTPResponse",
-  "FileChooser" => "Puppeteer::Bidi::FileChooser"
+  "FileChooser" => "Puppeteer::Bidi::FileChooser",
+  "WebWorker" => "Puppeteer::Bidi::WebWorker"
   # Note: Target is excluded from coverage tracking due to significant
   # implementation differences between Node.js and Ruby versions.
 }.freeze
