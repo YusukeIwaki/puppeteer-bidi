@@ -328,8 +328,8 @@
 | Node.js | Ruby | Supported |
 | --- | --- | :---: |
 | `Puppeteer.clearCustomQueryHandlers` | `Puppeteer::Bidi.clear_custom_query_handlers` | ❌ |
-| `PuppeteerNode.connect` | `Puppeteer::Bidi.connect` | ✅ |
 | `Puppeteer.connect` | `Puppeteer::Bidi.connect` | ✅ |
+| `PuppeteerNode.connect` | `Puppeteer::Bidi.connect` | ✅ |
 | `Puppeteer.customQueryHandlerNames` | `Puppeteer::Bidi.custom_query_handler_names` | ❌ |
 | `PuppeteerNode.defaultArgs` | `Puppeteer::Bidi.default_args` | ❌ |
 | `PuppeteerNode.defaultBrowser` | `Puppeteer::Bidi.default_browser` | ❌ |
