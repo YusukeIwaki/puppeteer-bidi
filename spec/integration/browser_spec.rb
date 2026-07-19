@@ -52,6 +52,8 @@ RSpec.describe 'Browser' do
 
   describe 'Browser.get_window_bounds / Browser.set_window_bounds' do
     it 'should get and set window bounds for a window page' do
+      pending "Firefox BiDi adjusts window position bounds in headful mode on macOS" if mac? && !headless_mode?
+
       with_test_state do |browser:, context:, **|
         page = nil
         begin
