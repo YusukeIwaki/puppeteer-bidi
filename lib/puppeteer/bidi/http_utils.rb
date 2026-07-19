@@ -5,13 +5,15 @@ module Puppeteer
   module Bidi
     # Utilities for normalizing HTTP data exposed through the Puppeteer API.
     module HTTPUtils
-      # Normalize multiline HTTP header values to comma-separated values.
-      # @rbs header: String -- Header value
+      # Normalize multiline HTTP header values.
+      # @rbs name: String -- Lowercase header name
+      # @rbs value: String -- Header value
       # @rbs return: String -- Normalized header value
-      def self.normalize_header_value(header)
-        return header unless header.include?("\n")
+      def self.normalize_header_value(name, value)
+        return value unless value.include?("\n")
 
-        header.split("\n").map(&:strip).reject(&:empty?).join(", ")
+        separator = name == "set-cookie" ? "\n " : ", "
+        value.split("\n").map(&:strip).reject(&:empty?).join(separator)
       end
     end
   end
