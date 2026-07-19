@@ -45,16 +45,31 @@ RSpec.describe 'Frame.waitForFunction', type: :integration do
   it 'should poll on interval' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
-      page.evaluate("() => { delete window.__FOO }")
+      page.evaluate("() => { delete window.__FOO; delete window.__POLL_STARTED }")
 
       start_time = Time.now
 
       watchdog = Async do
-        page.wait_for_function("() => window.__FOO === 'hit'", polling: 500)
+        page.wait_for_function(<<~JS, polling: 500)
+          () => {
+            window.__POLL_STARTED = true;
+            return window.__FOO === 'hit';
+          }
+        JS
       end
-      Async do
-        page.evaluate("() => setTimeout(() => { window.__FOO = 'hit' }, 50)")
-      end
+      page.evaluate(<<~JS)
+        () => new Promise(resolve => {
+          const scheduleUpdate = () => {
+            if (!window.__POLL_STARTED) {
+              setTimeout(scheduleUpdate, 0);
+              return;
+            }
+            setTimeout(() => { window.__FOO = 'hit' }, 50);
+            resolve();
+          };
+          scheduleUpdate();
+        })
+      JS
 
       watchdog.wait
       elapsed = ((Time.now - start_time) * 1000).to_i
