@@ -4,6 +4,7 @@ require 'async'
 require 'async/http/server'
 require 'async/http/client'
 require 'async/http/endpoint'
+require 'base64'
 require 'protocol/http/response'
 require 'socket'
 require 'timeout'
@@ -107,6 +108,20 @@ module TestServer
       set_route(from) do |_request, writer|
         writer.status = 302
         writer.add_header('location', to)
+        writer.finish
+      end
+    end
+
+    def set_auth(path, username, password)
+      expected_authorization = "Basic #{Base64.strict_encode64("#{username}:#{password}")}"
+
+      set_route(path) do |request, writer|
+        if request.headers["authorization"] == expected_authorization
+          writer.status = 200
+        else
+          writer.status = 401
+          writer.add_header("www-authenticate", 'Basic realm="Secure Area"')
+        end
         writer.finish
       end
     end
