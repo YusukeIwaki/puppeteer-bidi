@@ -101,8 +101,7 @@ context = browser.default_user_context
 browsing_context = context.create_browsing_context('tab')
 
 # Listen for navigation events
-browsing_context.on(:navigation) do |data|
-  navigation = data[:navigation]
+browsing_context.on(:navigation) do |navigation|
   puts "Navigation started to #{browsing_context.url}"
 end
 
@@ -123,12 +122,12 @@ All core classes extend `EventEmitter` and emit various events:
 
 ```ruby
 # Browser events
-browser.on(:closed) { |data| puts "Browser closed: #{data[:reason]}" }
-browser.on(:disconnected) { |data| puts "Browser disconnected: #{data[:reason]}" }
+browser.on(:closed) { |reason| puts "Browser closed: #{reason}" }
+browser.on(:disconnected) { |reason| puts "Browser disconnected: #{reason}" }
 
 # BrowsingContext events
-browsing_context.on(:navigation) { |data| puts "Navigation: #{data[:navigation]}" }
-browsing_context.on(:request) { |data| puts "Request: #{data[:request].url}" }
+browsing_context.on(:navigation) { |navigation| puts "Navigation: #{navigation}" }
+browsing_context.on(:request) { |request| puts "Request: #{request.url}" }
 browsing_context.on(:load) { puts "Page loaded" }
 browsing_context.on(:dom_content_loaded) { puts "DOM ready" }
 
@@ -147,8 +146,8 @@ Core classes implement the `Disposable` pattern for proper resource cleanup:
 browser.close  # Disposes all user contexts, browsing contexts, etc.
 
 # Disposal triggers appropriate events
-browsing_context.on(:closed) do |data|
-  puts "Context closed: #{data[:reason]}"
+browsing_context.on(:closed) do |reason|
+  puts "Context closed: #{reason}"
 end
 
 # Check disposal status

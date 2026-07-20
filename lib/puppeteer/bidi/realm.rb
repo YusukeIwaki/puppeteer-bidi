@@ -289,8 +289,7 @@ module Puppeteer
       def setup_core_realm_callbacks
         @core_realm.environment = @frame if @core_realm.respond_to?(:environment=)
 
-        destroyed_listener = proc do |payload|
-          reason = payload.is_a?(Hash) ? payload[:reason] : payload
+        destroyed_listener = proc do |reason|
           task_manager.terminate_all(Error.new(reason || 'Realm destroyed'))
           dispose
         end

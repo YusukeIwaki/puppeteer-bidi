@@ -121,6 +121,27 @@ RSpec.describe Puppeteer::Bidi::AsyncUtils do
       end.to raise_error(StandardError, 'Task failed')
     end
 
+    it 'cancels pending tasks when the caller times out' do
+      pending_task_stopped = false
+
+      expect do
+        described_class.async_timeout(20, -> do
+          described_class.await_promise_all(
+            -> do
+              begin
+                sleep 10
+              ensure
+                pending_task_stopped = true
+              end
+            end,
+            Async::Promise.new
+          )
+        end).wait
+      end.to raise_error(Async::TimeoutError)
+
+      expect(pending_task_stopped).to be(true)
+    end
+
     it 'handles empty task list' do
       results = described_class.await_promise_all()
 

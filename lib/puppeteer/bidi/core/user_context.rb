@@ -157,8 +157,8 @@ module Puppeteer
         protected
 
         def perform_dispose
-          @reason ||= 'User context closed, probably because the browser disconnected'
-          emit(:closed, { reason: @reason })
+          @reason ||= 'User context already closed, probably because the browser disconnected/closed.'
+          emit(:closed, @reason)
           @disposables.dispose
           super
         end
@@ -171,12 +171,12 @@ module Puppeteer
 
         def initialize_context
           # Listen for browser closure/disconnection
-          @browser.once(:closed) do |data|
-            dispose_context("User context closed: #{data[:reason]}")
+          @browser.once(:closed) do |reason|
+            dispose_context("User context was closed: #{reason}")
           end
 
-          @browser.once(:disconnected) do |data|
-            dispose_context("User context closed: #{data[:reason]}")
+          @browser.once(:disconnected) do |reason|
+            dispose_context("User context was closed: #{reason}")
           end
 
           # Listen for browsing context creation
@@ -201,7 +201,7 @@ module Puppeteer
               @browsing_contexts.delete(browsing_context.id)
             end
 
-            emit(:browsingcontext, { browsing_context: browsing_context })
+            emit(:browsingcontext, browsing_context)
           end
         end
 

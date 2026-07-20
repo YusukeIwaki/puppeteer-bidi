@@ -65,8 +65,8 @@ module Puppeteer
         protected
 
         def perform_dispose
-          @reason ||= 'User prompt closed, probably because the browsing context was destroyed'
-          emit(:closed, { reason: @reason })
+          @reason ||= 'User prompt already closed, probably because the associated browsing context was destroyed.'
+          emit(:closed, @reason)
           @disposables.dispose
           super
         end
@@ -79,8 +79,8 @@ module Puppeteer
 
         def initialize_prompt
           # Listen for browsing context closure
-          @browsing_context.once(:closed) do |data|
-            dispose_prompt("User prompt closed: #{data[:reason]}")
+          @browsing_context.once(:closed) do |reason|
+            dispose_prompt("User prompt already closed: #{reason}")
           end
 
           # Listen for prompt closed event

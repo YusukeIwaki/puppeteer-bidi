@@ -256,39 +256,51 @@ module Puppeteer
 
       # Set frame content
       # @rbs html: String -- HTML content to set
-      # @rbs wait_until: String -- When to consider content set ('load', 'domcontentloaded')
+      # @rbs wait_until: String | Array[String] -- Lifecycle events to wait for ('load', 'domcontentloaded')
+      # @rbs timeout: Numeric? -- Timeout in ms (0 for infinite)
       # @rbs return: void
-      def set_content(html, wait_until: 'load')
+      def set_content(html, wait_until: 'load', timeout: nil)
         assert_not_detached
 
-        # Puppeteer BiDi implementation:
-        # await Promise.all([
-        #   this.setFrameContent(html),
-        #   firstValueFrom(combineLatest([this.#waitForLoad$(options), this.#waitForNetworkIdle$(options)]))
-        # ]);
+        wait_until_values = wait_until.is_a?(Array) ? wait_until : [wait_until]
+        unsupported_value = wait_until_values.find do |value|
+          !%w[load domcontentloaded].include?(value)
+        end
+        raise ArgumentError, "Unknown wait_until value: #{unsupported_value}" if unsupported_value
 
-        # IMPORTANT: Register listener BEFORE document.write to avoid race condition
-        load_event = case wait_until
-                     when 'load'
-                       :load
-                     when 'domcontentloaded'
-                       :dom_content_loaded
-                     else
-                       raise ArgumentError, "Unknown wait_until value: #{wait_until}"
-                     end
-
-        promise = Async::Promise.new
-        listener = proc { promise.resolve(nil) }
-        @browsing_context.once(load_event, &listener)
-
-        # Execute both operations: document.write AND wait for load
-        # Use promise_all to wait for both to complete (like Puppeteer's Promise.all)
-        AsyncUtils.await_promise_all(
-          -> { set_frame_content(html) },
+        events = wait_until_values.uniq.map do |value|
+          value == 'load' ? :load : :dom_content_loaded
+        end
+        listeners = []
+        promises = events.map do |event|
+          promise = Async::Promise.new
+          listener = proc { promise.resolve(nil) }
+          @browsing_context.once(event, &listener)
+          listeners << [event, listener]
           promise
-        )
+        end
+
+        timeout_ms = timeout.nil? ? page.timeout_settings.navigation_timeout : timeout
+        operation = lambda do
+          AsyncUtils.await_promise_all(
+            -> { set_frame_content(html) },
+            *promises
+          )
+        end
+
+        if timeout_ms == 0
+          operation.call
+        else
+          AsyncUtils.async_timeout(timeout_ms, operation).wait
+        end
 
         nil
+      rescue Async::TimeoutError
+        raise Puppeteer::Bidi::TimeoutError, "Navigation timeout of #{timeout_ms} ms exceeded"
+      ensure
+        listeners&.each do |event, listener|
+          @browsing_context.off(event, &listener)
+        end
       end
 
       # Set frame content using document.open/write/close
@@ -445,11 +457,10 @@ module Puppeteer
 
         # Listen for navigation events from BrowsingContext
         # This follows Puppeteer's pattern: race between 'navigation', 'historyUpdated', and 'fragmentNavigated'
-        navigation_listener = proc do |data|
+        navigation_listener = proc do |navigation|
           # Only handle if we haven't already attached to a navigation
           next if navigation_obj
 
-          navigation = data[:navigation]
           setup_navigation_listeners.call(navigation)
         end
 
@@ -626,8 +637,8 @@ module Puppeteer
         end
 
         # Listen for new child frames
-        @browsing_context.on(:browsingcontext) do |data|
-          create_frame_target(data[:browsing_context])
+        @browsing_context.on(:browsingcontext) do |browsing_context|
+          create_frame_target(browsing_context)
         end
 
         # Emit framedetached when THIS frame's browsing context is closed
@@ -652,8 +663,7 @@ module Puppeteer
           page.emit(:framenavigated, self)
         end
 
-        @browsing_context.on(:request) do |data|
-          request = data[:request]
+        @browsing_context.on(:request) do |request|
           http_request = HTTPRequest.from(
             request,
             self,
@@ -672,8 +682,7 @@ module Puppeteer
           end
         end
 
-        @browsing_context.on(:log) do |data|
-          entry = data[:entry]
+        @browsing_context.on(:log) do |entry|
           if entry["type"] == "console"
             page.emit(:console, console_message_from_log_entry(entry))
           elsif entry["type"] == "javascript"

@@ -170,10 +170,11 @@ module Puppeteer
 
       # Set page content
       # @rbs html: String -- HTML content to set
-      # @rbs wait_until: String -- When to consider content set ('load', 'domcontentloaded')
+      # @rbs wait_until: String | Array[String] -- Lifecycle events to wait for ('load', 'domcontentloaded')
+      # @rbs timeout: Numeric? -- Timeout in ms (0 for infinite)
       # @rbs return: void
-      def set_content(html, wait_until: 'load')
-        main_frame.set_content(html, wait_until: wait_until)
+      def set_content(html, wait_until: 'load', timeout: nil)
+        main_frame.set_content(html, wait_until: wait_until, timeout: timeout)
       end
 
       # Take a screenshot
@@ -1414,8 +1415,7 @@ module Puppeteer
           started_promise.resolve(:navigation_started) unless started_promise.resolved?
         end
 
-        request_listener = proc do |data|
-          request = data[:request]
+        request_listener = proc do |request|
           next unless navigation_id
           next unless request&.navigation == navigation_id
 

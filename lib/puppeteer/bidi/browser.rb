@@ -373,11 +373,10 @@ module Puppeteer
           session_listeners << [event, session_listener]
         end
 
-        browser_disconnect_listener = proc do |data|
+        browser_disconnect_listener = proc do |reason|
           next if promise.resolved?
 
-          reason = data[:reason] || 'Browser disconnected'
-          promise.reject(Core::BrowserDisconnectedError.new(reason))
+          promise.reject(Core::BrowserDisconnectedError.new(reason || 'Browser disconnected'))
           cleanup.call
         end
 

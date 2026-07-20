@@ -940,16 +940,40 @@ RSpec.describe 'Page' do
     end
 
     it 'should respect timeout' do
-      pending 'Page.setContent timeout parameter not implemented'
-
       with_test_state do |page:, server:, **|
-        server.set_route('/img.png') do |_req, _writer|
-          sleep 10
+        release_response = Async::Promise.new
+        server.set_route('/img.png') do |_request, writer|
+          release_response.wait
+          writer.finish
         end
 
+        begin
+          expect {
+            page.set_content("<img src='#{server.prefix}/img.png'>", wait_until: 'load', timeout: 100)
+          }.to raise_error(Puppeteer::Bidi::TimeoutError, 'Navigation timeout of 100 ms exceeded')
+        ensure
+          release_response.resolve(nil)
+        end
+      end
+    end
+
+    it 'should wait for multiple lifecycle events' do
+      with_test_state do |page:, **|
+        page.set_content('<div>hello</div>', wait_until: ['domcontentloaded', 'load'])
+
+        expect(page.content).to eq(expected_output)
+      end
+    end
+
+    it 'should reject network idle lifecycle events' do
+      with_test_state do |page:, **|
         expect {
-          page.set_content("<img src='#{server.prefix}/img.png'>", wait_until: 'load', timeout: 100)
-        }.to raise_error(Puppeteer::Bidi::TimeoutError)
+          page.set_content('<div>hello</div>', wait_until: 'networkidle0')
+        }.to raise_error(ArgumentError, 'Unknown wait_until value: networkidle0')
+
+        expect {
+          page.set_content('<div>hello</div>', wait_until: ['load', 'networkidle2'])
+        }.to raise_error(ArgumentError, 'Unknown wait_until value: networkidle2')
       end
     end
 

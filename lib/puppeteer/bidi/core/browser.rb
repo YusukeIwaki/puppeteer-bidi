@@ -65,7 +65,7 @@ module Puppeteer
             begin
               @session.async_send_command('browser.close', {})
             ensure
-              dispose_browser('Browser closed', closed: true)
+              dispose_browser('Browser already closed.', closed: true)
             end
           end
         end
@@ -159,9 +159,9 @@ module Puppeteer
         protected
 
         def perform_dispose
-          @reason ||= 'Browser was disconnected, probably because the session ended'
-          emit(:closed, { reason: @reason }) if @closed
-          emit(:disconnected, { reason: @reason })
+          @reason ||= 'Browser was disconnected, probably because the session ended.'
+          emit(:closed, @reason) if @closed
+          emit(:disconnected, @reason)
           @disposables.dispose
           super
         end
@@ -171,8 +171,8 @@ module Puppeteer
         def initialize_browser
           Async do
             # Listen for session end
-            @session.on(:ended) do |data|
-              dispose_browser(data[:reason])
+            @session.on(:ended) do |reason|
+              dispose_browser(reason)
             end
 
             # Listen for shared worker creation
