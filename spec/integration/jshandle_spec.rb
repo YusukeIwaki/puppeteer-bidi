@@ -146,6 +146,27 @@ RSpec.describe 'JSHandle', type: :integration do
         expect(properties['b'].json_value).to eq('2')
       end
     end
+
+    it 'should return only own enumerable properties' do
+      with_test_state do |page:, **|
+        handle = page.evaluate_handle(<<~JS)
+          (() => {
+            const object = Object.create({inherited: 'inherited'});
+            Object.defineProperty(object, 'hidden', {
+              value: 'hidden',
+              enumerable: false,
+            });
+            object.visible = 'visible';
+            return object;
+          })()
+        JS
+
+        properties = handle.get_properties
+
+        expect(properties.keys).to eq(['visible'])
+        expect(properties['visible'].json_value).to eq('visible')
+      end
+    end
   end
 
   describe 'JSHandle#as_element' do

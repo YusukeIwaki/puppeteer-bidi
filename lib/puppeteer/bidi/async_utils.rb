@@ -134,10 +134,15 @@ module Puppeteer
           end
         end
 
-        # Wait for all tasks to complete
-        barrier.wait
-
-        results
+        begin
+          # Wait for all tasks to complete
+          barrier.wait
+          results
+        ensure
+          # Promise.all rejects as soon as a task fails. Stop pending siblings so
+          # callers that time out do not leave fibers waiting on unresolved promises.
+          barrier.stop
+        end
       end
 
       def first(*tasks)

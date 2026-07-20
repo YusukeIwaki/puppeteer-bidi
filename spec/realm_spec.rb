@@ -20,8 +20,8 @@ RSpec.describe Puppeteer::Bidi::Core::Realm do
 
     realm.dispose
 
-    expected_event = { reason: "Realm destroyed, probably because all associated browsing contexts closed" }
-    expect(destroyed_events).to eq([expected_event])
+    expected_reason = "Realm already destroyed, probably because all associated browsing contexts closed."
+    expect(destroyed_events).to eq([expected_reason])
     expect(realm).to be_disposed
   end
 end

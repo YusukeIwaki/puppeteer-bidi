@@ -137,78 +137,16 @@ module Puppeteer
       def get_properties
         assert_not_disposed
 
-        # Get own and inherited properties
-        result = @realm.call_function(
-          <<~JS,
-            (object) => {
-              const properties = {};
-              let current = object;
+        property_names = evaluate('(object) => Object.keys(object ?? {})')
+        return {} unless property_names.is_a?(Array)
 
-              // Walk the prototype chain
-              while (current) {
-                const names = Object.getOwnPropertyNames(current);
-                for (const name of names) {
-                  if (!(name in properties)) {
-                    try {
-                      properties[name] = object[name];
-                    } catch (e) {
-                      // Skip properties that throw on access
-                    }
-                  }
-                }
-                current = Object.getPrototypeOf(current);
-              }
+        handles = AsyncUtils.await_promise_all(
+          *property_names.map do |property_name|
+            -> { get_property(property_name) }
+          end
+        )
 
-              return properties;
-            }
-          JS
-          false,
-          arguments: [@remote_value]
-        ).wait
-
-        if result['type'] == 'exception'
-          return {}
-        end
-
-        # Get property entries
-        properties_object = result['result']
-        return {} if properties_object['type'] == 'undefined' || properties_object['type'] == 'null'
-
-        # Get each property as a handle
-        props_result = @realm.call_function(
-          <<~JS,
-            (object) => {
-              const entries = [];
-              for (const key in object) {
-                entries.push([key, object[key]]);
-              }
-              return entries;
-            }
-          JS
-          false,
-          arguments: [properties_object]
-        ).wait
-
-        if props_result['type'] == 'exception'
-          return {}
-        end
-
-        entries = props_result['result']
-        return {} unless entries['type'] == 'array'
-
-        # Convert to Hash of JSHandles
-        result_hash = {}
-        entries['value'].each do |entry|
-          next unless entry['type'] == 'array'
-          next unless entry['value'].length == 2
-
-          key = Deserializer.deserialize(entry['value'][0])
-          value_remote = entry['value'][1]
-
-          result_hash[key] = JSHandle.from(value_remote, @realm)
-        end
-
-        result_hash
+        property_names.zip(handles).to_h
       end
 
       # Convert this handle to a JSON-serializable value

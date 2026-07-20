@@ -269,8 +269,8 @@ module Puppeteer
 
         def initialize_request
           # Listen for browsing context closure
-          @browsing_context.once(:closed) do |data|
-            @error = data[:reason]
+          @browsing_context.once(:closed) do |reason|
+            @error = reason
             emit(:error, @error)
             dispose
           end

@@ -46,8 +46,7 @@ RSpec.describe 'Core BiDi implementation' do
       end
 
       # Listen for navigation events
-      browsing_context.on(:navigation) do |data|
-        navigation = data[:navigation]
+      browsing_context.on(:navigation) do |_navigation|
         puts "✓ Navigation started"
       end
 
@@ -101,7 +100,7 @@ RSpec.describe 'Core BiDi implementation' do
         load: false
       }
 
-      browsing_context.on(:navigation) do |data|
+      browsing_context.on(:navigation) do |_navigation|
         puts "✓ Navigation event received"
         events_received[:navigation] = true
       end

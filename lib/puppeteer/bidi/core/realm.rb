@@ -101,8 +101,8 @@ module Puppeteer
         def dispose
           return if disposed?
 
-          @reason ||= "Realm destroyed, probably because all associated browsing contexts closed"
-          emit(:destroyed, { reason: @reason })
+          @reason ||= "Realm already destroyed, probably because all associated browsing contexts closed."
+          emit(:destroyed, @reason)
 
           super
         end
@@ -174,8 +174,8 @@ module Puppeteer
 
         def initialize_realm
           # Listen for browsing context closure
-          @browsing_context.once(:closed) do |data|
-            dispose_realm(data[:reason])
+          @browsing_context.once(:closed) do |reason|
+            dispose_realm(reason)
           end
 
           # Listen for realm creation (this realm)
@@ -247,7 +247,7 @@ module Puppeteer
           # Listen for realm destruction
           session.on('script.realmDestroyed') do |info|
             next unless info['realm'] == @id
-            dispose_realm('Realm destroyed')
+            dispose_realm('Realm already destroyed.')
           end
 
           # Listen for nested dedicated worker creation
@@ -305,7 +305,7 @@ module Puppeteer
           # Listen for realm destruction
           session.on('script.realmDestroyed') do |info|
             next unless info['realm'] == @id
-            dispose_realm('Realm destroyed')
+            dispose_realm('Realm already destroyed.')
           end
 
           # Listen for dedicated worker creation

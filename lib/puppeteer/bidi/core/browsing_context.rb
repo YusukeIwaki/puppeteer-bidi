@@ -217,7 +217,7 @@ module Puppeteer
           raise BrowsingContextClosedError, @reason if closed?
           realm = WindowRealm.from(self, sandbox)
           realm.on(:worker) do |worker_realm|
-            emit(:worker, { realm: worker_realm })
+            emit(:worker, worker_realm)
           end
           realm
         end
@@ -465,8 +465,8 @@ module Puppeteer
         def dispose
           return if disposed?
 
-          @reason ||= 'Browsing context closed, probably because the user context closed'
-          emit(:closed, { reason: @reason })
+          @reason ||= 'Browsing context already closed, probably because the user context closed.'
+          emit(:closed, @reason)
 
           super # This sets @disposed = true and calls perform_dispose
         end
@@ -503,8 +503,8 @@ module Puppeteer
 
         def initialize_context
           # Listen for user context closure
-          @user_context.once(:closed) do |data|
-            dispose_context("Browsing context closed: #{data[:reason]}")
+          @user_context.once(:closed) do |reason|
+            dispose_context("Browsing context already closed: #{reason}")
           end
 
           # Listen for various browsing context events
@@ -516,7 +516,7 @@ module Puppeteer
           session.on('browsingContext.contextDestroyed') do |info|
             next unless info['context'] == @id
             dispose_children('Parent browsing context was disposed')
-            dispose_context('Browsing context already closed')
+            dispose_context('Browsing context already closed.')
           end
 
           # Child context created
@@ -538,7 +538,7 @@ module Puppeteer
               @children.delete(child_context.id)
             end
 
-            emit(:browsingcontext, { browsing_context: child_context })
+            emit(:browsingcontext, child_context)
           end
 
           # History updated
@@ -594,7 +594,7 @@ module Puppeteer
             end
 
             # Emit navigation event for subscribers (e.g., Frame#wait_for_navigation)
-            emit(:navigation, { navigation: @navigation })
+            emit(:navigation, @navigation)
           end
 
           # Network events
@@ -606,7 +606,7 @@ module Puppeteer
             next unless first_event_for_request
 
             request = Request.from(self, event)
-            emit(:request, { request: request })
+            emit(:request, request)
           end
 
           session.on('network.responseCompleted') do |event|
@@ -624,14 +624,14 @@ module Puppeteer
           # Log entries
           session.on('log.entryAdded') do |entry|
             next unless entry.dig('source', 'context') == @id
-            emit(:log, { entry: entry })
+            emit(:log, entry)
           end
 
           # User prompts
           session.on('browsingContext.userPromptOpened') do |info|
             next unless info['context'] == @id
             # user_prompt = UserPrompt.from(self, info)
-            # emit(:userprompt, { user_prompt: user_prompt })
+            # emit(:userprompt, user_prompt)
           end
 
           # File dialog

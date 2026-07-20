@@ -58,8 +58,7 @@ module Puppeteer
           end
 
           # Listen for requests with navigation ID
-          @browsing_context.on(:request) do |data|
-            request = data[:request]
+          @browsing_context.on(:request) do |request|
             next unless request.navigation
             next unless matches?(request.navigation)
 

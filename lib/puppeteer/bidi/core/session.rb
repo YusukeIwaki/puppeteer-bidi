@@ -80,15 +80,15 @@ module Puppeteer
           begin
             async_send_command('session.end', {}).wait
           ensure
-            dispose_session('Session ended')
+            dispose_session('Session already ended.')
           end
         end
 
         protected
 
         def perform_dispose
-          @reason ||= 'Session destroyed, probably because the connection broke'
-          emit(:ended, { reason: @reason })
+          @reason ||= 'Session already destroyed, probably because the connection broke.'
+          emit(:ended, @reason)
           @disposables.dispose
           super
         end
