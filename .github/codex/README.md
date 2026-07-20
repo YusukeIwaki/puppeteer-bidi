@@ -38,6 +38,6 @@ The issue body includes a hidden range marker. Before creating an issue, the wor
 the exact marker, another marker from this workflow, or a title matching the repository's existing
 `Track upstream Puppeteer ... BiDi/Firefox changes` convention. It updates the most relevant open issue instead of
 creating a duplicate. Whenever it creates or updates an issue, it posts a comment such as
-`puppeteer-bidi should be ported from upstream v25.3.1`, using the detected latest stable version. A hidden content
-hash makes the notification idempotent across retries while still allowing a new comment when the generated report
-changes. If the title, body, and matching notification are already current, it performs no write.
+`@YusukeIwaki puppeteer-bidi should be ported from upstream v25.3.1`, using the detected latest stable version. A
+hidden content hash makes the notification idempotent across retries while still allowing a new comment when the
+generated report changes. If the title, body, and matching notification are already current, it performs no write.

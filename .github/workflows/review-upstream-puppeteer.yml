@@ -544,7 +544,7 @@ jobs:
 
             notification_body="$(
               printf \
-                'puppeteer-bidi should be ported from upstream v%s\n\n%s' \
+                '@YusukeIwaki puppeteer-bidi should be ported from upstream v%s\n\n%s' \
                 "$LATEST_VERSION" \
                 "$notification_marker"
             )"
