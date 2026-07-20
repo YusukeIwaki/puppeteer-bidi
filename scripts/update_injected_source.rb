@@ -5,14 +5,19 @@
 # Usage: bundle exec ruby scripts/update_injected_source.rb [VERSION]
 #
 # Example:
-#   bundle exec ruby scripts/update_injected_source.rb 24.42.0
+#   bundle exec ruby scripts/update_injected_source.rb 25.3.0
 
-require 'net/http'
-require 'json'
+require "net/http"
+require "json"
 
-VERSION = ARGV[0] || '24.42.0'
-URL = "https://unpkg.com/puppeteer-core@#{VERSION}/lib/esm/puppeteer/generated/injected.js"
-OUTPUT_FILE = File.join(__dir__, '..', 'lib', 'puppeteer', 'bidi', 'injected.js')
+VERSION = ARGV[0] || "25.3.0"
+PACKAGE_PATH = if VERSION.split(".", 2).first.to_i >= 25
+                 "lib/puppeteer/generated/injected.js"
+               else
+                 "lib/esm/puppeteer/generated/injected.js"
+               end
+URL = "https://unpkg.com/puppeteer-core@#{VERSION}/#{PACKAGE_PATH}"
+OUTPUT_FILE = File.join(__dir__, "..", "lib", "puppeteer", "bidi", "injected.js")
 
 puts "Downloading Puppeteer injected source..."
 puts "  URL: #{URL}"
@@ -31,7 +36,7 @@ end
 content = response.body
 
 # Extract the source string value from: export const source = "...";
-match = content.match(/export const source = (\".*\");/m)
+match = content.match(/export const source = (".*");/m)
 unless match
   puts "ERROR: Could not find 'export const source =' in downloaded file"
   exit 1

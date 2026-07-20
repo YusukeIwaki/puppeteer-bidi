@@ -37,7 +37,6 @@ module Puppeteer
           @disposables = Disposable::DisposableStack.new
           @children = {}
           @realms = {}
-          @requests = {}
           @inflight_request_ids = {}
           @navigation = nil
           @emulation_state = { javascript_enabled: true }
@@ -382,6 +381,18 @@ module Puppeteer
           })
         end
 
+        # Set locale override
+        # @rbs locale: String? -- Locale, or nil to restore the default
+        # @rbs return: Async::Task[void]
+        def set_locale_override(locale = nil)
+          raise BrowsingContextClosedError, @reason if closed?
+
+          session.async_send_command("emulation.setLocaleOverride", {
+            locale: locale,
+            contexts: [@id]
+          })
+        end
+
         # Set files on an input element
         # @rbs element: Hash[String, untyped] -- Element reference
         # @rbs files: Array[String] -- File paths
@@ -562,9 +573,6 @@ module Puppeteer
           session.on('browsingContext.navigationStarted') do |info|
             next unless info['context'] == @id
 
-            # Clean up disposed requests
-            @requests.delete_if { |_, request| request.disposed? }
-
             # Skip if navigation hasn't finished
             next if @navigation && !@navigation.disposed?
 
@@ -593,45 +601,24 @@ module Puppeteer
           session.on('network.beforeRequestSent') do |event|
             next unless event['context'] == @id
 
-            request_id = event.dig('request', 'request')
-            next if @requests.key?(request_id)
+            first_event_for_request = track_inflight_request(event)
+            next if event['redirectCount'].to_i > 0
+            next unless first_event_for_request
 
             request = Request.from(self, event)
-            @requests[request_id] = request
             emit(:request, { request: request })
-
-            # Increment inflight requests counter
-            @inflight_mutex.synchronize do
-              @inflight_request_ids[request_id] = true
-              @inflight_requests += 1
-              emit(:inflight_changed, { inflight: @inflight_requests })
-            end
           end
 
           session.on('network.responseCompleted') do |event|
             next unless event['context'] == @id
 
-            request_id = event.dig('request', 'request')
-            next unless @inflight_request_ids.delete(request_id)
-
-            # Decrement inflight requests counter
-            @inflight_mutex.synchronize do
-              @inflight_requests -= 1
-              emit(:inflight_changed, { inflight: @inflight_requests })
-            end
+            finish_inflight_request(event)
           end
 
           session.on('network.fetchError') do |event|
             next unless event['context'] == @id
 
-            request_id = event.dig('request', 'request')
-            next unless @inflight_request_ids.delete(request_id)
-
-            # Decrement inflight requests counter
-            @inflight_mutex.synchronize do
-              @inflight_requests -= 1
-              emit(:inflight_changed, { inflight: @inflight_requests })
-            end
+            finish_inflight_request(event)
           end
 
           # Log entries
@@ -652,6 +639,43 @@ module Puppeteer
             next unless info['context'] == @id
             emit(:filedialogopened, info)
           end
+        end
+
+        def track_inflight_request(event)
+          key = inflight_request_key(event)
+          return false unless key
+
+          inflight = nil
+          @inflight_mutex.synchronize do
+            unless @inflight_request_ids.key?(key)
+              @inflight_request_ids[key] = true
+              @inflight_requests += 1
+              inflight = @inflight_requests
+            end
+          end
+          emit(:inflight_changed, { inflight: inflight }) if inflight
+          !inflight.nil?
+        end
+
+        def finish_inflight_request(event)
+          key = inflight_request_key(event)
+          return unless key
+
+          inflight = nil
+          @inflight_mutex.synchronize do
+            if @inflight_request_ids.delete(key)
+              @inflight_requests -= 1
+              inflight = @inflight_requests
+            end
+          end
+          emit(:inflight_changed, { inflight: inflight }) if inflight
+        end
+
+        def inflight_request_key(event)
+          request_id = event.dig('request', 'request')
+          return nil unless request_id
+
+          [request_id, event['redirectCount'].to_i]
         end
 
         def dispose_children(reason)

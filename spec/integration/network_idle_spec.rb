@@ -33,6 +33,35 @@ RSpec.describe 'Page#wait_for_network_idle' do
     end
   end
 
+  example "waits for a redirected request to finish" do
+    with_test_state do |page:, server:, **|
+      release_response = Async::Promise.new
+      server.set_redirect("/network-idle-redirect", "/network-idle-target")
+      server.set_route("/network-idle-target") do |_request, writer|
+        release_response.wait
+        writer.write("done")
+        writer.finish
+      end
+      page.goto(server.empty_page)
+
+      idle_finished = false
+      idle_task = Async do
+        page.wait_for_network_idle(idle_time: 100, timeout: 3000, concurrency: 0)
+        idle_finished = true
+      end
+      target_request = Async { server.wait_for_request("/network-idle-target") }
+      page.evaluate("url => { void fetch(url); }", "#{server.prefix}/network-idle-redirect")
+
+      target_request.wait
+      sleep(0.2)
+      expect(idle_finished).to eq(false)
+
+      release_response.resolve(nil)
+      idle_task.wait
+      expect(idle_finished).to eq(true)
+    end
+  end
+
   example 'wait_for_navigation with networkidle0' do
     with_test_state do |page:, server:, **|
       # Navigate with networkidle0

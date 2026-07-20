@@ -219,7 +219,10 @@ NODE_OWNER_ALIASES = {
   "HTTPResponse" => "HTTPResponse",
   "filechooser" => "FileChooser",
   "fileChooser" => "FileChooser",
-  "FileChooser" => "FileChooser"
+  "FileChooser" => "FileChooser",
+  "webworker" => "WebWorker",
+  "webWorker" => "WebWorker",
+  "WebWorker" => "WebWorker"
   # Note: Target is excluded from coverage tracking due to significant
   # implementation differences between Node.js and Ruby versions.
 }.freeze
@@ -240,7 +243,8 @@ RUBY_OWNER_CONSTANTS = {
   "Mouse" => "Puppeteer::Bidi::Mouse",
   "HTTPRequest" => "Puppeteer::Bidi::HTTPRequest",
   "HTTPResponse" => "Puppeteer::Bidi::HTTPResponse",
-  "FileChooser" => "Puppeteer::Bidi::FileChooser"
+  "FileChooser" => "Puppeteer::Bidi::FileChooser",
+  "WebWorker" => "Puppeteer::Bidi::WebWorker"
   # Note: Target is excluded from coverage tracking due to significant
   # implementation differences between Node.js and Ruby versions.
 }.freeze
@@ -341,7 +345,7 @@ def generate_markdown(puppeteer_commit:, puppeteer_version:, entries:, ruby_api:
     ruby_methods = ruby_owner ? ruby_owner.fetch(:methods) : []
     ruby_kind = ruby_owner ? ruby_owner.fetch(:kind) : nil
 
-    group.sort_by { |e| e["member"].downcase }.each do |entry|
+    group.sort_by { |e| [e["member"].downcase, e["owner"].downcase, e["member"], e["owner"]] }.each do |entry|
       node_owner = entry.fetch("owner")
       node_member = entry.fetch("member")
       node_ref = "#{node_owner}.#{node_member}"

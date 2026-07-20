@@ -177,7 +177,7 @@ module Puppeteer
       end
 
       # Fill the located element with the provided value.
-      # @rbs value: String -- Value to fill
+      # @rbs value: String | bool -- Value to fill
       # @rbs typing_threshold: Integer -- Number of characters below which real typing is used
       # @rbs return: void
       def fill(value, typing_threshold: 100)
@@ -193,21 +193,28 @@ module Puppeteer
                 return "typeable-input";
               }
               if (el instanceof HTMLInputElement) {
-                if (
-                  new Set([
-                    "textarea",
-                    "text",
-                    "url",
-                    "tel",
-                    "search",
-                    "password",
-                    "number",
-                    "email",
-                  ]).has(el.type)
-                ) {
-                  return "typeable-input";
+                switch (el.type) {
+                  case "checkbox":
+                  case "radio":
+                    return "checkable-input";
+                  case "text":
+                  case "url":
+                  case "tel":
+                  case "search":
+                  case "password":
+                  case "number":
+                  case "email":
+                    return "typeable-input";
+                  default:
+                    return "other-input";
                 }
-                return "other-input";
+              }
+
+              switch (el.getAttribute("role")) {
+                case "checkbox":
+                case "radio":
+                case "switch":
+                  return "checkable-input";
               }
 
               if (el.isContentEditable) {
@@ -219,26 +226,48 @@ module Puppeteer
           JS
 
           case input_type
+          when "checkable-input"
+            current_state = handle.evaluate(<<~JS)
+              (toggleEl) => {
+                if (
+                  toggleEl.indeterminate ||
+                  toggleEl.getAttribute("aria-checked") === "mixed"
+                ) {
+                  return "mixed";
+                }
+                return (
+                  toggleEl.checked ||
+                  toggleEl.getAttribute("aria-checked") === "true"
+                );
+              }
+            JS
+            desired_state = value == true || (value.is_a?(String) && !value.empty?)
+            handle.click if current_state == "mixed" || current_state != desired_state
           when "select"
             handle.select(value)
           when "contenteditable", "typeable-input"
-            if value.length < typing_threshold
+            if value.is_a?(String) && value.length < typing_threshold
               text_to_type = handle.evaluate(<<~JS, value)
                 (input, newValue) => {
+                  const valString = String(newValue);
                   const currentValue = input.isContentEditable
                     ? input.innerText
                     : input.value;
 
+                  if (currentValue === valString) {
+                    return "";
+                  }
+
                   if (
-                    newValue.length <= currentValue.length ||
-                    !newValue.startsWith(currentValue)
+                    !valString.startsWith(currentValue) ||
+                    !currentValue
                   ) {
                     if (input.isContentEditable) {
                       input.innerText = "";
                     } else {
                       input.value = "";
                     }
-                    return newValue;
+                    return valString;
                   }
 
                   if (input.isContentEditable) {
@@ -248,7 +277,7 @@ module Puppeteer
                     input.value = "";
                     input.value = currentValue;
                   }
-                  return newValue.substring(currentValue.length);
+                  return valString.substring(currentValue.length);
                 }
               JS
               handle.type(text_to_type) unless text_to_type.to_s.empty?
@@ -344,16 +373,17 @@ module Puppeteer
         handle.focus
         handle.evaluate(<<~JS, value)
           (input, newValue) => {
+            const valString = String(newValue);
             const currentValue = input.isContentEditable
               ? input.innerText
               : input.value;
-            if (currentValue === newValue) {
+            if (currentValue === valString) {
               return;
             }
             if (input.isContentEditable) {
-              input.innerText = newValue;
+              input.innerText = valString;
             } else {
-              input.value = newValue;
+              input.value = valString;
             }
             input.dispatchEvent(new Event("input", {bubbles: true}));
             input.dispatchEvent(new Event("change", {bubbles: true}));

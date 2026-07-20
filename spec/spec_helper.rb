@@ -106,6 +106,10 @@ RSpec.configure do |config|
       RUBY_PLATFORM.include?('linux')
     end
 
+    def mac?
+      RUBY_PLATFORM.include?("darwin")
+    end
+
     # Legacy helper - launches a new browser for each call
     # Use with_test_state for better performance
     def with_browser(**options)

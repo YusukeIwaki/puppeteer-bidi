@@ -973,7 +973,6 @@ module Puppeteer
           bidi_cookie["expiry"] = expiry unless expiry.nil?
           bidi_cookie.merge!(CookieUtils.cdp_specific_cookie_properties_from_puppeteer_to_bidi(
                                normalized_cookie,
-                               "sameParty",
                                "sourceScheme",
                                "priority",
                                "url"
@@ -1195,6 +1194,15 @@ module Puppeteer
           end
           reload
         end
+      end
+
+      # Emulate locale
+      # @rbs locale: String? -- Locale, or nil to restore the default
+      # @rbs return: void
+      def emulate_locale(locale = nil)
+        assert_not_closed
+
+        @browsing_context.set_locale_override(locale).wait
       end
 
       # Set geolocation override

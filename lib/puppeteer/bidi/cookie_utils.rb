@@ -35,8 +35,8 @@ module Puppeteer
           "session" => expiry.nil? || expiry <= 0,
         }.compact
 
-        cookie.merge!(cdp_specific_cookie_properties_from_bidi(bidi_cookie, "sameParty", "sourceScheme",
-                                                              "partitionKeyOpaque", "priority"))
+        cookie.merge!(cdp_specific_cookie_properties_from_bidi(bidi_cookie, "sourceScheme", "partitionKeyOpaque",
+                                                              "priority"))
         cookie.merge!(partition_key_from_bidi(partition_key, return_composite_partition_key))
 
         cookie

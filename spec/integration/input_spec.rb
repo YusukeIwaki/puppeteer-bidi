@@ -226,6 +226,8 @@ RSpec.describe 'input tests' do
         else
           pending 'Firefox BiDi does not trigger second file chooser in headful mode'
         end
+      elsif mac?
+        pending "Firefox BiDi does not trigger second file chooser on macOS"
       end
 
       with_test_state do |page:, **|
@@ -339,6 +341,8 @@ RSpec.describe 'input tests' do
         else
           pending 'Firefox BiDi does not trigger second file chooser in headful mode'
         end
+      elsif mac?
+        pending "Firefox BiDi does not trigger second file chooser on macOS"
       end
 
       with_test_state do |page:, **|

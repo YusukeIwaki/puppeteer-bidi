@@ -101,7 +101,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y wget gnupg git xvfb build-essential
+          apt-get install -y wget gnupg git xvfb build-essential pkg-config libssl-dev
           rm -rf /var/lib/apt/lists/*
 
       - name: Setup Firefox Nightly
