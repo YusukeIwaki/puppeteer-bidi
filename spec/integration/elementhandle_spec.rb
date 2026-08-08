@@ -206,6 +206,22 @@ RSpec.describe 'ElementHandle specs' do
         expect(element.hidden?).to be false
       end
     end
+
+    it 'should not throw for a detached text node with no parent element' do
+      with_test_state do |page:, **|
+        page.set_content('<div>x</div>')
+        handle = page.evaluate_handle("() => document.createTextNode('orphan')")
+        text_handle = handle.as_element
+
+        begin
+          expect(text_handle.hidden?).to be true
+          expect(text_handle.visible?).to be false
+        ensure
+          text_handle.dispose
+          handle.dispose unless handle.equal?(text_handle)
+        end
+      end
+    end
   end
 
   describe 'ElementHandle.click' do
