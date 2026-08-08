@@ -30,6 +30,35 @@ RSpec.describe 'BrowserContext' do
     end
   end
 
+  it "should fire target events" do
+    with_test_state do |context:, server:, **|
+      events = []
+      context.on(:targetcreated) do |target|
+        events << "CREATED: #{target.url}"
+      end
+      context.on(:targetchanged) do |target|
+        events << "CHANGED: #{target.url}"
+      end
+      context.on(:targetdestroyed) do |target|
+        events << "DESTROYED: #{target.url}"
+      end
+
+      page = context.new_page
+      page.goto(server.empty_page)
+      page.close
+
+      expect(events).to eq(
+        [
+          "CREATED: about:blank",
+          "CHANGED: #{server.empty_page}",
+          "DESTROYED: #{server.empty_page}"
+        ]
+      )
+    ensure
+      page&.close unless page&.closed?
+    end
+  end
+
   describe 'BrowserContext.set_permission' do
     it 'should set permission state for an origin' do
       with_test_state do |page:, context:, server:, **|

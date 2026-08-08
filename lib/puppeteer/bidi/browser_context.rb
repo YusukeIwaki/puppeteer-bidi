@@ -44,6 +44,35 @@ module Puppeteer
         @pages = {}
         @frame_targets = {}
         @overrides = []
+        @emitter = Core::EventEmitter.new
+
+        @user_context.browsing_contexts.each { |browsing_context| page_for(browsing_context) }
+        @user_context.on(:browsingcontext) { |browsing_context| page_for(browsing_context) }
+        @user_context.once(:closed) { @emitter.dispose }
+      end
+
+      # Register an event listener
+      # @rbs event: Symbol | String -- Event name
+      # @rbs &block: (untyped) -> void -- Event handler
+      # @rbs return: void
+      def on(event, &block)
+        @emitter.on(event, &block)
+      end
+
+      # Register a one-time event listener
+      # @rbs event: Symbol | String -- Event name
+      # @rbs &block: (untyped) -> void -- Event handler
+      # @rbs return: void
+      def once(event, &block)
+        @emitter.once(event, &block)
+      end
+
+      # Remove an event listener
+      # @rbs event: Symbol | String -- Event name
+      # @rbs &block: ((untyped) -> void)? -- Event handler to remove
+      # @rbs return: void
+      def off(event, &block)
+        @emitter.off(event, &block)
       end
 
       # Create a new page (tab/window)
@@ -196,11 +225,30 @@ module Puppeteer
       def page_for(browsing_context)
         @pages[browsing_context.id] ||= begin
           page = Page.new(self, browsing_context)
+          page_target = page.target
+
+          page.on(:frameattached) do |frame|
+            @emitter.emit(:targetcreated, target_for_frame(frame))
+          end
+
+          page.on(:framenavigated) do |frame|
+            target = frame.parent_frame ? target_for_frame(frame) : page_target
+            @emitter.emit(:targetchanged, target)
+          end
+
+          page.on(:framedetached) do |frame|
+            next unless frame.parent_frame
+
+            target = @frame_targets.delete(frame.browsing_context.id)
+            @emitter.emit(:targetdestroyed, target) if target
+          end
 
           browsing_context.once(:closed) do
             @pages.delete(browsing_context.id)
+            @emitter.emit(:targetdestroyed, page_target)
           end
 
+          @emitter.emit(:targetcreated, page_target)
           page
         end
       end

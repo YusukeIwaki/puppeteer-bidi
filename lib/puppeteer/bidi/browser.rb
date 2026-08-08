@@ -8,6 +8,8 @@ module Puppeteer
   module Bidi
     # Browser represents a browser instance with BiDi connection
     class Browser
+      TARGET_EVENTS = %i[targetcreated targetchanged targetdestroyed].freeze
+
       attr_reader :connection #: Connection
       attr_reader :process #: untyped
       attr_reader :default_browser_context #: BrowserContext
@@ -57,13 +59,12 @@ module Puppeteer
         @core_browser = core_browser
         @session = session
         @ws_endpoint = ws_endpoint
+        @emitter = Core::EventEmitter.new
+        @browser_contexts = {}
 
         # Create default browser context
         default_user_context = @core_browser.default_user_context
-        @default_browser_context = BrowserContext.new(self, default_user_context)
-        @browser_contexts = {
-          default_user_context.id => @default_browser_context
-        }
+        @default_browser_context = browser_context_for(default_user_context)
 
         register_exit_cleanup if @launcher
       end
@@ -259,6 +260,8 @@ module Puppeteer
       # @rbs &block: (untyped) -> void -- Event handler
       # @rbs return: void
       def on(event, &block)
+        return @emitter.on(event, &block) if TARGET_EVENTS.include?(event.to_sym)
+
         @connection.on(event, &block)
       end
 
@@ -461,6 +464,11 @@ module Puppeteer
         return @browser_contexts[user_context.id] if @browser_contexts.key?(user_context.id)
 
         context = BrowserContext.new(self, user_context)
+        TARGET_EVENTS.each do |event|
+          context.on(event) do |target|
+            @emitter.emit(event, target)
+          end
+        end
         user_context.once(:closed) do
           @browser_contexts.delete(user_context.id)
         end

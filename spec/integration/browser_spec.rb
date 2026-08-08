@@ -3,6 +3,37 @@
 require 'spec_helper'
 
 RSpec.describe 'Browser' do
+  describe "target events" do
+    it "should work" do
+      with_test_state do |browser:, server:, **|
+        events = []
+        browser.on(:targetcreated) do |target|
+          events << "CREATED: #{target.url}"
+        end
+        browser.on(:targetchanged) do |target|
+          events << "CHANGED: #{target.url}"
+        end
+        browser.on(:targetdestroyed) do |target|
+          events << "DESTROYED: #{target.url}"
+        end
+
+        page = browser.new_page
+        page.goto(server.empty_page)
+        page.close
+
+        expect(events).to eq(
+          [
+            "CREATED: about:blank",
+            "CHANGED: #{server.empty_page}",
+            "DESTROYED: #{server.empty_page}"
+          ]
+        )
+      ensure
+        page&.close unless page&.closed?
+      end
+    end
+  end
+
   describe 'targets' do
     it 'returns browser and page targets' do
       with_test_state do |browser:, page:, context:, **|
