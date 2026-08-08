@@ -107,6 +107,15 @@ def extract_heading_api_references(markdown, source:)
   refs
 end
 
+def extract_dialog_property_references(markdown, source:)
+  properties = markdown[/^## Properties\s*$.*?(?=^## |\z)/m]
+  return [] unless properties
+
+  properties.scan(%r{<span id="[^"]+">([a-zA-Z_$][\w$]*)</span>}).map do |(member)|
+    { "owner" => "Dialog", "member" => member, "source" => source }
+  end
+end
+
 def extract_puppeteer_api(puppeteer_dir)
   doc_paths = find_puppeteer_doc_paths(puppeteer_dir)
   raise "Could not find Puppeteer docs under #{puppeteer_dir}" if doc_paths.empty?
@@ -117,6 +126,7 @@ def extract_puppeteer_api(puppeteer_dir)
     rel = path.relative_path_from(puppeteer_dir).to_s
 
     sidebar_label = extract_frontmatter_value(markdown, "sidebar_label")
+    entries.concat(extract_dialog_property_references(markdown, source: rel)) if sidebar_label == "Dialog"
     if sidebar_label && (sidebar_label.include?(".") || sidebar_label.include?("#"))
       token = sidebar_label.strip
       token = token[1..-2] if token.start_with?("`") && token.end_with?("`") && token.length >= 2
@@ -171,7 +181,8 @@ SPECIAL_MEMBER_MAPPINGS = {
   "setViewport" => "set_viewport",
   "setUserAgent" => "set_user_agent",
   "setExtraHTTPHeaders" => "set_extra_http_headers",
-  "isClosed" => "closed?"
+  "isClosed" => "closed?",
+  "handled" => "handled?"
 }.freeze
 
 def ruby_member_candidates(node_member)
@@ -220,6 +231,8 @@ NODE_OWNER_ALIASES = {
   "filechooser" => "FileChooser",
   "fileChooser" => "FileChooser",
   "FileChooser" => "FileChooser",
+  "dialog" => "Dialog",
+  "Dialog" => "Dialog",
   "webworker" => "WebWorker",
   "webWorker" => "WebWorker",
   "WebWorker" => "WebWorker"
@@ -244,6 +257,7 @@ RUBY_OWNER_CONSTANTS = {
   "HTTPRequest" => "Puppeteer::Bidi::HTTPRequest",
   "HTTPResponse" => "Puppeteer::Bidi::HTTPResponse",
   "FileChooser" => "Puppeteer::Bidi::FileChooser",
+  "Dialog" => "Puppeteer::Bidi::Dialog",
   "WebWorker" => "Puppeteer::Bidi::WebWorker"
   # Note: Target is excluded from coverage tracking due to significant
   # implementation differences between Node.js and Ruby versions.

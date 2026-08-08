@@ -630,8 +630,9 @@ module Puppeteer
           # User prompts
           session.on('browsingContext.userPromptOpened') do |info|
             next unless info['context'] == @id
-            # user_prompt = UserPrompt.from(self, info)
-            # emit(:userprompt, user_prompt)
+
+            user_prompt = UserPrompt.from(self, info)
+            emit(:userprompt, user_prompt)
           end
 
           # File dialog

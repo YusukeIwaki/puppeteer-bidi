@@ -663,6 +663,10 @@ module Puppeteer
           page.emit(:framenavigated, self)
         end
 
+        @browsing_context.on(:userprompt) do |user_prompt|
+          page.emit(:dialog, Dialog.from(user_prompt))
+        end
+
         @browsing_context.on(:request) do |request|
           http_request = HTTPRequest.from(
             request,
