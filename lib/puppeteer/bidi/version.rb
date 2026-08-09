@@ -2,7 +2,7 @@
 
 module Puppeteer
   module Bidi
-    VERSION = "0.0.6"
-    REF_PUPPETEER_VERSION = "25.3.0"
+    VERSION = "0.0.7"
+    REF_PUPPETEER_VERSION = "25.5.0"
   end
 end
