@@ -57,6 +57,30 @@ RSpec.describe "Page.Events.Dialog" do
     end
   end
 
+  it "should track dialogs handled outside the Dialog instance" do
+    with_test_state do |page:, **|
+      dialog_promise = Async::Promise.new
+      page.once(:dialog) { |dialog| dialog_promise.resolve(dialog) }
+      evaluation_task = Async do
+        page.evaluate("() => prompt('question?', 'yes.')")
+      end
+
+      begin
+        dialog = dialog_promise.wait
+        expect(dialog.handled?).to be false
+
+        page.main_frame.browsing_context.handle_user_prompt(accept: true, userText: "answer!").wait
+        expect(evaluation_task.wait).to eq("answer!")
+
+        # Wait for the userPromptClosed event to be processed by the Dialog instance.
+        page.evaluate("() => 1")
+        expect(dialog.handled?).to be true
+      ensure
+        evaluation_task&.stop
+      end
+    end
+  end
+
   it "should see dialogs handled by other connections" do
     pending "Firefox does not support multiple active BiDi sessions"
 

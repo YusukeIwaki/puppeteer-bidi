@@ -62,6 +62,8 @@ module Puppeteer
         @emitter = Core::EventEmitter.new
         @browser_contexts = {}
 
+        @core_browser.once(:disconnected) { @emitter.dispose }
+
         # Create default browser context
         default_user_context = @core_browser.default_user_context
         @default_browser_context = browser_context_for(default_user_context)
@@ -265,6 +267,31 @@ module Puppeteer
         @connection.on(event, &block)
       end
 
+      # Register a one-time event handler
+      # @rbs event: String | Symbol -- Event name
+      # @rbs &block: (untyped) -> void -- Event handler
+      # @rbs return: void
+      def once(event, &block)
+        return @emitter.once(event, &block) if TARGET_EVENTS.include?(event.to_sym)
+
+        # @type var wrapper: ^(untyped) -> void
+        wrapper = proc do |data|
+          @connection.off(event, &wrapper)
+          block.call(data)
+        end
+        @connection.on(event, &wrapper)
+      end
+
+      # Remove an event handler
+      # @rbs event: String | Symbol -- Event name
+      # @rbs &block: ((untyped) -> void)? -- Event handler to remove
+      # @rbs return: void
+      def off(event, &block)
+        return @emitter.off(event, &block) if TARGET_EVENTS.include?(event.to_sym)
+
+        @connection.off(event, &block)
+      end
+
       # Close the browser
       # @rbs return: void
       def close
@@ -282,6 +309,8 @@ module Puppeteer
           end
         rescue => e
           debug_error(e)
+        ensure
+          @emitter.dispose
         end
 
         @launcher&.kill
@@ -303,6 +332,8 @@ module Puppeteer
             @connection.close
           rescue StandardError => e
             debug_error(e)
+          ensure
+            @emitter.dispose
           end
         end
       end
