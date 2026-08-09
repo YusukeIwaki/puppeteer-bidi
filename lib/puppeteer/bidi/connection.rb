@@ -10,7 +10,18 @@ module Puppeteer
     # Handles command sending, response waiting, and event dispatching
     class Connection
       class TimeoutError < Error; end
-      class ProtocolError < Error; end
+
+      # Raised when the browser rejects a command, or when the connection cannot carry one.
+      # #code holds the BiDi error code, such as "no such frame", and is nil in the second
+      # case. Branch on it instead of the message, which carries interpolated detail.
+      class ProtocolError < Error
+        attr_reader :code
+
+        def initialize(message, code: nil)
+          @code = code
+          super(message)
+        end
+      end
 
       DEFAULT_TIMEOUT = 30_000 #: Integer -- 30 seconds in milliseconds
 
@@ -79,7 +90,7 @@ module Puppeteer
               # BiDi error format: { "type": "error", "error": "...", "message": "...", ... }
               error_type = result['error'] || 'unknown error'
               error_message = result['message'] || error_type
-              raise ProtocolError, "BiDi error (#{method}): #{error_message}"
+              raise ProtocolError.new("BiDi error (#{method}): #{error_message}", code: error_type)
             else
               raise ProtocolError, "Protocol Error. Unexpected BiDi message type: #{result['type'].inspect}"
             end
