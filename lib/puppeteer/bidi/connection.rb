@@ -96,10 +96,11 @@ module Puppeteer
       # Subscribe to BiDi events
       # @rbs event: String
       # @rbs &block: (untyped) -> void
-      # @rbs return: void
+      # @rbs return: ^(untyped) -> void -- the listener, to pass to #off later
       def on(event, &block)
         @event_listeners[event] ||= []
         @event_listeners[event] << block
+        block
       end
 
       # Unsubscribe from BiDi events
