@@ -5,12 +5,12 @@
 # Usage: bundle exec ruby scripts/update_injected_source.rb [VERSION]
 #
 # Example:
-#   bundle exec ruby scripts/update_injected_source.rb 25.3.0
+#   bundle exec ruby scripts/update_injected_source.rb 25.5.0
 
 require "net/http"
 require "json"
 
-VERSION = ARGV[0] || "25.3.0"
+VERSION = ARGV[0] || "25.5.0"
 PACKAGE_PATH = if VERSION.split(".", 2).first.to_i >= 25
                  "lib/puppeteer/generated/injected.js"
                else

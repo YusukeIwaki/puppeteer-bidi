@@ -48,27 +48,37 @@ module Puppeteer
         # Handle the user prompt
         # @rbs accept: bool? -- Whether to accept the prompt
         # @rbs user_text: String? -- Text to enter (for prompt dialogs)
-        # @rbs return: Hash[String, untyped] -- Result of handling the prompt
+        # @rbs return: Async::Task[Hash[String, untyped]] -- Result of handling the prompt
         def handle(accept: nil, user_text: nil)
-          raise UserPromptClosedError, @reason if closed?
+          Async do
+            raise UserPromptClosedError, @reason if closed?
 
-          params = { context: @info['context'] }
-          params[:accept] = accept unless accept.nil?
-          params[:userText] = user_text if user_text
+            params = { context: @info["context"] }
+            params[:accept] = accept unless accept.nil?
+            params[:userText] = user_text if user_text
 
-          session.send_command('browsingContext.handleUserPrompt', params)
+            session.async_send_command("browsingContext.handleUserPrompt", params).wait
 
-          # The result is set by the userPromptClosed event before this returns
-          @result
+            # The handled event is emitted before the command response resolves.
+            @result
+          end
+        end
+
+        def dispose
+          return if @disposed
+
+          @reason ||= "User prompt already closed, probably because the associated browsing context was destroyed."
+          emit(:closed, @reason)
+          super
         end
 
         protected
 
         def perform_dispose
-          @reason ||= 'User prompt already closed, probably because the associated browsing context was destroyed.'
-          emit(:closed, @reason)
+          @browsing_context.off(:closed, &@context_closed_listener) if @context_closed_listener
+          session.off("browsingContext.userPromptClosed", &@prompt_closed_listener) if @prompt_closed_listener
           @disposables.dispose
-          super
+          remove_all_listeners
         end
 
         private
@@ -79,18 +89,22 @@ module Puppeteer
 
         def initialize_prompt
           # Listen for browsing context closure
-          @browsing_context.once(:closed) do |reason|
+          @context_closed_listener = proc do |reason|
             dispose_prompt("User prompt already closed: #{reason}")
           end
+          @browsing_context.on(:closed, &@context_closed_listener)
 
           # Listen for prompt closed event
-          session.on('browsingContext.userPromptClosed') do |params|
-            next unless params['context'] == @browsing_context.id
+          @prompt_closed_listener = method(:handle_prompt_closed).to_proc
+          session.on("browsingContext.userPromptClosed", &@prompt_closed_listener)
+        end
 
-            @result = params
-            emit(:handled, params)
-            dispose_prompt('User prompt handled')
-          end
+        def handle_prompt_closed(params)
+          return unless params["context"] == @browsing_context.id
+
+          @result = params
+          emit(:handled, params)
+          dispose_prompt("User prompt already handled.")
         end
 
         def dispose_prompt(reason)

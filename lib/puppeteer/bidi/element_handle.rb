@@ -702,31 +702,19 @@ module Puppeteer
       def check_visibility(visible)
         assert_not_disposed
 
-        evaluate(<<~JS, visible)
-          (node, visible) => {
-            const HIDDEN_VISIBILITY_VALUES = ['hidden', 'collapse'];
-
-            if (!node) {
-              return visible === false;
+        realm = frame.isolated_realm
+        adopted_element = realm.adopt_handle(self)
+        adopted_element.evaluate(
+          <<~JS,
+            (element, PuppeteerUtil, visibility) => {
+              return Boolean(PuppeteerUtil.checkVisibility(element, visibility));
             }
-
-            // For text nodes, check parent element
-            const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-            if (!element) {
-              return visible === false;
-            }
-
-            const style = window.getComputedStyle(element);
-            const rect = element.getBoundingClientRect();
-            const isBoundingBoxEmpty = rect.width === 0 || rect.height === 0;
-
-            const isVisible = style &&
-              !HIDDEN_VISIBILITY_VALUES.includes(style.visibility) &&
-              !isBoundingBoxEmpty;
-
-            return visible === isVisible;
-          }
-        JS
+          JS
+          realm.puppeteer_util_lazy_arg,
+          visible
+        )
+      ensure
+        adopted_element&.dispose
       end
 
       # Get bounding box ensuring it's non-empty and visible

@@ -76,7 +76,12 @@ module Puppeteer
           next unless value["type"] == "string"
 
           header_name = header["name"].to_s.downcase
-          headers[header_name] = HTTPUtils.normalize_header_value(header_name, value["value"])
+          header_value = if headers.key?(header_name)
+                           "#{headers[header_name]}\n#{value["value"]}"
+                         else
+                           value["value"]
+                         end
+          headers[header_name] = HTTPUtils.normalize_header_value(header_name, header_value)
         end
         headers
       end

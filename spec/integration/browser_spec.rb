@@ -3,6 +3,86 @@
 require 'spec_helper'
 
 RSpec.describe 'Browser' do
+  describe "target events" do
+    it "should work" do
+      with_test_state do |browser:, server:, **|
+        events = []
+        target_created_listener = proc do |target|
+          events << "CREATED: #{target.url}"
+        end
+        target_changed_listener = proc do |target|
+          events << "CHANGED: #{target.url}"
+        end
+        target_destroyed_listener = proc do |target|
+          events << "DESTROYED: #{target.url}"
+        end
+        browser.on(:targetcreated, &target_created_listener)
+        browser.on(:targetchanged, &target_changed_listener)
+        browser.on(:targetdestroyed, &target_destroyed_listener)
+
+        page = browser.new_page
+        page.goto(server.empty_page)
+        page.close
+
+        expect(events).to eq(
+          [
+            "CREATED: about:blank",
+            "CHANGED: #{server.empty_page}",
+            "DESTROYED: #{server.empty_page}"
+          ]
+        )
+      ensure
+        page&.close unless page&.closed?
+        browser&.off(:targetcreated, &target_created_listener) if target_created_listener
+        browser&.off(:targetchanged, &target_changed_listener) if target_changed_listener
+        browser&.off(:targetdestroyed, &target_destroyed_listener) if target_destroyed_listener
+      end
+    end
+
+    it "should support one-time and removable listeners" do
+      with_test_state do |browser:, **|
+        created_urls = []
+        removed_urls = []
+        once_listener = proc { |target| created_urls << target.url }
+        removed_listener = proc { |target| removed_urls << target.url }
+
+        browser.once(:targetcreated, &once_listener)
+        browser.on(:targetcreated, &removed_listener)
+        browser.off(:targetcreated, &removed_listener)
+
+        pages = [browser.new_page, browser.new_page]
+
+        expect(created_urls).to eq(["about:blank"])
+        expect(removed_urls).to be_empty
+      ensure
+        pages&.each { |page| page.close unless page.closed? }
+        browser&.off(:targetcreated, &removed_listener) if removed_listener
+      end
+    end
+
+    it "should dispose target listeners when closed" do
+      with_browser do |browser|
+        emitter = browser.instance_variable_get(:@emitter)
+        browser.on(:targetcreated) { |_target| }
+
+        browser.close
+
+        expect(emitter).to be_disposed
+      end
+    end
+
+    it "should dispose target listeners when disconnected" do
+      with_browser do |browser|
+        emitter = browser.instance_variable_get(:@emitter)
+        browser.on(:targetcreated) { |_target| }
+
+        browser.disconnect
+
+        expect(emitter).to be_disposed
+      end
+    end
+  end
+
   describe 'targets' do
     it 'returns browser and page targets' do
       with_test_state do |browser:, page:, context:, **|

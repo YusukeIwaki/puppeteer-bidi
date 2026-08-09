@@ -4,8 +4,8 @@
 module Puppeteer
   module Bidi
     # Puppeteer's injected utilities (Poller classes, Deferred, etc.)
-    # Source: https://unpkg.com/puppeteer-core@25.3.0/lib/puppeteer/generated/injected.js
-    # Version: puppeteer-core@25.3.0
+    # Source: https://unpkg.com/puppeteer-core@25.5.0/lib/puppeteer/generated/injected.js
+    # Version: puppeteer-core@25.5.0
     #
     # To update this file, run:
     #   bundle exec ruby scripts/update_injected_source.rb
