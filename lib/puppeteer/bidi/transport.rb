@@ -17,8 +17,7 @@ module Puppeteer
       attr_reader :url
 
       def initialize(url)
-        # BiDi WebSocket endpoint requires /session path
-        @url = url.end_with?('/session') ? url : "#{url}/session"
+        @url = session_url(url)
         @endpoint = nil
         @connection = nil
         @task = nil
@@ -95,6 +94,16 @@ module Puppeteer
       end
 
       private
+
+      # A browser launched by this gem reports a bare ws://host:port and needs the
+      # /session endpoint added. A driver that already opened the session reports the
+      # full endpoint, so anything with a path is used as given.
+      def session_url(url)
+        path = URI.parse(url).path
+        return url unless path.empty? || path == "/"
+
+        "#{url.delete_suffix("/")}/session"
+      end
 
       def receive_loop(connection)
         while (message = connection.read)
