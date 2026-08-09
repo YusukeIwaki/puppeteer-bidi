@@ -4,6 +4,7 @@ require "puppeteer/bidi"
 require 'timeout'
 
 # Load support files
+require_relative 'support/recording_transport'
 require_relative 'support/test_server'
 require_relative 'support/golden_comparator'
 require_relative 'support/cookie_helpers'
