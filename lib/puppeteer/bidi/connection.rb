@@ -84,9 +84,12 @@ module Puppeteer
               raise ProtocolError, "Protocol Error. Unexpected BiDi message type: #{result['type'].inspect}"
             end
           rescue Async::TimeoutError
-            @pending_commands.delete(id)
             raise TimeoutError, "Timeout waiting for #{method} (#{timeout}ms)"
           end
+        ensure
+          # A send that raises, an encoding failure for instance, would otherwise leave
+          # the command and its promise pending for the life of the connection.
+          @pending_commands.delete(id)
         end
       end
 
