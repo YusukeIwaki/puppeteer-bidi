@@ -92,7 +92,6 @@ module Puppeteer
 
         # Create transport and connection
         transport = Transport.new(ws_endpoint)
-        ws_endpoint = transport.url
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
@@ -114,7 +113,6 @@ module Puppeteer
       # @rbs return: Browser -- Browser instance
       def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false)
         transport = Transport.new(ws_endpoint)
-        ws_endpoint = transport.url
         timeout_ms = ((timeout || 30) * 1000).to_i
         AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
         connection = Connection.new(transport)
