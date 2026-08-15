@@ -10,7 +10,7 @@ require "uri"
 # rubocop:disable Metrics/BlockLength
 RSpec.describe "Connecting to geckodriver" do
   def geckodriver_host
-    "127.0.0.1"
+    ENV.fetch("GECKODRIVER_HOST", "127.0.0.1")
   end
 
   def find_available_port
