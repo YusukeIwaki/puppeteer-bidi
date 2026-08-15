@@ -35,7 +35,7 @@ docker run --rm --platform linux/amd64 puppeteer-bidi-ci-test \
 
 # Run unit tests only
 docker run --rm --platform linux/amd64 puppeteer-bidi-ci-test \
-  bundle exec rspec --exclude-pattern "spec/integration/**/*_spec.rb"
+  bundle exec rspec --exclude-pattern "spec/{geckodriver,integration}/**/*_spec.rb"
 
 # Run with headful mode (xvfb)
 docker run --rm --platform linux/amd64 puppeteer-bidi-ci-test \

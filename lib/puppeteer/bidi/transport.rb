@@ -5,7 +5,6 @@ require 'async'
 require 'async/websocket/client'
 require 'async/http/endpoint'
 require 'json'
-require 'uri'
 
 module Puppeteer
   module Bidi
@@ -17,8 +16,7 @@ module Puppeteer
       attr_reader :url
 
       def initialize(url)
-        # BiDi WebSocket endpoint requires /session path
-        @url = url.end_with?('/session') ? url : "#{url}/session"
+        @url = url
         @endpoint = nil
         @connection = nil
         @task = nil

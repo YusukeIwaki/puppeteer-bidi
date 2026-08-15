@@ -50,7 +50,7 @@ module Puppeteer
           raise LaunchError, 'Failed to get BiDi WebSocket endpoint'
         end
 
-        @ws_endpoint
+        @ws_endpoint = "#{@ws_endpoint}/session"
       rescue => e
         kill
         raise LaunchError, "Failed to launch Firefox: #{e.message}"
