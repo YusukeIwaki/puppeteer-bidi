@@ -258,36 +258,45 @@ module Puppeteer
       # Register event handler
       # @rbs event: String | Symbol -- Event name
       # @rbs &block: (untyped) -> void -- Event handler
-      # @rbs return: void
+      # @rbs return: Browser -- This browser
       def on(event, &block)
-        return @emitter.on(event, &block) if TARGET_EVENTS.include?(event.to_sym)
-
-        @connection.on(event, &block)
+        if TARGET_EVENTS.include?(event.to_sym)
+          @emitter.on(event, &block)
+        else
+          @connection.on(event, &block)
+        end
+        self
       end
 
       # Register a one-time event handler
       # @rbs event: String | Symbol -- Event name
       # @rbs &block: (untyped) -> void -- Event handler
-      # @rbs return: void
+      # @rbs return: Browser -- This browser
       def once(event, &block)
-        return @emitter.once(event, &block) if TARGET_EVENTS.include?(event.to_sym)
-
-        # @type var wrapper: ^(untyped) -> void
-        wrapper = proc do |data|
-          @connection.off(event, &wrapper)
-          block.call(data)
+        if TARGET_EVENTS.include?(event.to_sym)
+          @emitter.once(event, &block)
+        else
+          # @type var wrapper: ^(untyped) -> void
+          wrapper = proc do |data|
+            @connection.off(event, &wrapper)
+            block.call(data)
+          end
+          @connection.on(event, &wrapper)
         end
-        @connection.on(event, &wrapper)
+        self
       end
 
       # Remove an event handler
       # @rbs event: String | Symbol -- Event name
       # @rbs &block: ((untyped) -> void)? -- Event handler to remove
-      # @rbs return: void
+      # @rbs return: Browser -- This browser
       def off(event, &block)
-        return @emitter.off(event, &block) if TARGET_EVENTS.include?(event.to_sym)
-
-        @connection.off(event, &block)
+        if TARGET_EVENTS.include?(event.to_sym)
+          @emitter.off(event, &block)
+        else
+          @connection.off(event, &block)
+        end
+        self
       end
 
       # Close the browser

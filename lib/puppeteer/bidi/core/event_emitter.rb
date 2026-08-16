@@ -16,29 +16,33 @@ module Puppeteer
         # Register an event listener
         # @rbs event: Symbol | String -- Event name
         # @rbs &block: (untyped) -> void -- Event handler
-        # @rbs return: void
+        # @rbs return: EventEmitter -- This event emitter
         def on(event, &block)
-          return if @disposed
+          return self if @disposed
+
           @listeners[event.to_sym] << block
+          self
         end
 
         # Register a one-time event listener
         # @rbs event: Symbol | String -- Event name
         # @rbs &block: (untyped) -> void -- Event handler
-        # @rbs return: void
+        # @rbs return: EventEmitter -- This event emitter
         def once(event, &block)
-          return if @disposed
+          return self if @disposed
+
           wrapper = lambda do |*args|
             off(event, &wrapper)
             block.call(*args)
           end
           on(event, &wrapper)
+          self
         end
 
         # Remove an event listener
         # @rbs event: Symbol | String -- Event name
         # @rbs &block: ((untyped) -> void)? -- Event handler to remove
-        # @rbs return: void
+        # @rbs return: EventEmitter -- This event emitter
         def off(event, &block)
           event_sym = event.to_sym
           if block
@@ -46,6 +50,7 @@ module Puppeteer
           else
             @listeners.delete(event_sym)
           end
+          self
         end
 
         # Remove all listeners for an event or all events
