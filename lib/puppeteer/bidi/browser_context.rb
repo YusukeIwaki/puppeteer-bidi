@@ -54,25 +54,28 @@ module Puppeteer
       # Register an event listener
       # @rbs event: Symbol | String -- Event name
       # @rbs &block: (untyped) -> void -- Event handler
-      # @rbs return: void
+      # @rbs return: BrowserContext -- This browser context
       def on(event, &block)
         @emitter.on(event, &block)
+        self
       end
 
       # Register a one-time event listener
       # @rbs event: Symbol | String -- Event name
       # @rbs &block: (untyped) -> void -- Event handler
-      # @rbs return: void
+      # @rbs return: BrowserContext -- This browser context
       def once(event, &block)
         @emitter.once(event, &block)
+        self
       end
 
       # Remove an event listener
       # @rbs event: Symbol | String -- Event name
       # @rbs &block: ((untyped) -> void)? -- Event handler to remove
-      # @rbs return: void
+      # @rbs return: BrowserContext -- This browser context
       def off(event, &block)
         @emitter.off(event, &block)
+        self
       end
 
       # Create a new page (tab/window)

@@ -94,34 +94,26 @@ module Puppeteer
       # Register an event listener
       # @rbs event: Symbol | String -- Event name
       # @rbs &block: (untyped) -> void -- Event handler
-      # @rbs return: void
+      # @rbs return: Page -- This page
       def on(event, &block)
-        return @emitter.on(event, &block) unless event.to_sym == :request
-
-        wrapper = @request_handlers[block]
-        unless wrapper
-          wrapper = lambda do |request|
-            request.enqueue_intercept_action do
-              block.call(request)
-            end
-          end
-          @request_handlers[block] = wrapper
-        end
-        @emitter.on(event, &wrapper)
+        listener = event.to_sym == :request ? request_listener_for(block) : block
+        @emitter.on(event, &listener)
+        self
       end
 
       # Register a one-time event listener
       # @rbs event: Symbol | String -- Event name
       # @rbs &block: (untyped) -> void -- Event handler
-      # @rbs return: void
+      # @rbs return: Page -- This page
       def once(event, &block)
         @emitter.once(event, &block)
+        self
       end
 
       # Remove an event listener
       # @rbs event: Symbol | String -- Event name
       # @rbs &block: (untyped) -> void -- Event handler to remove
-      # @rbs return: void
+      # @rbs return: Page -- This page
       def off(event, &block)
         if event.to_sym == :request && block
           # WeakMap#delete was added in Ruby 3.3, so we need to handle older versions
@@ -130,10 +122,11 @@ module Puppeteer
                     else
                       @request_handlers[block]
                     end
-          return @emitter.off(event, &(wrapper || block))
+          @emitter.off(event, &(wrapper || block))
+        else
+          @emitter.off(event, &block)
         end
-
-        @emitter.off(event, &block)
+        self
       end
 
       # Emit an event to all registered listeners
@@ -1374,6 +1367,14 @@ module Puppeteer
       end
 
       private
+
+      def request_listener_for(listener)
+        @request_handlers[listener] ||= lambda do |request|
+          request.enqueue_intercept_action do
+            listener.call(request)
+          end
+        end
+      end
 
       # Navigate history by delta.
       #

@@ -96,24 +96,26 @@ module Puppeteer
       # Subscribe to BiDi events
       # @rbs event: String
       # @rbs &block: (untyped) -> void
-      # @rbs return: void
+      # @rbs return: Connection -- This connection
       def on(event, &block)
         @event_listeners[event] ||= []
         @event_listeners[event] << block
+        self
       end
 
       # Unsubscribe from BiDi events
       # @rbs event: String
       # @rbs &block: ((untyped) -> void)?
-      # @rbs return: void
+      # @rbs return: Connection -- This connection
       def off(event, &block)
-        return unless @event_listeners[event]
+        return self unless @event_listeners[event]
 
         if block
           @event_listeners[event].delete(block)
         else
           @event_listeners.delete(event)
         end
+        self
       end
 
       # Close the connection
