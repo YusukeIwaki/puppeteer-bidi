@@ -364,6 +364,26 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     JAVASCRIPT
   end
 
+  let(:add_shadow_host) do
+    <<~JAVASCRIPT
+      (tag) => {
+        document.body
+          .appendChild(document.createElement(tag))
+          .attachShadow({ mode: 'open' });
+      }
+    JAVASCRIPT
+  end
+
+  let(:add_element_to_shadow_root) do
+    <<~JAVASCRIPT
+      (selector, tag) => {
+        const element = document.createElement(tag);
+        element.textContent = 'inside';
+        document.querySelector(selector).shadowRoot.appendChild(element);
+      }
+    JAVASCRIPT
+  end
+
   def attach_frame(page, frame_id, url)
     page.evaluate(<<~JS, frame_id, url)
       async (frameId, src) => {
@@ -464,31 +484,72 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     end
   end
 
-  it 'should work when node is added in a shadow root', pending: true do
+  it 'should work when node is added in a shadow root' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
 
-      handle = page.wait_for_selector('div >>> h1') do
-        page.evaluate(add_element, 'div')
+      element = page.wait_for_selector('div >>> h1') do
+        page.evaluate(add_shadow_host, 'div')
+        page.evaluate(add_element_to_shadow_root, 'div', 'h1')
+      end
 
-        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-        expect(page.evaluate('() => !!document.querySelector("div >>> h1")')).to be false
+      text = page.evaluate('(element) => element.textContent', element)
+      expect(text).to eq('inside')
+      element.dispose
+    end
+  end
 
+  it 'should work when node is added in a shadow root that predates the wait' do
+    with_test_state do |page:, server:, **|
+      page.goto(server.empty_page)
+      page.evaluate(add_shadow_host, 'div')
+
+      element = page.wait_for_selector('div >>> h1') do
+        page.evaluate(add_element_to_shadow_root, 'div', 'h1')
+      end
+
+      text = page.evaluate('(element) => element.textContent', element)
+      expect(text).to eq('inside')
+      element.dispose
+    end
+  end
+
+  it 'should work when node is added in a nested shadow root' do
+    with_test_state do |page:, server:, **|
+      page.goto(server.empty_page)
+
+      element = page.wait_for_selector('div >>> h1') do
         page.evaluate(<<~JS)
           () => {
-            const host = document.querySelector('div');
-            const shadow = host.attachShadow({ mode: 'open' });
+            const host = document.body.appendChild(document.createElement('div'));
+            const inner = document.createElement('section');
+            inner.attachShadow({ mode: 'open' });
+            host.attachShadow({ mode: 'open' }).appendChild(inner);
+          }
+        JS
+        page.evaluate(<<~JS)
+          () => {
             const h1 = document.createElement('h1');
             h1.textContent = 'inside';
-            shadow.appendChild(h1);
+            document
+              .querySelector('div')
+              .shadowRoot.querySelector('section')
+              .shadowRoot.appendChild(h1);
           }
         JS
       end
 
-      text = handle.evaluate('(element) => element.textContent')
+      text = page.evaluate('(element) => element.textContent', element)
       expect(text).to eq('inside')
-      handle.dispose
+      element.dispose
     end
+  end
+
+  it 'should work when a shadow root is attached to an existing node' do
+    # Attaching a shadow root to a node that is already in the DOM does not
+    # produce a mutation, so MutationPoller has nothing to react to.
+    # See https://github.com/whatwg/dom/issues/1287.
+    skip 'mutation polling cannot observe a shadow root attached without a mutation'
   end
 
   it 'should work for selector with a pseudo class' do
