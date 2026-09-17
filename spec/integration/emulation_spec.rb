@@ -3,6 +3,18 @@
 require "spec_helper"
 
 RSpec.describe "Emulation" do
+  describe "Page.emulate" do
+    it "should work" do
+      with_test_state do |page:, server:, **|
+        page.goto("#{server.prefix}/mobile.html")
+        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone SE (3rd gen)"])
+
+        expect(page.evaluate("() => window.innerWidth")).to eq(375)
+        expect(page.evaluate("() => navigator.userAgent")).to include("iPhone")
+      end
+    end
+  end
+
   describe "Page.emulate_locale" do
     it "should work" do
       with_test_state do |page:, **|

@@ -1204,6 +1204,27 @@ module Puppeteer
         nil
       end
 
+      # Emulate a device, combining user agent and viewport emulation.
+      # Accepts a `KnownDevices` entry (symbol keys) or an upstream-shaped
+      # device hash with string keys.
+      # @rbs device: Hash[Symbol | String, untyped] -- Device descriptor
+      # @rbs return: void
+      def emulate(device)
+        viewport = device[:viewport] || device["viewport"] || {}
+        user_agent = device[:user_agent] || device["userAgent"] || device["user_agent"]
+
+        set_user_agent(user_agent)
+        set_viewport(
+          width: viewport[:width] || viewport["width"],
+          height: viewport[:height] || viewport["height"],
+          device_scale_factor: viewport[:device_scale_factor].nil? ?
+            viewport["deviceScaleFactor"] : viewport[:device_scale_factor],
+          has_touch: viewport[:has_touch].nil? ? viewport["hasTouch"] : viewport[:has_touch],
+          is_mobile: viewport[:is_mobile].nil? ? viewport["isMobile"] : viewport[:is_mobile],
+          is_landscape: viewport[:is_landscape].nil? ? viewport["isLandscape"] : viewport[:is_landscape],
+        )
+      end
+
       # Set viewport size
       # @rbs width: Integer -- Viewport width in pixels
       # @rbs height: Integer -- Viewport height in pixels
