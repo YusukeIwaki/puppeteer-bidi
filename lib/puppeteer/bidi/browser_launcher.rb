@@ -143,6 +143,9 @@ module Puppeteer
           # this once Firefox supports mouse event dispatch from the main frame
           # context. See https://bugzilla.mozilla.org/show_bug.cgi?id=1773393.
           'fission.webContentIsolationStrategy': 0,
+          # Ensure remote settings do not hit the network, mirroring upstream's
+          # Firefox default profile preferences.
+          'services.settings.server': 'data:,#remote-settings-dummy/v1',
         }
       end
 

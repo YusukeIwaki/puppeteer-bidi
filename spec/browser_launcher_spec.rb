@@ -61,4 +61,18 @@ RSpec.describe Puppeteer::Bidi::BrowserLauncher do
       end
     end
   end
+
+  describe "default profile preferences" do
+    it "disables remote-settings networking without the obsolete remote.enabled pref" do
+      Dir.mktmpdir do |dir|
+        launcher = build_launcher(user_data_dir: dir)
+        launcher.send(:setup_user_data_dir)
+
+        prefs = File.read(File.join(dir, "profile", "prefs.js"))
+
+        expect(prefs).to include('user_pref("services.settings.server", "data:,#remote-settings-dummy/v1");')
+        expect(prefs).not_to include("remote.enabled")
+      end
+    end
+  end
 end
