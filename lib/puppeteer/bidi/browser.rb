@@ -81,9 +81,11 @@ module Puppeteer
       # @rbs timeout: Numeric? -- Launch timeout in seconds
       # @rbs accept_insecure_certs: bool -- Accept insecure certificates
       # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+      # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
       # @rbs return: Browser -- Browser instance
       def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                      accept_insecure_certs: false, logger: nil)
+                      accept_insecure_certs: false, logger: nil, headers: nil, ws_options: nil)
         launcher = BrowserLauncher.new(
           executable_path: executable_path,
           user_data_dir: user_data_dir,
@@ -95,7 +97,7 @@ module Puppeteer
         ws_endpoint = launcher.launch
 
         # Create transport and connection
-        transport = Transport.new(ws_endpoint, logger: logger)
+        transport = Transport.new(ws_endpoint, logger: logger, headers: headers, ws_options: ws_options)
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
@@ -115,9 +117,12 @@ module Puppeteer
       # @rbs timeout: Numeric? -- Connect timeout in seconds
       # @rbs accept_insecure_certs: bool -- Accept insecure certificates
       # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+      # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
       # @rbs return: Browser -- Browser instance
-      def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil)
-        transport = Transport.new(ws_endpoint, logger: logger)
+      def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil,
+                       headers: nil, ws_options: nil)
+        transport = Transport.new(ws_endpoint, logger: logger, headers: headers, ws_options: ws_options)
         timeout_ms = ((timeout || 30) * 1000).to_i
         AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
         connection = Connection.new(transport, logger: logger)

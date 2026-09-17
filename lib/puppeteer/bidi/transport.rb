@@ -13,16 +13,34 @@ module Puppeteer
     class Transport
       class ClosedError < Error; end
 
+      # Default WebSocket ping interval in milliseconds, mirroring upstream
+      # `DEFAULT_KEEP_ALIVE_INTERVAL_MS`. Only used when keep-alive is enabled.
+      DEFAULT_KEEP_ALIVE_INTERVAL_MS = 30_000 #: Integer
+
+      # Connection subclass that reports incoming pong frames so the
+      # keep-alive loop can tell a live peer from a dead one.
+      class KeepAliveConnection < Async::WebSocket::Connection
+        attr_writer :pong_handler #: (^(void))? -- Callback invoked on each pong frame
+
+        def receive_pong(_frame)
+          @pong_handler&.call
+        end
+      end
+
       attr_reader :url
 
       # @rbs url: String -- WebSocket endpoint URL
       # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to env-gated debug output
+      # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+      # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
       # @rbs return: void
-      def initialize(url, logger: nil)
+      def initialize(url, logger: nil, headers: nil, ws_options: nil)
         @url = url
         @endpoint = nil
         @connection = nil
         @task = nil
+        @keep_alive_task = nil
+        @keep_alive_awaiting_pong = false
         @connected = false
         @closed = false
         @on_message = nil
@@ -31,6 +49,15 @@ module Puppeteer
         @debug_send = @logger&.call(Debug::BIDI_SEND)
         @debug_receive = @logger&.call(Debug::BIDI_RECEIVE)
         @debug_error = @logger&.call(Debug::ERROR)
+        @headers = ws_option(ws_options, :headers) || headers
+        @keep_alive = !!ws_option(ws_options, :keep_alive)
+        @keep_alive_interval_ms = ws_option(ws_options, :keep_alive_interval_ms) ||
+                                  DEFAULT_KEEP_ALIVE_INTERVAL_MS
+      end
+
+      # @rbs return: bool -- Whether WebSocket keep-alive pinging is enabled
+      def keep_alive_enabled?
+        @keep_alive
       end
 
       # Connect to WebSocket and start receiving messages
@@ -39,11 +66,16 @@ module Puppeteer
         @task = Async do |task|
           endpoint = Async::HTTP::Endpoint.parse(@url)
 
+          connect_options = {}
+          connect_options[:headers] = @headers if @headers
+          connect_options[:handler] = KeepAliveConnection if @keep_alive
+
           # Connect to WebSocket - this matches minibidi's implementation
-          Async::WebSocket::Client.connect(endpoint) do |connection|
+          Async::WebSocket::Client.connect(endpoint, **connect_options) do |connection|
             @connection = connection
             @connected = true
             connection_promise.resolve(connection)
+            start_keepalive(connection) if @keep_alive
 
             # Start message receiving loop (this will block until connection closes)
             receive_loop(connection)
@@ -86,6 +118,7 @@ module Puppeteer
         return if @closed
 
         @closed = true
+        stop_keepalive
         @connection&.close
         @on_close&.call
         @task&.stop
@@ -100,6 +133,72 @@ module Puppeteer
       end
 
       private
+
+      # Read a ws_options entry by snake_case or camelCase key.
+      def ws_option(ws_options, name)
+        return nil unless ws_options
+
+        camel = name.to_s.gsub(/_([a-z])/) { $1.upcase }.to_sym
+        if ws_options.key?(name)
+          ws_options[name]
+        elsif ws_options.key?(name.to_s)
+          ws_options[name.to_s]
+        elsif ws_options.key?(camel)
+          ws_options[camel]
+        elsif ws_options.key?(camel.to_s)
+          ws_options[camel.to_s]
+        end
+      end
+
+      # Periodically ping the peer and locally close the transport when the
+      # pong for the previous ping never arrived, mirroring upstream's
+      # keep-alive which terminates half-open connections.
+      def start_keepalive(connection)
+        interval = @keep_alive_interval_ms / 1000.0
+        @keep_alive_awaiting_pong = false
+        connection.pong_handler = -> { @keep_alive_awaiting_pong = false } if connection.respond_to?(:pong_handler=)
+        @keep_alive_task = Async do |keep_alive|
+          loop do
+            keep_alive.sleep(interval)
+            break if @closed
+
+            if @keep_alive_awaiting_pong
+              # terminate() rather than close(): the peer is not answering, so
+              # a close handshake would hang. Local close surfaces the dead
+              # connection to the rest of Puppeteer.
+              close
+              break
+            end
+
+            @keep_alive_awaiting_pong = true
+            begin
+              connection.send_ping
+            rescue => error
+              log_error("WebSocket keepalive ping failed: #{error.message}")
+              close
+              break
+            end
+          end
+        end
+      end
+
+      def stop_keepalive
+        keep_alive_task = @keep_alive_task
+        @keep_alive_task = nil
+        @keep_alive_awaiting_pong = false
+        return unless keep_alive_task
+
+        # Never stop the calling task itself: stopping the current task
+        # raises Stop immediately and would abort the close sequence.
+        # The keepalive loop exits on its own via `break` after close.
+        keep_alive_task.stop unless keep_alive_task == current_task
+      end
+
+      def current_task
+        Async::Task.current
+      rescue RuntimeError, NoMethodError
+        nil
+      end
 
       def receive_loop(connection)
         while (message = connection.read)

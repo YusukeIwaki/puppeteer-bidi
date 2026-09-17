@@ -63,10 +63,12 @@ module Puppeteer
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
     # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+    # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+    # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
     def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                    accept_insecure_certs: false, logger: nil, &block)
+                    accept_insecure_certs: false, logger: nil, headers: nil, ws_options: nil, &block)
       unless block
         raise ArgumentError, 'Block is required for launch_with_sync'
       end
@@ -80,7 +82,9 @@ module Puppeteer
             args: args,
             timeout: timeout,
             accept_insecure_certs: accept_insecure_certs,
-            logger: logger
+            logger: logger,
+            headers: headers,
+            ws_options: ws_options
           )
           block.call(browser)
         ensure
@@ -97,9 +101,12 @@ module Puppeteer
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
     # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+    # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+    # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
     # @rbs return: Browser -- Browser instance
     def self.launch_browser_instance(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                                     accept_insecure_certs: false, logger: nil)
+                                     accept_insecure_certs: false, logger: nil, headers: nil,
+                                     ws_options: nil)
       if async_context?
         Browser.launch(
           executable_path: executable_path,
@@ -139,9 +146,12 @@ module Puppeteer
     # @rbs timeout: Numeric? -- Connect timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
     # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+    # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+    # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
-    def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil, &block)
+    def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil, headers: nil,
+                   ws_options: nil, &block)
       unless block
         raise ArgumentError, 'Block is required for connect_with_sync'
       end
@@ -150,7 +160,8 @@ module Puppeteer
         begin
           browser = connect_to_browser_instance(ws_endpoint, timeout: timeout,
                                                 accept_insecure_certs: accept_insecure_certs,
-                                                logger: logger)
+                                                logger: logger, headers: headers,
+                                                ws_options: ws_options)
           block.call(browser)
         ensure
           browser&.close
@@ -163,15 +174,20 @@ module Puppeteer
     # @rbs timeout: Numeric? -- Connect timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
     # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+    # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+    # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
     # @rbs return: Browser -- Browser instance
-    def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil)
+    def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil,
+                                         headers: nil, ws_options: nil)
       if async_context?
-        Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs, logger: logger)
+        Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs,
+                          logger: logger, headers: headers, ws_options: ws_options)
       else
         runner = ReactorRunner.new
         begin
           browser = runner.sync do
-            Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs, logger: logger)
+            Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs,
+                          logger: logger, headers: headers, ws_options: ws_options)
           end
         rescue StandardError
           runner.close
