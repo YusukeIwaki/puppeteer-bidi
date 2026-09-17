@@ -3,6 +3,29 @@
 require "spec_helper"
 
 RSpec.describe Puppeteer::Bidi::Transport do
+  describe "logger" do
+    let(:logged) { Hash.new { |hash, key| hash[key] = [] } }
+    let(:logger) do
+      logged_store = logged
+      ->(prefix) { ->(*args) { logged_store[prefix] << args } }
+    end
+
+    it "routes protocol debug output through the configured logger" do
+      transport = described_class.new("ws://127.0.0.1:9222/session", logger: logger)
+      transport.send(:debug_print_send, { "id" => 1, "method" => "session.status" })
+      transport.send(:debug_print_receive, { "id" => 1, "type" => "success" })
+
+      expect(logged[Puppeteer::Bidi::Debug::BIDI_SEND].size).to eq(1)
+      expect(logged[Puppeteer::Bidi::Debug::BIDI_SEND].first.first).to include("session.status")
+      expect(logged[Puppeteer::Bidi::Debug::BIDI_RECEIVE].size).to eq(1)
+    end
+
+    it "falls back to warn for diagnostics when the logger disables the error channel" do
+      transport = described_class.new("ws://127.0.0.1:9222/session", logger: ->(_prefix) { nil })
+      expect { transport.send(:log_error, "boom") }.to output(/boom/).to_stderr
+    end
+  end
+
   describe "#url" do
     it "preserves the supplied WebSocket URL" do
       urls = [

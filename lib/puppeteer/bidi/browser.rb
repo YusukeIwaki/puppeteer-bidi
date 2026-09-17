@@ -78,27 +78,29 @@ module Puppeteer
       # @rbs args: Array[String]? -- Additional browser arguments
       # @rbs timeout: Numeric? -- Launch timeout in seconds
       # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
       # @rbs return: Browser -- Browser instance
       def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                      accept_insecure_certs: false)
+                      accept_insecure_certs: false, logger: nil)
         launcher = BrowserLauncher.new(
           executable_path: executable_path,
           user_data_dir: user_data_dir,
           headless: headless,
-          args: args || []
+          args: args || [],
+          logger: logger
         )
 
         ws_endpoint = launcher.launch
 
         # Create transport and connection
-        transport = Transport.new(ws_endpoint)
+        transport = Transport.new(ws_endpoint, logger: logger)
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
         timeout_ms = ((timeout || 30) * 1000).to_i
         AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
 
-        connection = Connection.new(transport)
+        connection = Connection.new(transport, logger: logger)
 
         browser = create(connection: connection, launcher: launcher, ws_endpoint: ws_endpoint,
                          accept_insecure_certs: accept_insecure_certs)
@@ -110,12 +112,13 @@ module Puppeteer
       # @rbs ws_endpoint: String -- WebSocket endpoint URL
       # @rbs timeout: Numeric? -- Connect timeout in seconds
       # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
       # @rbs return: Browser -- Browser instance
-      def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false)
-        transport = Transport.new(ws_endpoint)
+      def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil)
+        transport = Transport.new(ws_endpoint, logger: logger)
         timeout_ms = ((timeout || 30) * 1000).to_i
         AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
-        connection = Connection.new(transport)
+        connection = Connection.new(transport, logger: logger)
 
         # Verify that this endpoint speaks WebDriver BiDi (and is ready) before creating a new session.
         status = connection.async_send_command('session.status', {}, timeout: timeout_ms).wait

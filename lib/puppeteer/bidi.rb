@@ -17,6 +17,7 @@ end
 
 require "puppeteer/bidi/version"
 require "puppeteer/bidi/errors"
+require "puppeteer/bidi/debug"
 
 require "puppeteer/bidi/async_utils"
 require "puppeteer/bidi/reactor_runner"
@@ -61,10 +62,11 @@ module Puppeteer
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+    # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
     def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                    accept_insecure_certs: false, &block)
+                    accept_insecure_certs: false, logger: nil, &block)
       unless block
         raise ArgumentError, 'Block is required for launch_with_sync'
       end
@@ -77,7 +79,8 @@ module Puppeteer
             headless: headless,
             args: args,
             timeout: timeout,
-            accept_insecure_certs: accept_insecure_certs
+            accept_insecure_certs: accept_insecure_certs,
+            logger: logger
           )
           block.call(browser)
         ensure
@@ -93,9 +96,10 @@ module Puppeteer
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+    # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
     # @rbs return: Browser -- Browser instance
     def self.launch_browser_instance(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                                     accept_insecure_certs: false)
+                                     accept_insecure_certs: false, logger: nil)
       if async_context?
         Browser.launch(
           executable_path: executable_path,
@@ -103,7 +107,8 @@ module Puppeteer
           headless: headless,
           args: args,
           timeout: timeout,
-          accept_insecure_certs: accept_insecure_certs
+          accept_insecure_certs: accept_insecure_certs,
+          logger: logger
         )
       else
         runner = ReactorRunner.new
@@ -115,7 +120,8 @@ module Puppeteer
               headless: headless,
               args: args,
               timeout: timeout,
-              accept_insecure_certs: accept_insecure_certs
+              accept_insecure_certs: accept_insecure_certs,
+              logger: logger
             )
           end
         rescue StandardError
@@ -132,9 +138,10 @@ module Puppeteer
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
     # @rbs timeout: Numeric? -- Connect timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+    # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
-    def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, &block)
+    def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil, &block)
       unless block
         raise ArgumentError, 'Block is required for connect_with_sync'
       end
@@ -142,7 +149,8 @@ module Puppeteer
       Sync do
         begin
           browser = connect_to_browser_instance(ws_endpoint, timeout: timeout,
-                                                accept_insecure_certs: accept_insecure_certs)
+                                                accept_insecure_certs: accept_insecure_certs,
+                                                logger: logger)
           block.call(browser)
         ensure
           browser&.close
@@ -154,15 +162,16 @@ module Puppeteer
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
     # @rbs timeout: Numeric? -- Connect timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+    # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
     # @rbs return: Browser -- Browser instance
-    def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false)
+    def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil)
       if async_context?
-        Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
+        Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs, logger: logger)
       else
         runner = ReactorRunner.new
         begin
           browser = runner.sync do
-            Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
+            Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs, logger: logger)
           end
         rescue StandardError
           runner.close

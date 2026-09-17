@@ -17,7 +17,13 @@ module Puppeteer
 
       attr_reader :executable_path, :user_data_dir
 
-      def initialize(executable_path: nil, user_data_dir: nil, headless: true, args: [])
+      # @rbs executable_path: String? -- Path to browser executable
+      # @rbs user_data_dir: String? -- Path to user data directory
+      # @rbs headless: bool -- Run browser in headless mode
+      # @rbs args: Array[String] -- Additional browser arguments
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to env-gated debug output
+      # @rbs return: void
+      def initialize(executable_path: nil, user_data_dir: nil, headless: true, args: [], logger: nil)
         @executable_path = executable_path || find_firefox
         @user_data_dir = user_data_dir
         @headless = headless
@@ -25,6 +31,8 @@ module Puppeteer
         @temp_user_data_dir = nil
         @process = nil
         @ws_endpoint = nil
+        resolved = logger || Debug.default_logger
+        @debug_error = resolved&.call(Debug::ERROR)
       end
 
       # Launch Firefox and return BiDi WebSocket endpoint
@@ -139,6 +147,16 @@ module Puppeteer
         end
       end
 
+      # Report diagnostics through the error logger when enabled,
+      # falling back to `warn` otherwise.
+      def log_error(message)
+        if @debug_error
+          @debug_error.call(message)
+        else
+          warn message
+        end
+      end
+
       def find_available_port
         # Let Firefox choose a random port by using 0
         # We'll read the actual port from the DevToolsActivePort file
@@ -186,7 +204,7 @@ module Puppeteer
             end
           end
         rescue => e
-          warn "Error reading stdout: #{e.message}"
+          log_error("Error reading stdout: #{e.message}")
         end
 
         stderr_thread = Thread.new do
@@ -200,7 +218,7 @@ module Puppeteer
             end
           end
         rescue => e
-          warn "Error reading stderr: #{e.message}"
+          log_error("Error reading stderr: #{e.message}")
         end
 
         # Wait for WebSocket endpoint to be detected
@@ -208,14 +226,14 @@ module Puppeteer
           if Time.now > deadline
             stdout_thread.kill
             stderr_thread.kill
-            warn "Timeout waiting for BiDi endpoint. stdout: #{output_lines.join}"
-            warn "stderr: #{error_lines.join}"
+            log_error("Timeout waiting for BiDi endpoint. stdout: #{output_lines.join}")
+            log_error("stderr: #{error_lines.join}")
             return nil
           end
 
           # Check if process died
           unless @process.alive?
-            warn "Firefox process died. stderr: #{error_lines.join}"
+            log_error("Firefox process died. stderr: #{error_lines.join}")
             return nil
           end
 
