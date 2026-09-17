@@ -434,6 +434,59 @@ module Puppeteer
         pdf_data
       end
 
+      # Record this page using the WebDriver BiDi screencast commands.
+      # Returns a stoppable, pipeable recording.
+      # @rbs path: String? -- File path to save the recording to
+      # @rbs overwrite: bool? -- Overwrite the output file if it exists
+      # @rbs audio: bool? -- Whether to record audio
+      # @rbs max_width: Numeric? -- Maximum frame width in pixels
+      # @rbs max_height: Numeric? -- Maximum frame height in pixels
+      # @rbs frame_rate: Numeric? -- Maximum frame rate in frames per second
+      # @rbs fps: Numeric? -- Frame rate alias for frame_rate
+      # @rbs return: ScreenRecording -- The running recording
+      def record(path: nil, overwrite: nil, audio: nil, max_width: nil, max_height: nil, frame_rate: nil, fps: nil)
+        assert_not_closed
+
+        raise Error, "`maxWidth` must be greater than 0." unless max_width.nil? || max_width > 0
+        raise Error, "`maxHeight` must be greater than 0." unless max_height.nil? || max_height > 0
+        raise Error, "`frameRate` must be greater than 0." unless frame_rate.nil? || frame_rate > 0
+        raise Error, "`fps` must be greater than 0." unless fps.nil? || fps > 0
+
+        if path
+          dir = File.dirname(path)
+          if overwrite == false
+            Dir.mkdir(dir)
+          else
+            FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
+          end
+        end
+
+        stream = path ? open_record_stream(path, overwrite) : nil
+
+        recording = ScreenRecording.new(
+          self,
+          {
+            path: path,
+            overwrite: overwrite,
+            audio: audio,
+            max_width: max_width,
+            max_height: max_height,
+            frame_rate: frame_rate,
+            fps: fps,
+          },
+          @logger,
+        )
+
+        begin
+          recording.start
+        rescue => error
+          recording.stop
+          raise error
+        end
+        recording.pipe(stream) if stream
+        recording
+      end
+
       # Evaluate JavaScript in the page context
       # @rbs script: String -- JavaScript code to evaluate
       # @rbs *args: untyped -- Arguments to pass to the script
@@ -1369,6 +1422,26 @@ module Puppeteer
       end
 
       private
+
+      # Open the recording output file, honoring the overwrite flag and the
+      # global symlink policy. With overwrite false, an existing file raises
+      # Errno::EEXIST; symlinked paths raise Errno::ELOOP when following is
+      # disabled.
+      # @rbs path: String -- Destination file path
+      # @rbs overwrite: bool? -- Overwrite an existing file
+      # @rbs return: File -- Open binary write handle
+      def open_record_stream(path, overwrite)
+        flags = File::WRONLY | File::CREAT
+        flags |= overwrite == false ? File::EXCL : File::TRUNC
+        flags |= File::NOFOLLOW if !Bidi.follow_symlinks? && File.const_defined?(:NOFOLLOW)
+
+        file = File.open(path, flags, binmode: true)
+        if !Bidi.follow_symlinks? && !File.const_defined?(:NOFOLLOW) && File.symlink?(path)
+          file.close
+          raise Errno::ELOOP, path
+        end
+        file
+      end
 
       def request_listener_for(listener)
         @request_handlers[listener] ||= lambda do |request|

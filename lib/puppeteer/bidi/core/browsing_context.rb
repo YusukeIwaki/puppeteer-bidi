@@ -133,6 +133,27 @@ module Puppeteer
           end
         end
 
+        # Start a screencast of this browsing context
+        # Absent keys are omitted from the protocol payload.
+        # @rbs audio: bool? -- Whether to record audio
+        # @rbs video: Hash[Symbol, untyped]? -- Video constraints (:width, :height, :frameRate)
+        # @rbs return: Async::Task[Hash[String, untyped]] -- Screencast id and file path
+        def start_screencast(audio: nil, video: nil)
+          raise BrowsingContextClosedError, @reason if closed?
+          params = { context: @id }
+          params[:audio] = audio unless audio.nil?
+          params[:video] = video unless video.nil?
+          session.async_send_command('browsingContext.startScreencast', params)
+        end
+
+        # Stop a running screencast
+        # @rbs screencast: String -- Screencast id from start_screencast
+        # @rbs return: Async::Task[Hash[String, untyped]] -- Result file path and error, if any
+        def stop_screencast(screencast)
+          raise BrowsingContextClosedError, @reason if closed?
+          session.async_send_command('browsingContext.stopScreencast', { screencast: screencast })
+        end
+
         # Close this browsing context
         # @rbs prompt_unload: bool -- Whether to prompt before unload
         # @rbs return: Async::Task[void]
