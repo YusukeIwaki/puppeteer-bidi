@@ -15,6 +15,7 @@ elsif ruby_version >= Gem::Version.new('3.3.0') && ruby_version < Gem::Version.n
         "See: https://github.com/socketry/async/issues/424"
 end
 
+require "fileutils"
 require "puppeteer/bidi/version"
 require "puppeteer/bidi/errors"
 require "puppeteer/bidi/debug"
@@ -197,6 +198,42 @@ module Puppeteer
         proxy = ReactorRunner::Proxy.new(runner, browser, owns_runner: true)
         proxy
       end
+    end
+
+    @follow_symlinks = true
+
+    # Defines whether file operations follow symlinks, mirroring upstream
+    # `PuppeteerNode.setFollowSymlinks`. Defaults to true for compatibility;
+    # when false, writes to symlinked paths raise Errno::ELOOP.
+    # @rbs follow_symlinks: bool -- Whether to follow symlinks
+    # @rbs return: void
+    def self.set_follow_symlinks(follow_symlinks)
+      @follow_symlinks = !!follow_symlinks
+    end
+
+    # @rbs return: bool -- Whether file operations follow symlinks
+    def self.follow_symlinks?
+      @follow_symlinks
+    end
+
+    # Write binary data to a file, creating parent directories as needed.
+    # Honors the global symlink policy: with following disabled, symlinked
+    # paths raise Errno::ELOOP instead of being traversed.
+    # @rbs path: String -- Destination file path
+    # @rbs data: String -- Binary data to write
+    # @rbs return: Integer -- Bytes written
+    def self.write_binary_file(path, data)
+      dir = File.dirname(path)
+      FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
+      unless follow_symlinks?
+        if File.const_defined?(:NOFOLLOW)
+          flags = File::WRONLY | File::CREAT | File::TRUNC | File::NOFOLLOW
+          File.open(path, flags, binmode: true) { |file| file.write(data) }
+          return data.bytesize
+        end
+        raise Errno::ELOOP, path if File.symlink?(path)
+      end
+      File.binwrite(path, data)
     end
 
     # @rbs return: bool -- Whether we're inside an Async task

@@ -255,7 +255,7 @@ module Puppeteer
             if path
               dir = File.dirname(path)
               FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
-              File.binwrite(path, Base64.decode64(data))
+              Bidi.write_binary_file(path, Base64.decode64(data))
             end
 
             return data
@@ -318,7 +318,7 @@ module Puppeteer
           FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
 
           # data is base64 encoded, decode and write
-          File.binwrite(path, Base64.decode64(data))
+          Bidi.write_binary_file(path, Base64.decode64(data))
         end
 
         data
@@ -430,7 +430,7 @@ module Puppeteer
         end
 
         pdf_data = Base64.decode64(data)
-        File.binwrite(path, pdf_data) if path
+        Bidi.write_binary_file(path, pdf_data) if path
         pdf_data
       end
 

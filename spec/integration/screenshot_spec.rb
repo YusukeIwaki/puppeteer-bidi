@@ -397,4 +397,38 @@ RSpec.describe 'Screenshot', type: :integration do
       end
     end
   end
+
+  describe 'followSymlinks' do
+    it 'should reject screenshot to an existing symlink path' do
+      with_test_state do |page:, server:, **|
+        begin
+          tmpdir = Dir.mktmpdir('pptr-symlink-')
+          target_file = File.join(tmpdir, 'screenshot.png')
+          link_file = File.join(tmpdir, 'screenshot-link.png')
+          File.binwrite(target_file, 'placeholder')
+          File.symlink(target_file, link_file)
+        rescue SystemCallError, NotImplementedError
+          skip 'symlinks are not supported on this platform'
+        end
+
+        begin
+          Puppeteer::Bidi.set_follow_symlinks(false)
+          page.goto(server.empty_page)
+
+          error = nil
+          begin
+            page.screenshot(path: link_file)
+          rescue SystemCallError => e
+            error = e
+          end
+
+          expect(error).not_to be_nil
+          expect(error.errno).to eq(Errno::ELOOP::Errno)
+        ensure
+          Puppeteer::Bidi.set_follow_symlinks(true)
+          FileUtils.rm_rf(tmpdir)
+        end
+      end
+    end
+  end
 end
