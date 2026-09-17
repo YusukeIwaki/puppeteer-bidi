@@ -15,6 +15,11 @@ module Puppeteer
     class BrowserLauncher
       class LaunchError < Error; end
 
+      # Removal retries for temporary profile directories, mirroring
+      # upstream's rm maxRetries/retryDelay.
+      REMOVE_DIR_MAX_RETRIES = 10 #: Integer
+      REMOVE_DIR_RETRY_DELAY = 0.1 #: Float
+
       attr_reader :executable_path, :user_data_dir
 
       # @rbs executable_path: String? -- Path to browser executable
@@ -142,8 +147,19 @@ module Puppeteer
       end
 
       def cleanup_temp_user_data_dir
-        if @temp_user_data_dir && Dir.exist?(@temp_user_data_dir)
+        return unless @temp_user_data_dir && Dir.exist?(@temp_user_data_dir)
+
+        attempts = 0
+        begin
+          attempts += 1
           FileUtils.rm_rf(@temp_user_data_dir)
+        rescue SystemCallError => error
+          if attempts <= REMOVE_DIR_MAX_RETRIES
+            sleep(REMOVE_DIR_RETRY_DELAY)
+            retry
+          end
+          # Log cleanup errors without replacing the original close/launch outcome.
+          log_error("Failed to remove temporary user data dir #{@temp_user_data_dir}: #{error.message}")
         end
       end
 
