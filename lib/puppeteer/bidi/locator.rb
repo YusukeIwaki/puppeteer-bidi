@@ -21,15 +21,23 @@ module Puppeteer
     class Locator
       RETRY_DELAY = 0.1
 
-      attr_reader :timeout #: Numeric
+      # No-op logger factory used when a locator has no logger of its own
+      # (e.g. an empty race), mirroring upstream's `?? noop` fallback.
+      NOOP_LOGGER = ->(_prefix) { nil }
 
-      def initialize
+      attr_reader :timeout #: Numeric
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for diagnostics
+
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to a no-op
+      # @rbs return: void
+      def initialize(logger = nil)
         @visibility = nil
         @timeout = 30_000
         @ensure_element_is_in_viewport = true
         @wait_for_enabled = true
         @wait_for_stable_bounding_box = true
         @emitter = Core::EventEmitter.new
+        @logger = logger || NOOP_LOGGER
       end
 
       # Create a race between multiple locators.
@@ -806,8 +814,10 @@ module Puppeteer
 
     # Locator that races multiple locators.
     class RaceLocator < Locator
+      # @rbs locators: Array[Locator] -- Locators to race
+      # @rbs return: void
       def initialize(locators)
-        super()
+        super(locators.first&.logger || NOOP_LOGGER)
         @locators = locators
       end
 

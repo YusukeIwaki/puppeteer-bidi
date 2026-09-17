@@ -34,12 +34,14 @@ module Puppeteer
 
       attr_reader :user_context #: Core::UserContext
       attr_reader :browser #: Browser
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
 
       # @rbs browser: Browser -- Parent browser instance
       # @rbs user_context: Core::UserContext -- Associated user context
       # @rbs return: void
       def initialize(browser, user_context)
         @browser = browser
+        @logger = browser.logger
         @user_context = user_context
         @pages = {}
         @frame_targets = {}

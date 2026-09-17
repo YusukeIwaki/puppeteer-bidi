@@ -14,6 +14,7 @@ module Puppeteer
       attr_reader :process #: untyped
       attr_reader :default_browser_context #: BrowserContext
       attr_reader :ws_endpoint #: String?
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
 
       # @rbs connection: Connection -- BiDi connection
       # @rbs launcher: BrowserLauncher? -- Browser launcher instance
@@ -53,6 +54,7 @@ module Puppeteer
       # @rbs return: void
       def initialize(connection:, launcher:, core_browser:, session:, ws_endpoint:)
         @connection = connection
+        @logger = connection.logger
         @launcher = launcher
         @closed = false
         @disconnected = false

@@ -15,6 +15,9 @@ module Puppeteer
 
       DEFAULT_TIMEOUT = 30_000 #: Integer -- 30 seconds in milliseconds
 
+      # Logger factory shared with browser objects created from this connection.
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)?
+
       # @rbs transport: Transport
       # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to env-gated debug output
       # @rbs return: void

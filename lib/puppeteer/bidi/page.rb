@@ -67,12 +67,14 @@ module Puppeteer
       attr_reader :browsing_context #: Core::BrowsingContext
       attr_reader :browser_context #: BrowserContext
       attr_reader :timeout_settings #: TimeoutSettings
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
 
       # @rbs browser_context: BrowserContext -- Parent browser context
       # @rbs browsing_context: Core::BrowsingContext -- Associated browsing context
       # @rbs return: void
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
+        @logger = browser_context.logger
         @browsing_context = browsing_context
         @timeout_settings = TimeoutSettings.new
         @emitter = Core::EventEmitter.new

@@ -8,6 +8,7 @@ module Puppeteer
     # Following Puppeteer's BidiFrame implementation
     class Frame
       attr_reader :browsing_context #: Core::BrowsingContext
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
 
       # Factory method following Puppeteer's BidiFrame.from pattern
       # @rbs parent: Page | Frame -- Parent page or frame
@@ -24,6 +25,7 @@ module Puppeteer
       # @rbs return: void
       def initialize(parent, browsing_context)
         @parent = parent
+        @logger = parent.logger
         @browsing_context = browsing_context
         @frames = {} # Map of browsing context id to Frame (like WeakMap in JS)
         @exposed_functions = {} # Map of function name to ExposedFunction
@@ -671,7 +673,8 @@ module Puppeteer
           http_request = HTTPRequest.from(
             request,
             self,
-            page.network_interception_enabled?
+            page.network_interception_enabled?,
+            logger: @logger
           )
 
           request.once(:success) do
