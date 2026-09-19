@@ -399,6 +399,15 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     page.frames.last
   end
 
+  # Mirror `Promise.race([watcher, createTimeout(ms)])`: returns the watcher
+  # result when it settles first, or nil when the timeout wins. An early
+  # watcher rejection propagates like the rejected race.
+  def race_watcher_against_timeout(watcher, seconds)
+    Async::Task.current.with_timeout(seconds) { watcher.wait }
+  rescue Async::TimeoutError
+    nil
+  end
+
   def detach_frame(page, frame_id)
     page.evaluate(<<~JS, frame_id)
       (frameId) => {
@@ -487,16 +496,11 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
   it 'should work when node is added in a shadow root' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
-
-      element = page.wait_for_selector('div >>> h1') do
-        page.evaluate(add_shadow_host, 'div')
-        expect(page.query_selector('div >>> h1')).to be_nil
-
-        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-        expect(page.query_selector('div >>> h1')).to be_nil
-
-        page.evaluate(add_element_to_shadow_root, 'div', 'h1')
-      end
+      watcher = Async { page.wait_for_selector('div >>> h1') }
+      page.evaluate(add_shadow_host, 'div')
+      expect(race_watcher_against_timeout(watcher, 0.04)).to be_falsy
+      page.evaluate(add_element_to_shadow_root, 'div', 'h1')
+      element = watcher.wait
 
       text = page.evaluate('(element) => element.textContent', element)
       expect(text).to eq('inside')
@@ -508,15 +512,10 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
       page.evaluate(add_shadow_host, 'div')
-
-      element = page.wait_for_selector('div >>> h1') do
-        expect(page.query_selector('div >>> h1')).to be_nil
-
-        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-        expect(page.query_selector('div >>> h1')).to be_nil
-
-        page.evaluate(add_element_to_shadow_root, 'div', 'h1')
-      end
+      watcher = Async { page.wait_for_selector('div >>> h1') }
+      expect(race_watcher_against_timeout(watcher, 0.04)).to be_falsy
+      page.evaluate(add_element_to_shadow_root, 'div', 'h1')
+      element = watcher.wait
 
       text = page.evaluate('(element) => element.textContent', element)
       expect(text).to eq('inside')
@@ -527,32 +526,27 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
   it 'should work when node is added in a nested shadow root' do
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
-
-      element = page.wait_for_selector('div >>> h1') do
-        page.evaluate(<<~JS)
-          () => {
-            const host = document.body.appendChild(document.createElement('div'));
-            const inner = document.createElement('section');
-            inner.attachShadow({ mode: 'open' });
-            host.attachShadow({ mode: 'open' }).appendChild(inner);
-          }
-        JS
-        expect(page.query_selector('div >>> h1')).to be_nil
-
-        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-        expect(page.query_selector('div >>> h1')).to be_nil
-
-        page.evaluate(<<~JS)
-          () => {
-            const h1 = document.createElement('h1');
-            h1.textContent = 'inside';
-            document
-              .querySelector('div')
-              .shadowRoot.querySelector('section')
-              .shadowRoot.appendChild(h1);
-          }
-        JS
-      end
+      watcher = Async { page.wait_for_selector('div >>> h1') }
+      page.evaluate(<<~JS)
+        () => {
+          const host = document.body.appendChild(document.createElement('div'));
+          const inner = document.createElement('section');
+          inner.attachShadow({ mode: 'open' });
+          host.attachShadow({ mode: 'open' }).appendChild(inner);
+        }
+      JS
+      expect(race_watcher_against_timeout(watcher, 0.04)).to be_falsy
+      page.evaluate(<<~JS)
+        () => {
+          const h1 = document.createElement('h1');
+          h1.textContent = 'inside';
+          document
+            .querySelector('div')
+            .shadowRoot.querySelector('section')
+            .shadowRoot.appendChild(h1);
+        }
+      JS
+      element = watcher.wait
 
       text = page.evaluate('(element) => element.textContent', element)
       expect(text).to eq('inside')
@@ -568,24 +562,19 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
 
     with_test_state do |page:, server:, **|
       page.goto(server.empty_page)
-
-      element = page.wait_for_selector('div >>> h1') do
-        page.evaluate(add_element, 'div')
-        expect(page.query_selector('div >>> h1')).to be_nil
-
-        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
-        expect(page.query_selector('div >>> h1')).to be_nil
-
-        page.evaluate(<<~JS)
-          () => {
-            const host = document.querySelector('div');
-            const shadow = host.attachShadow({ mode: 'open' });
-            const h1 = document.createElement('h1');
-            h1.textContent = 'inside';
-            shadow.appendChild(h1);
-          }
-        JS
-      end
+      watcher = Async { page.wait_for_selector('div >>> h1') }
+      page.evaluate(add_element, 'div')
+      expect(race_watcher_against_timeout(watcher, 0.04)).to be_falsy
+      page.evaluate(<<~JS)
+        () => {
+          const host = document.querySelector('div');
+          const shadow = host.attachShadow({ mode: 'open' });
+          const h1 = document.createElement('h1');
+          h1.textContent = 'inside';
+          shadow.appendChild(h1);
+        }
+      JS
+      element = watcher.wait
 
       text = page.evaluate('(element) => element.textContent', element)
       expect(text).to eq('inside')
