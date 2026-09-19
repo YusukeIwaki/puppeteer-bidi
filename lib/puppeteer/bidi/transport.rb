@@ -173,6 +173,8 @@ module Puppeteer
             @keep_alive_awaiting_pong = true
             begin
               connection.send_ping
+              # Ping frames are buffered; flush to ensure the peer receives them.
+              connection.flush
             rescue => error
               log_error("WebSocket keepalive ping failed: #{error.message}")
               close
