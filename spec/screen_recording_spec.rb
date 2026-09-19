@@ -22,6 +22,64 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
     double("page", main_frame: frame)
   end
 
+  # Evented writable destination with upstream WritableDestination behavior.
+  class EventedDestination
+    def initialize(async_finish: false)
+      @handlers = Hash.new { |hash, key| hash[key] = [] }
+      @written = []
+      @closed = false
+      @close_called = false
+      @async_finish = async_finish
+    end
+
+    attr_reader :written
+
+    def write(data)
+      @written << data
+    end
+
+    def once(event, &block)
+      @handlers[event] << block
+      self
+    end
+
+    def fire(event)
+      @handlers[event].each(&:call)
+    end
+
+    def close
+      @close_called = true
+      return if @async_finish
+
+      @closed = true
+      fire(:close)
+    end
+
+    def close_called?
+      @close_called
+    end
+
+    def closed?
+      return true if @async_finish && @finished
+
+      @closed
+    end
+
+    def finish!
+      @finished = true
+      fire(:finish)
+    end
+  end
+
+  def wait_until(timeout: 5)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+    until yield
+      raise "timed out waiting" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+      Async::Task.current.sleep(0.01)
+    end
+  end
+
   let(:core_context) do
     File.binwrite(video_path, "video-bytes")
     stub_core_context(start_result: { "screencast" => "cast-1", "path" => video_path })
@@ -92,6 +150,85 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       recording.stop
 
       expect(core_context).to have_received(:stop_screencast).once
+    end
+
+    it "makes concurrent stops wait for the in-flight stop" do
+      gate = Async::Promise.new
+      entered = false
+      allow(core_context).to receive(:stop_screencast) do
+        entered = true
+        Async { gate.wait; { "path" => video_path } }
+      end
+      recording.start
+
+      first = Async { recording.stop }
+      wait_until { entered }
+      second_done = false
+      second = Async do
+        recording.stop
+        second_done = true
+      end
+      Async::Task.current.sleep(0.05)
+
+      expect(second_done).to be(false)
+
+      gate.resolve(nil)
+      first.wait
+      second.wait
+
+      expect(core_context).to have_received(:stop_screencast).once
+      expect(recording.data).to eq("video-bytes")
+    end
+
+    it "supports iterating the recorded bytes" do
+      recording.start
+      received = []
+      reader = Async do
+        loop do
+          recording.each { |chunk| received << chunk }
+          break unless received.empty?
+
+          Async::Task.current.sleep(0.01)
+        end
+      end
+      recording.stop
+      reader.wait
+
+      expect(received).to eq(["video-bytes"])
+    end
+
+    it "writes each destination once even when piped twice" do
+      recording.start
+      destination = StringIO.new
+      recording.pipe(destination)
+      recording.pipe(destination)
+      recording.stop
+
+      expect(destination.string).to eq("video-bytes")
+    end
+
+    it "removes destinations that error before the bytes arrive" do
+      recording.start
+      destination = EventedDestination.new
+      recording.pipe(destination)
+      destination.fire(:error)
+      recording.stop
+
+      expect(destination.written).to be_empty
+      expect(recording.data).to eq("video-bytes")
+    end
+
+    it "waits for evented destinations to finish closing" do
+      recording.start
+      destination = EventedDestination.new(async_finish: true)
+      recording.pipe(destination)
+
+      stopper = Async { recording.stop }
+      wait_until { destination.close_called? }
+      destination.finish!
+      stopper.wait
+
+      expect(destination.written).to eq(["video-bytes"])
     end
 
     it "stops without a screencast id and still closes destinations" do
