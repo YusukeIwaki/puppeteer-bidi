@@ -38,7 +38,13 @@ module Puppeteer
         @destinations = Set.new #: Set[untyped]
         @data = nil
         @stopped = false
-        @completion = Async::Promise.new #: Async::Promise -- Settled when stop finishes, shared like `@guarded`
+        @in_flight = false
+        # Readable completion, resolved once the bytes are distributed,
+        # independently of destination shutdown (upstream closes its
+        # readable controller before waiting for destinations).
+        @readable = Async::Promise.new #: Async::Promise
+        # Stop completion, shared with in-flight waiters like `@guarded`.
+        @completion = Async::Promise.new #: Async::Promise
         @screencast_id = nil
         @path = nil
 
@@ -96,27 +102,32 @@ module Puppeteer
         destination
       end
 
-      # Iterate the recorded bytes, blocking until the recording has stopped,
-      # mirroring async iteration over the upstream stream.
+      # Iterate the recorded bytes, blocking until they are available.
+      # Reading completes independently of destination shutdown, mirroring
+      # async iteration over the upstream stream.
       # @rbs &block: (String) -> void -- Chunk handler
       # @rbs return: Enumerator[String, void] | ScreenRecording -- Enumerator without a block
       def each(&block)
         return enum_for(:each) unless block
 
-        @completion.wait
+        @readable.wait
         yield @data if @data
         self
       end
 
-      # Stop the recording. Concurrent callers wait for the in-flight stop
-      # and share its outcome, mirroring upstream's `@guarded` stop.
+      # Stop the recording. Callers arriving during an in-flight stop wait
+      # for it and share its outcome, mirroring upstream's `@guarded` stop;
+      # later calls are no-ops since the recording already stopped.
       # @rbs return: void
       def stop
-        if @stopped
+        if @in_flight
           @completion.wait
           return
         end
+        return if @stopped
+
         @stopped = true
+        @in_flight = true
         settled = false
         begin
           perform_stop
@@ -129,6 +140,7 @@ module Puppeteer
           settled = true
           @completion.resolve(nil)
         ensure
+          @in_flight = false
           # Cancellations bypass StandardError; still wake any waiters.
           @completion.resolve(nil) unless settled
         end
@@ -177,6 +189,9 @@ module Puppeteer
       # would await them forever.
       # @rbs return: void
       def close_destinations
+        # Complete the readable side first, like upstream closing its
+        # readable controller before shutting down destinations.
+        @readable.resolve(nil)
         # Iterate over a copy: ending a destination fires its removal
         # handlers, which mutate the set.
         @destinations.dup.each do |destination|

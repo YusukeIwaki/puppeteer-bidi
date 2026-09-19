@@ -341,7 +341,7 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       expect(recording.data).to eq("video-bytes")
     end
 
-    it "shares stop failures with concurrent callers" do
+    it "shares stop failures with in-flight callers while later stops succeed" do
       recording, _core_context = started_recording(
         start_result: { "screencast" => "cast-1", "path" => video_path },
         stop_result: { "path" => video_path }
@@ -369,6 +369,51 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       second.wait
 
       expect(errors.map(&:message)).to eq(["end boom", "end boom"])
+      expect { recording.stop }.not_to raise_error
+      expect { recording.close }.not_to raise_error
+    end
+
+    it "lets the readable side complete while a piped destination is still finishing" do
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      destination = EventedDestination.new(async_finish: true)
+      recording.pipe(destination)
+
+      received = []
+      reader_done = false
+      reader = Async do
+        recording.each { |chunk| received << chunk }
+        reader_done = true
+      end
+      stopper = Async { recording.stop }
+      Async::Task.current.sleep(0.02)
+      observed = [destination.close_called?, reader_done, received.dup]
+      destination.finish!
+      stopper.wait
+      reader.wait
+
+      expect(observed).to eq([true, true, ["video-bytes"]])
+    ensure
+      stopper&.stop
+      reader&.stop
+    end
+
+    it "keeps readable bytes available when a destination fails to end" do
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      broken = double("broken destination", write: true)
+      allow(broken).to receive(:end).and_raise(StandardError, "end boom")
+      recording.pipe(broken)
+
+      expect { recording.stop }.to raise_error("end boom")
+
+      received = []
+      expect { recording.each { |chunk| received << chunk } }.not_to raise_error
+      expect(received).to eq(["video-bytes"])
     end
 
     it "writes each destination once even when piped twice" do
