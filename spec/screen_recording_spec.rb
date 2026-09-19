@@ -9,9 +9,17 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
 
   after { FileUtils.rm_rf(tmpdir) }
 
+  def stub_close_event(context)
+    closed_handlers = []
+    allow(context).to receive(:once) do |event, &block|
+      closed_handlers << block if event == :closed
+    end
+    allow(context).to receive(:fire_closed) { closed_handlers.each(&:call) }
+  end
+
   def stub_core_context(start_result:, stop_result: { "path" => nil })
     context = double("core_browsing_context")
-    allow(context).to receive(:once)
+    stub_close_event(context)
     allow(context).to receive(:start_screencast) { |*| Async { start_result } }
     allow(context).to receive(:stop_screencast) { |*| Async { stop_result } }
     context
@@ -240,6 +248,14 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       expect(recording.stopped?).to be(true)
       expect(core_context).not_to have_received(:stop_screencast)
       expect(destination.closed?).to be(true)
+    end
+
+    it "dispatches stop when the browsing context closes" do
+      recording.start
+      core_context.fire_closed
+
+      expect(core_context).to have_received(:stop_screencast).once
+      expect(recording.stopped?).to be(true)
     end
 
     it "logs stop failures and falls back to the start path" do
