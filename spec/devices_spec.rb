@@ -17,7 +17,8 @@ RSpec.describe Puppeteer::Bidi::KnownDevices do
       "iPhone Air", "iPhone Air landscape",
       "iPhone 17 Pro", "iPhone 17 Pro landscape",
       "iPhone 17 Pro Max", "iPhone 17 Pro Max landscape",
-      "iPhone 17e", "iPhone 17e landscape"
+      "iPhone 17e", "iPhone 17e landscape",
+      "iPhone 6", "iPhone 13", "iPad Pro landscape"
     )
   end
 
@@ -37,6 +38,18 @@ RSpec.describe Puppeteer::Bidi::KnownDevices do
 
     air_landscape = devices["iPhone Air landscape"]
     expect(air_landscape[:viewport]).to include(width: 794, height: 370, is_landscape: true)
+
+    iphone_6 = devices["iPhone 6"]
+    expect(iphone_6[:user_agent]).to include("iPhone OS 11_0")
+    expect(iphone_6[:viewport]).to include(width: 375, height: 667, is_landscape: false)
+
+    iphone_13 = devices["iPhone 13"]
+    expect(iphone_13[:user_agent]).to include("iPhone OS 15_0")
+    expect(iphone_13[:viewport]).to include(width: 390, height: 844, is_landscape: false)
+
+    ipad_pro_landscape = devices["iPad Pro landscape"]
+    expect(ipad_pro_landscape[:user_agent]).to include("iPad")
+    expect(ipad_pro_landscape[:viewport]).to include(width: 1366, height: 1024, is_landscape: true)
   end
 
   describe "Page#emulate" do

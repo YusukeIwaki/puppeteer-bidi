@@ -7,7 +7,7 @@ RSpec.describe "Emulation" do
     it "should work" do
       with_test_state do |page:, server:, **|
         page.goto("#{server.prefix}/mobile.html")
-        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone SE (3rd gen)"])
+        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone 6"])
 
         expect(page.evaluate("() => window.innerWidth")).to eq(375)
         expect(page.evaluate("() => navigator.userAgent")).to include("iPhone")
@@ -17,14 +17,14 @@ RSpec.describe "Emulation" do
     it "should work twice on about:blank" do
       with_test_state do |page:, **|
         page.goto("about:blank")
-        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone SE (3rd gen)"])
-        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone SE (3rd gen) landscape"])
+        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone 13"])
+        page.emulate(Puppeteer::Bidi::KnownDevices["iPad Pro landscape"])
       end
     end
 
     it "should support clicking" do
       with_test_state do |page:, server:, **|
-        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone SE (3rd gen)"])
+        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone 6"])
         page.goto("#{server.prefix}/input/button.html")
         button = page.query_selector("button")
         page.evaluate("(button) => { button.style.marginTop = '200px'; }", button)
