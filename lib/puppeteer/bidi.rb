@@ -225,7 +225,8 @@ module Puppeteer
 
     # Write binary data to a file, creating parent directories as needed.
     # Honors the global symlink policy: with following disabled, symlinked
-    # paths raise Errno::ELOOP instead of being traversed.
+    # paths raise Errno::ELOOP instead of being traversed, and new files are
+    # created with mode 0600, mirroring upstream's no-follow file setup.
     # @rbs path: String -- Destination file path
     # @rbs data: String -- Binary data to write
     # @rbs return: Integer -- Bytes written
@@ -235,12 +236,25 @@ module Puppeteer
       unless follow_symlinks?
         if File.const_defined?(:NOFOLLOW)
           flags = File::WRONLY | File::CREAT | File::TRUNC | File::NOFOLLOW
-          File.open(path, flags, binmode: true) { |file| file.write(data) }
+          File.open(path, flags, 0o600, binmode: true) { |file| file.write(data) }
           return data.bytesize
         end
-        raise Errno::ELOOP, path if File.symlink?(path)
       end
       File.binwrite(path, data)
+    end
+
+    # Read binary data from a file, honoring the global symlink policy:
+    # with following disabled, symlinked paths raise Errno::ELOOP instead of
+    # being traversed, mirroring upstream's no-follow file reads.
+    # @rbs path: String -- Source file path
+    # @rbs return: String -- File contents
+    def self.read_binary_file(path)
+      unless follow_symlinks?
+        if File.const_defined?(:NOFOLLOW)
+          return File.open(path, File::RDONLY | File::NOFOLLOW, binmode: true, &:read)
+        end
+      end
+      File.binread(path)
     end
 
     # @rbs return: bool -- Whether we're inside an Async task

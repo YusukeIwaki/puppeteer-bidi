@@ -1454,16 +1454,17 @@ module Puppeteer
       # @rbs overwrite: bool? -- Overwrite an existing file
       # @rbs return: File -- Open binary write handle
       def open_record_stream(path, overwrite)
+        no_follow = !Bidi.follow_symlinks? && File.const_defined?(:NOFOLLOW)
         flags = File::WRONLY | File::CREAT
         flags |= overwrite == false ? File::EXCL : File::TRUNC
-        flags |= File::NOFOLLOW if !Bidi.follow_symlinks? && File.const_defined?(:NOFOLLOW)
+        flags |= File::NOFOLLOW if no_follow
 
-        file = File.open(path, flags, binmode: true)
-        if !Bidi.follow_symlinks? && !File.const_defined?(:NOFOLLOW) && File.symlink?(path)
-          file.close
-          raise Errno::ELOOP, path
+        # No-follow files are created with mode 0600, mirroring upstream.
+        if no_follow
+          File.open(path, flags, 0o600, binmode: true)
+        else
+          File.open(path, flags, binmode: true)
         end
-        file
       end
 
       def request_listener_for(listener)
