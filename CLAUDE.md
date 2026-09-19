@@ -50,24 +50,28 @@ Core Layer (Puppeteer::Bidi::Core) - Async operations, returns Async::Task
 
 This project uses **Async (Fiber-based)**, NOT concurrent-ruby (Thread-based).
 
-- No Mutex needed (cooperative multitasking)
+- Fibers can interleave at waits and I/O; preserve guards and coordinate shared lifecycle operations
 - Similar to JavaScript async/await
 - See [Async Programming Guide](CLAUDE/async_programming.md)
 
 ## Development Workflow
 
-1. Study Puppeteer's TypeScript implementation first
-2. Understand BiDi protocol calls
-3. Implement with proper deserialization
-4. Port tests from Puppeteer
-5. **Update `API_COVERAGE.md`** - Mark implemented methods as ✅ and update coverage count
-6. See [Porting Puppeteer Guide](CLAUDE/porting_puppeteer.md)
+1. Read the [Porting Puppeteer Guide](CLAUDE/porting_puppeteer.md); record the upstream refs and requested scope
+2. Map upstream behavior, prerequisites, and tests to the complete Ruby public API path
+3. Preserve upstream contracts with minimal Ruby adaptations and proper deserialization
+4. Port test bodies and assertions faithfully, then verify real browser, transport, or filesystem behavior where applicable
+5. Regenerate `API_COVERAGE.md` using the repository generator and pinned revision; do not edit counts manually
+6. Report verification results, justified deviations, and remaining gaps before claiming completion
+
+These guides are not an exhaustive specification. An undocumented behavior or missing Ruby helper is not a reason
+to omit an in-scope upstream requirement, stub its implementation, or disable its test. See the
+[pending/skip policy](CLAUDE/rspec_pending_vs_skip.md) for evidence required for genuine exclusions.
 
 ## Coding Conventions
 
 ### Ruby
 
-- Use Ruby 3.0+ features
+- Target Ruby >= 3.2 and the versions covered by CI
 - Follow RuboCop guidelines
 - Class names: `PascalCase`, Methods: `snake_case`, Constants: `SCREAMING_SNAKE_CASE`
 
@@ -169,13 +173,14 @@ bundle exec steep check    # Run type checker
 - Use RSpec for unit and integration tests
 - Integration tests in `spec/integration/`
 - Use `with_test_state` helper for browser reuse
+- Preserve upstream assertion strength, timing, and ordering; see [test fidelity](CLAUDE/testing_strategy.md#upstream-test-fidelity)
 
 ### Test Assets
 
 **CRITICAL**: Always use Puppeteer's official test assets without modification.
 
-- Source: https://github.com/puppeteer/puppeteer/tree/main/test/assets
-- Never modify files in `spec/assets/`
+- Source: `test/assets/` at the exact upstream revision used by the port
+- Copy the relevant official fixtures unchanged; do not simplify fixtures to make tests pass
 - Revert any experimental changes before PRs
 
 ## Detailed Documentation

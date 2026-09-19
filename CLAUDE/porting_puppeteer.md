@@ -2,26 +2,62 @@
 
 Best practices for implementing Puppeteer features in puppeteer-bidi.
 
+## Scope, evidence, and completion
+
+Local documentation is guidance, not an exhaustive list of upstream requirements. Absence from `AGENTS.md`, a
+topic guide, or a skill does not make behavior optional. A missing Ruby prerequisite is implementation work,
+not evidence that an in-scope feature can be stubbed or its test skipped.
+
+Before implementing or reviewing a port:
+
+1. Record the source and target upstream tags/SHAs, the Ruby base/head, and the issue's requested scope. Follow
+   fixed comparison endpoints when supplied. If the issue changes during the work, report the difference instead
+   of silently changing targets or claiming to cover the updated issue.
+2. Read the actual upstream diff, implementation, tests, and expectations at those refs. Include shared API/base
+   classes, decorators, utilities, injected code, and dependencies, not just files under `src/bidi/`.
+3. Maintain a concise mapping in the PR description or a linked review note:
+
+   | Upstream behavior/test (pinned source link) | Ruby implementation/spec | Adaptation or applicability reason | Verification result |
+   | --- | --- | --- | --- |
+   | One row per behavior or test scenario | Include required call paths | Explain any contract difference | Passed, failed, pending, skipped, or unrun, with evidence |
+
+   Group cases only when their individual assertions and applicability remain traceable. Cover all in-scope
+   cases, including upstream tests that are disabled on particular platforms. CDP-only behavior remains out of
+   scope; browser-independent behavior is not excluded merely because CDP also implements it.
+4. Port the prerequisites and tests needed to exercise the behavior through the public API. Do not replace missing
+   behavior with a constant result, no-op, fallback, or mocked implementation to produce a passing check.
+5. Before claiming completion, reconcile the mapping with the final diff and test output. Report exact commands,
+   relevant Ruby/browser/dependency versions, failures, exclusions, and unrun checks. A startup failure is not a
+   passing integration run; a skipped or pending example is not implemented coverage. Inspect required CI results
+   and distinguish pending CI from successful CI. Do not use an issue-closing claim when in-scope work remains.
+
+For adversarial review, try to falsify parity: identify a concrete input, call path, event order, or dependency
+behavior that would distinguish the port from upstream. Reproduce suspected defects where possible, and clearly
+separate reproduced failures from source-based concerns and environmental blockers. State when substantial
+re-porting is warranted instead of minimizing gaps because the existing tests pass.
+
 ## 1. Reference Implementation First
 
 **Always consult the official Puppeteer implementation before implementing features:**
 
 - **TypeScript source files**:
   - `packages/puppeteer-core/src/bidi/Page.ts` - High-level Page API
-  - `packages/puppeteer-core/src/bidi/BrowsingContext.ts` - Core BiDi context
+  - `packages/puppeteer-core/src/bidi/core/BrowsingContext.ts` - Core BiDi context
   - `packages/puppeteer-core/src/api/Page.ts` - Common Page interface
 
 - **Test files**:
-  - `test/src/screenshot.spec.ts` - Screenshot test suite
+  - Discover browser tests under `test/src/` and colocated unit tests under `packages/` at the chosen ref;
+    filenames may use `.test.ts` or `.spec.ts`
+  - Read `test/TestExpectations.json` (or its equivalent at that ref) for browser/protocol/platform conditions
   - `test/golden-firefox/` - Golden images for visual regression testing
 
 **Example workflow:**
 
 ```ruby
-# 1. Read Puppeteer's TypeScript implementation
-# 2. Understand the BiDi protocol calls being made
-# 3. Implement Ruby equivalent with same logic flow
-# 4. Port corresponding test cases
+# 1. Pin upstream refs and map implementation, prerequisites, and tests
+# 2. Trace the public API to the protocol/dependency behavior
+# 3. Implement equivalent observable behavior with minimal Ruby adaptation
+# 4. Preserve test bodies and assertions, then exercise the real call path
 ```
 
 ## 2. Test Infrastructure Setup
@@ -133,6 +169,37 @@ end
 - Match Puppeteer's parameter defaults exactly
 - Follow the same conditional logic order
 
+### Audit the complete contract
+
+Follow the public entry point through wrappers, factories, inherited helpers, core, transport, and injected code.
+Check every relevant construction path, including calls inside an Async reactor and through `ReactorRunner`.
+An option accepted by a signature is not implemented if a wrapper drops it. A generated helper is not reachable
+unless Ruby parsing, dispatch, and required query handlers actually call it.
+
+For each changed behavior, check the relevant contracts:
+
+- **Inputs:** omission versus explicit `nil`, `false`, zero, defaults, validation, and conditional payload keys.
+  Use key presence when upstream uses `'key' in options`; do not serialize validation defaults as supplied values.
+- **Outputs and errors:** return values, error classes/messages, propagation, disabled behavior, and side effects.
+  Trace logger/options through objects created later; verify enabled output, disabled silence, and no duplication.
+- **Collections and streams:** identity/deduplication, iteration or reading, piping, completion, close events, and
+  disposal. Replacing a `Set` with an `Array` or dropping a TypeScript interface can change observable behavior.
+- **Lifecycle:** upstream guards, idempotence, concurrent callers, cancellation, retries, and cleanup on failure.
+  Preserve when callers complete, not just when a flag is set. See [Async coordination](async_programming.md).
+- **I/O:** buffering and flush, read and write paths, symlinks, file modes, and error handling. Check all operations
+  governed by a shared policy, not only the operation that first exposed the issue.
+
+Read the installed dependency's implementation or versioned documentation when translating Node.js behavior to
+Ruby. Similar method names and options do not establish equivalence: determine whether writes are buffered,
+whether removal suppresses errors, which errors are retried, and the retry count/backoff. Supplement mocks with
+tests against the real dependency boundary. Do not mock a method to raise an error it actually suppresses and
+then treat the retry path as verified. A necessary adapter (such as an explicit flush) is appropriate; speculative
+fallbacks, extra protocol calls, or swallowed errors require a demonstrated contract need and regression coverage.
+
+Ruby naming and return-type adaptations are expected, but explain semantic differences in the mapping. Preserve
+upstream control flow where feasible; do not redesign behavior merely because the source construct has no direct
+Ruby syntax equivalent.
+
 ## 5. Layer Architecture
 
 **Maintain clear separation:**
@@ -152,22 +219,10 @@ Core Layer (lib/puppeteer/bidi/core/)
 
 ## 6. Setting Page Content
 
-**Use data URLs with base64 encoding:**
-
-```ruby
-def set_content(html, wait_until: 'load')
-  # Encode HTML in base64 to avoid URL encoding issues
-  encoded = Base64.strict_encode64(html)
-  data_url = "data:text/html;base64,#{encoded}"
-  goto(data_url, wait_until: wait_until)
-end
-```
-
-**Why base64:**
-
-- Avoids URL encoding issues with special characters
-- Handles multi-byte characters correctly
-- Standard approach in browser automation tools
+Trace upstream `Frame.setContent` and its shared `setFrameContent` helper. Preserve document writing and lifecycle
+waiting. Replacing `document.open/write/close` with navigation to a data URL changes the document URL and navigation
+behavior; matching the rendered HTML alone does not establish parity. Consult the chosen upstream ref and the
+existing Ruby `Frame#set_content` implementation before changing this path.
 
 ## 7. Viewport Restoration
 
@@ -198,37 +253,36 @@ end
 
 **CRITICAL**: Always use Puppeteer's official test assets without modification.
 
-- **Source**: https://github.com/puppeteer/puppeteer/tree/main/test/assets
-- **Rule**: Never modify test asset files (HTML, CSS, images) in `spec/assets/`
-- **Verification**: Before creating PR, verify all `spec/assets/` files match Puppeteer's official versions
-
-```bash
-# During development - OK to experiment
-vim spec/assets/test.html  # Temporary modification for debugging
-
-# Before PR - MUST revert to official
-curl -sL https://raw.githubusercontent.com/puppeteer/puppeteer/main/test/assets/test.html \
-  -o spec/assets/test.html
-```
+- **Source**: `test/assets/` at the exact upstream revision used for the port, not a moving `main`
+- **Rule**: Copy relevant official fixtures unchanged into `spec/assets/`; do not simplify their contents
+- **Verification**: Compare the fixtures used or changed by the port against that ref and revert experimental edits
 
 **Why this matters**: Test assets are designed to test specific edge cases (rotated elements, complex layouts, etc.). Using simplified versions defeats the purpose of these tests.
 
 ## 9. API Coverage Update
 
-**IMPORTANT**: When implementing new Puppeteer API methods, update `API_COVERAGE.md`:
+`API_COVERAGE.md` is generated. Do not hand-edit rows, version metadata, checkmarks, or counts.
 
-1. Find the corresponding entry in the table (e.g., `Browser.userAgent`, `Page.setUserAgent`)
-2. Change the status from `❌` to `✅`
-3. Update the coverage count at the top of the file
+1. Read `development/puppeteer_revision.txt` and the API Coverage job in `.github/workflows/check.yml`.
+2. Use an upstream checkout at that exact revision, including API docs and package metadata. When advancing the
+   repository's supported upstream baseline, update the pin and generated output together. For a selective
+   backport, state its target separately; do not imply the entire newer release is supported by advancing a label.
+3. From the repository root, run the same generator as CI (use `rbenv exec` if needed):
 
-```markdown
-# Before
-- Coverage: `156/274` (`56.93%`)
-| `Browser.userAgent` | `Puppeteer::Bidi::Browser#user_agent` | ❌ |
-
-# After (implemented 2 new methods: 156 + 2 = 158)
-- Coverage: `158/274` (`57.66%`)
-| `Browser.userAgent` | `Puppeteer::Bidi::Browser#user_agent` | ✅ |
+```bash
+bundle exec ruby development/generate_api_coverage.rb \
+  --puppeteer-dir development/puppeteer \
+  --cache-dir development/cache \
+  --output API_COVERAGE.md
 ```
 
-**CI will fail** if API_COVERAGE.md is not updated when new methods are implemented. The API Coverage check compares implemented methods against the coverage file.
+4. Verify that the checkout SHA, generated version/commit, and cache provenance agree. The generator validates
+   the cache against the checkout commit. Regeneration must reproduce the proposed artifact without manual fixes;
+   if discovery/mapping is wrong, correct the generator with appropriate verification instead of patching output.
+
+For injected-source updates, pass the intended package version explicitly to `scripts/update_injected_source.rb`.
+Review the downloaded artifact and version provenance, then run behavior tests through Ruby. Matching generated
+bytes, finding a marker string, or obtaining a coverage checkmark proves neither reachability nor correctness.
+
+See [test fidelity](testing_strategy.md#upstream-test-fidelity) and the
+[pending/skip policy](rspec_pending_vs_skip.md) before interpreting test totals as completion evidence.

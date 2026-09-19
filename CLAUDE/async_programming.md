@@ -9,17 +9,15 @@ This project uses the [socketry/async](https://github.com/socketry/async) librar
 | Feature               | Async (Fiber-based)                                    | concurrent-ruby (Thread-based)         |
 | --------------------- | ------------------------------------------------------ | -------------------------------------- |
 | **Concurrency Model** | Cooperative multitasking (like JavaScript async/await) | Preemptive multitasking                |
-| **Race Conditions**   | Not possible within a Fiber                            | Requires Mutex, locks, etc.            |
-| **Synchronization**   | Not needed (cooperative)                               | Required (Mutex, Semaphore)            |
+| **Race Conditions**   | Possible across waits, I/O, and other yield points      | Possible across thread interleavings   |
+| **Synchronization**   | Async-compatible coordination for shared operations    | Thread-safe coordination as needed     |
 | **Mental Model**      | Similar to JavaScript async/await                      | Traditional thread programming         |
-| **Bug Risk**          | Lower (no race conditions)                             | Higher (race conditions, deadlocks)    |
 
 **Key advantages:**
 
-- **No race conditions**: Fibers yield control cooperatively, so no concurrent access to shared state
-- **No Mutex needed**: Since there are no race conditions, no synchronization primitives required
 - **Similar to JavaScript**: If you understand `async/await` in JavaScript, you understand Async in Ruby
-- **Easier to reason about**: Code executes sequentially within a Fiber until it explicitly yields
+- **Cooperative scheduling**: Other fibers on the same reactor do not interleave within a non-yielding segment.
+  A helper call can yield internally, so inspect the whole operation rather than just explicit `.wait` calls.
 
 **Example:**
 
@@ -30,9 +28,9 @@ require 'concurrent'
 promise = Concurrent::Promises.resolvable_future
 promise.fulfill(value)
 
-# DO: Use Async (Fiber-based, no synchronization needed)
+# DO: Use Async primitives and coordinate operations that can yield
 require 'async/promise'
-@pending = {}  # Plain Hash is safe with Fibers
+@pending = {}  # Reactor-local storage; multi-step operations can still race across yields
 promise = Async::Promise.new
 promise.resolve(value)
 ```
@@ -77,7 +75,28 @@ promise.resolve(value)
    end.wait
    ```
 
-5. **No Mutex needed**: Since Async is Fiber-based, you don't need Mutex for shared state within the same event loop
+5. **Coordinate shared operations**: Use Async-compatible guards, semaphores, or a shared in-flight task/promise
+   as appropriate. Do not remove an upstream guard because Ruby uses Fibers. Cross-thread access, including the
+   `ReactorRunner` boundary, also needs its own thread-safety analysis.
+
+## Lifecycle and Event Ordering
+
+An operation can yield after marking itself as started but before cleanup or output has finished. A second caller
+can observe that flag and return too early. For example, an idempotent `stop` must preserve upstream's completion
+contract for concurrent callers; `@stopped = true` before a wait is not equivalent to serialized completion.
+
+For affected APIs, preserve and test:
+
+- The distinction between started, in-flight, completed, failed, and disposed states. Concurrent callers must wait
+  or return according to upstream semantics, and receive the appropriate result or error.
+- Listener registration before sending a command that can trigger the event, plus handling for events that have
+  already happened and for out-of-order command responses and event handlers.
+- Cancellation and error cleanup: remove listeners, stop background tasks, and settle waiters when commands fail,
+  the target closes, or the operation times out. A happy-path event is not guaranteed to arrive.
+- Both successful completion and failure while another caller is waiting. Coordinate test tasks to force the
+  interleaving under test; sequential calls alone cannot verify a concurrency guard.
+
+Keep coordination compatible with the reactor and avoid blocking its progress while waiting for another fiber.
 
 ## AsyncUtils: Promise.all and Promise.race
 
@@ -89,7 +108,7 @@ results = AsyncUtils.promise_all(
   -> { sleep 0.1; 'first' },
   -> { sleep 0.2; 'second' },
   -> { sleep 0.05; 'third' }
-)
+).wait
 # => ['first', 'second', 'third'] (in order, runs in parallel)
 
 # Promise.race - Return the first to complete
@@ -97,7 +116,7 @@ result = AsyncUtils.promise_race(
   -> { sleep 0.3; 'slow' },
   -> { sleep 0.1; 'fast' },
   -> { sleep 0.2; 'medium' }
-)
+).wait
 # => 'fast' (cancels remaining tasks)
 ```
 

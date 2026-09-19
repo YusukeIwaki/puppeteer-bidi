@@ -1,262 +1,68 @@
 # RSpec: pending vs skip
 
-## Overview
-
-RSpec provides two mechanisms for handling tests that cannot or should not run: `pending` and `skip`. Understanding when to use each is critical for documenting browser limitations and future work.
-
-## Difference
-
-### skip
-
-**Completely skips the test** - does not run any code:
-
-```ruby
-it 'should work' do
-  skip 'feature not implemented'
-
-  # This code NEVER runs
-  page.do_something
-  expect(result).to be_truthy
-end
-```
-
-**Output**: Test marked as skipped, no execution, no error trace.
-
-### pending
-
-**Runs the test** and expects it to fail:
-
-```ruby
-it 'should work' do
-  pending 'feature not implemented'
-
-  # This code RUNS and is expected to fail
-  page.do_something  # Raises error
-  expect(result).to be_truthy
-end
-```
-
-**Output**: Test marked as pending with full error trace showing exactly what failed.
-
-## When to Use Each
-
-### Use `pending` for:
-
-1. **Browser limitations** - Features not yet supported by Firefox BiDi
-2. **Known failures** - Code exists but fails due to external issues
-3. **Documentation** - Want to show error trace to document what's missing
-
-### Use `skip` for:
-
-1. **Unimplemented features** - Code doesn't exist yet
-2. **Environment issues** - Test requires specific setup not available
-3. **Temporary exclusion** - Test is broken and needs fixing
-
-## Firefox BiDi Limitations
-
-For features that exist in BiDi spec but not yet implemented in Firefox, use `pending`:
-
-```ruby
-describe 'Page.setJavaScriptEnabled' do
-  it 'should work' do
-    # Pending: Firefox does not yet support emulation.setScriptingEnabled BiDi command
-    pending 'emulation.setScriptingEnabled not supported by Firefox yet'
-
-    with_test_state do |page:, **|
-      page.set_javascript_enabled(false)
-      expect(page.javascript_enabled?).to be false
-
-      page.goto('data:text/html, <script>var something = "forbidden"</script>')
-
-      error = nil
-      begin
-        page.evaluate('something')
-      rescue => e
-        error = e
-      end
-
-      expect(error).not_to be_nil
-      expect(error.message).to include('something is not defined')
-    end
-  end
-end
-```
-
-**Why pending, not skip**:
-- Code path exists (`page.set_javascript_enabled`)
-- BiDi command exists in spec (`emulation.setScriptingEnabled`)
-- Firefox just hasn't implemented it yet
-- Running the test shows exactly what error Firefox returns
-
-## Output Comparison
-
-### With `skip`
-
-```
-Page
-  Page.setJavaScriptEnabled
-    should work (SKIPPED)
-```
-
-No error information, no way to know what's missing.
-
-### With `pending`
-
-```
-Page
-  Page.setJavaScriptEnabled
-    should work (PENDING: emulation.setScriptingEnabled not supported by Firefox yet)
-
-Pending: (Failures listed here are expected and do not affect your suite's status)
-
-  1) Page Page.setJavaScriptEnabled should work
-     # emulation.setScriptingEnabled not supported by Firefox yet
-     Failure/Error: raise ProtocolError, "BiDi error (#{method}): #{result['error']['message']}"
-
-     Puppeteer::Bidi::Connection::ProtocolError:
-       BiDi error (emulation.setScriptingEnabled):
-     # ./lib/puppeteer/bidi/connection.rb:71:in 'send_command'
-     # ./lib/puppeteer/bidi/core/browsing_context.rb:331:in 'set_javascript_enabled'
-     # ./lib/puppeteer/bidi/page.rb:313:in 'set_javascript_enabled'
-```
-
-Full error trace shows:
-- Which BiDi command failed
-- Error message from Firefox
-- Complete stack trace
-- Where in our code it failed
-
-## Implementation Pattern
-
-### Before (Incorrect - Using skip in before block)
-
-```ruby
-describe 'Page.setJavaScriptEnabled' do
-  before do
-    skip 'emulation.setScriptingEnabled not supported by Firefox yet'
-  end
-
-  it 'should work' do
-    # Never runs
-  end
-
-  it 'setInterval should pause' do
-    # Never runs
-  end
-end
-```
-
-**Problems**:
-- Tests don't run at all
-- No error information
-- Not clear which BiDi command is missing
-
-### After (Correct - Using pending in individual tests)
-
-```ruby
-describe 'Page.setJavaScriptEnabled' do
-  it 'should work' do
-    pending 'emulation.setScriptingEnabled not supported by Firefox yet'
-
-    with_test_state do |page:, **|
-      # Test code runs and fails with proper error trace
-    end
-  end
-
-  it 'setInterval should pause' do
-    pending 'emulation.setScriptingEnabled not supported by Firefox yet'
-
-    with_test_state do |page:, **|
-      # Test code runs and fails with proper error trace
-    end
-  end
-end
-```
-
-**Benefits**:
-- Tests run and document exact failure
-- Each test can have specific pending message
-- Easy to identify when Firefox adds support (test will pass)
-- Full error trace available for debugging
-
-## Best Practices
-
-### 1. Be Specific in Pending Messages
-
-```ruby
-# Good
-pending 'emulation.setScriptingEnabled not supported by Firefox yet'
-
-# Bad
-pending 'not supported'
-```
-
-### 2. Include BiDi Command Name
-
-```ruby
-# Good
-pending 'browsingContext.setViewport not implemented'
-
-# Bad
-pending 'viewport not working'
-```
-
-### 3. Document When to Re-check
-
-```ruby
-# Good
-pending 'network.addIntercept requires Firefox 120+, current: 119'
-
-# Bad
-pending 'network interception broken'
-```
-
-### 4. Remove Pending When Fixed
-
-When Firefox adds support, the test will fail with:
-```
-Expected example to fail but it passed
-```
-
-This is your signal to remove the `pending` line!
-
-## Firefox BiDi Limitations (Current)
-
-As of this implementation, the following BiDi commands are not supported by Firefox:
-
-1. `emulation.setScriptingEnabled` - Control JavaScript execution
-   - Tests: `spec/integration/page_spec.rb` (2 tests)
-   - Tests: `spec/integration/click_spec.rb` (1 test)
-
-## Files Changed
-
-- `spec/integration/click_spec.rb`: Changed `skip` to `pending` (line 71)
-- `spec/integration/page_spec.rb`: Moved `skip` from before block to individual tests as `pending` (lines 19, 48)
-
-## Test Results
-
-```bash
-bundle exec rspec spec/integration/
-# 108 examples, 0 failures, 4 pending
-```
-
-All pending tests show proper error traces documenting Firefox limitations.
-
-## Key Takeaways
-
-1. **Use `pending` for browser limitations** - Shows what's missing with error trace
-2. **Use `skip` for unimplemented features** - Our code doesn't exist yet
-3. **Be specific in messages** - Include BiDi command name and reason
-4. **Pending in test body, not before block** - Each test should be explicit
-5. **Pending tests run code** - They document exact failure mode
-6. **Remove pending when fixed** - Test will fail with "expected to fail but passed"
+Test exclusions require evidence. Missing instructions, missing Ruby support, a broken test, or difficulty making
+a faithful port pass do not justify disabling an in-scope test. Implement or fix the behavior and its prerequisites.
+If an external blocker remains, report it accurately without claiming the feature or issue is complete.
+
+## What the mechanisms do
+
+- `pending` inside an example allows execution to continue and expects a failure. An unexpected pass fails the
+  suite so the obsolete pending declaration can be removed or narrowed.
+- `skip` stops execution of the example; code after it is not exercised.
+- Empty examples, `xit`/`xdescribe`, exclusion metadata, early returns, and broad rescue blocks can also hide
+  coverage. They are subject to the same policy; changing syntax does not make an exclusion acceptable.
+
+RSpec does not match a pending reason against the actual exception. A pending example can hide an unrelated
+failure. Read its failure output and verify the cause, not just the suite's exit status.
+
+## Verified external failures: pending
+
+Use `pending` for a reproduced external browser/protocol defect when the test can still run. Before adding or
+retaining it for affected work:
+
+1. Run the example without the declaration, or inspect a reproducible failure from the same environment. Identify
+   the failing operation and actual error/assertion. Missing Ruby methods and unrelated setup failures are not
+   evidence of a browser limitation.
+2. Read the upstream test and its expectation conditions at the chosen ref, plus the relevant browser issue/status.
+   Record the browser version, protocol, operating system, and mode where relevant. A Linux-only expectation must
+   not become an unconditional Firefox exclusion; an old issue does not prove the current browser still fails.
+3. Record the upstream source/expectation link, external issue, observed failure, affected conditions, and condition
+   for rechecking/removal in the test comment and PR evidence. Prefer pinned source links for reproducibility.
+4. Apply the smallest supported condition to the individual example and keep its full setup, actions, assertions,
+   and cleanup. If the affected range is unknown, report that uncertainty rather than inventing a version gate or
+   generalizing one observation to all browsers/platforms.
+5. Review the pending failure output on subsequent relevant runs. Unexpected errors still need investigation;
+   broad `pending` is not permission to accept any failure.
+
+On an unexpected pass, recheck the behavior and remove or narrow the obsolete declaration. Do not replace it with
+`skip`, delete assertions, force a new failure, or swallow errors to restore a green run.
+
+## Justified exclusions: skip
+
+Use `skip` only when execution itself is inapplicable or cannot meaningfully proceed under a documented condition,
+such as an upstream test restricted to a different operating system or a genuinely unavailable optional external
+service. Scope the condition to the affected example/environment and explain it in the port's mapping.
+
+An existing placeholder for an explicitly deferred, out-of-scope feature may remain identified as such. It is not
+evidence of implemented behavior, and it must not be copied as the implementation of a newly requested in-scope
+feature. CDP-only tests need no Ruby port in this BiDi-only project; document their exclusion rather than creating
+empty examples to inflate test totals.
+
+When retaining a skipped example, preserve its full body so it can run when the condition changes. Do not use a
+suite-wide hook to hide unaffected cases. Local browser launch failures or missing tools should be fixed where
+feasible; otherwise report the check as unrun/blocked instead of committing a skip to accommodate one workstation.
+
+## Completion and review
+
+List pending, skipped, and unrun cases separately from passing tests, with their reasons and conditions. Reconcile
+new and changed exclusions against the upstream tests and requested scope before claiming completion. Review any
+deleted assertion or test body as a potential lost regression, even if example counts are unchanged.
+
+For the complete workflow, see [porting Puppeteer](porting_puppeteer.md) and
+[upstream test fidelity](testing_strategy.md#upstream-test-fidelity).
 
 ## References
 
-- [RSpec Documentation: Pending and Skipped Examples](https://rspec.info/features/3-12/rspec-core/pending-and-skipped-examples/)
-- [WebDriver BiDi Spec](https://w3c.github.io/webdriver-bidi/) - Check which commands are standardized
-- [Firefox BiDi Implementation Status](https://wiki.mozilla.org/WebDriver/RemoteProtocol/WebDriver_BiDi) - Check Firefox support
-
-## Commit Reference
-
-See commit: "test: Use pending instead of skip for Firefox unsupported features"
+- [RSpec pending and skipped examples](https://rspec.info/features/3-13/rspec-core/pending-and-skipped-examples/)
+- [WebDriver BiDi specification](https://w3c.github.io/webdriver-bidi/) defines protocol behavior, not a browser's
+  current implementation status. Verify browser support using version-specific evidence and actual test results.

@@ -314,7 +314,10 @@ end
 
 **Problem:** Parallel screenshots cause race conditions
 
-**Solution:** BiDi protocol handles this naturally - test with threads
+**Solution:** Preserve upstream coordination for shared viewport and lifecycle state. Protocol request IDs do not
+serialize those operations. Test deliberate overlapping calls in the supported execution paths; see
+[Async coordination](async_programming.md#lifecycle-and-event-ordering). Thread tests alone do not cover Fiber
+interleavings within a reactor.
 
 ```ruby
 threads = (0...3).map do |i|
@@ -338,4 +341,3 @@ screenshots = threads.map(&:value)
 3. Check BiDi spec for protocol details
 4. Implement Ruby version maintaining same logic
 5. Download golden images and verify pixel-perfect match (with tolerance)
-

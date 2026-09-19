@@ -2,6 +2,44 @@
 
 This document covers integration test organization, performance optimization strategies, golden image testing, and debugging techniques.
 
+## Upstream Test Fidelity
+
+For ports, use the behavior/test mapping in the [porting guide](porting_puppeteer.md). Read the full upstream test
+body, setup/teardown, fixtures, and expectation conditions at the chosen ref. A matching test title or a passing
+assertion about a related helper is not a faithful port.
+
+- Preserve inputs, options, assertions, and their order, including negative assertions, unresolved/pending states,
+  timeout behavior, repeated or concurrent calls, and cleanup. If upstream first asserts that a waiter stays
+  unresolved and then triggers a mutation, retaining only the final result loses the regression being tested.
+- Preserve timing relationships. Use deterministic synchronization when it tests the same condition; removing a
+  delay or replacing it with a final-value assertion requires evidence that the original race is still covered.
+- Keep complete runnable test bodies for justified pending/skipped examples. Do not replace them with an empty
+  block or a reason string. Follow the [pending/skip policy](rspec_pending_vs_skip.md), including platform and
+  browser-version conditions, and account for every excluded case in the mapping.
+- Use official fixtures from the selected upstream ref. Do not remove difficult selectors, shadow roots, frames,
+  or other triggering structure to accommodate missing Ruby support. Implement in-scope prerequisites.
+- Exercise the public entry point and relevant construction paths, not only a directly constructed internal
+  object. Test option/logger propagation to descendants, payload omission/defaults, and disabled behavior when
+  those contracts change.
+- Match the boundary upstream tests exercise. A real WebSocket test must observe actual peer frames, liveness,
+  timeout, and close behavior as applicable; counting `send_ping` calls or invoking a pong callback directly does
+  not verify flushing or delivery. File/stream tests should observe actual contents, events, permissions, and
+  errors where relevant, rather than only checking method calls or listener registration.
+- Unit doubles and fault injection are useful supplements. Inspect the actual dependency version and inject a
+  failure at a boundary that can produce it; do not invent exception, flush, or close semantics to make a mock pass.
+  Keep real-boundary coverage when dependency semantics are part of the regression.
+
+For each relevant regression, explain which assertion fails with the defect present. Where practical, run the
+test against the previous behavior or a temporary controlled mutation and restore it afterward. If the failure
+depends on a missing prerequisite or environmental setup, distinguish that from detecting the target regression.
+When modifying an existing test, review removed assertions explicitly rather than assuming fewer failures means
+better coverage.
+
+Run targeted verification first, then the affected suites and required CI checks. Record commands and outcomes;
+do not claim a local browser test passed if browser startup failed. Resolve environment setup when feasible,
+otherwise report it as unrun/blocked without weakening the committed test. Performance improvements such as
+browser reuse must retain isolation, test intent, and lifecycle coverage.
+
 
 #### Integration Tests Organization
 
@@ -209,7 +247,10 @@ end
 
 **Problem:** Parallel screenshots cause race conditions
 
-**Solution:** BiDi protocol handles this naturally - test with threads
+**Solution:** Preserve upstream coordination for shared viewport and lifecycle state. Protocol request IDs do not
+serialize those operations. Test deliberate overlapping calls in the supported execution paths; see
+[Async coordination](async_programming.md#lifecycle-and-event-ordering). Thread tests alone do not cover Fiber
+interleavings within a reactor.
 
 ```ruby
 threads = (0...3).map do |i|
@@ -233,4 +274,3 @@ screenshots = threads.map(&:value)
 3. Check BiDi spec for protocol details
 4. Implement Ruby version maintaining same logic
 5. Download golden images and verify pixel-perfect match (with tolerance)
-

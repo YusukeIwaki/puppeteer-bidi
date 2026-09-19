@@ -2,13 +2,17 @@
 
 This directory contains detailed documentation for specific implementation topics in puppeteer-bidi.
 
+Topic guides include historical implementation notes and test results. Recheck those claims against the selected
+upstream revision and current test environment; they do not authorize a new exclusion. Use the
+[porting workflow](porting_puppeteer.md) and [pending/skip policy](rspec_pending_vs_skip.md) for current work.
+
 ## Quick Reference
 
 | Document | Topic | Key Takeaway |
 |----------|-------|--------------|
 | [async_programming.md](async_programming.md) | Fiber-based async | Use Async, NOT concurrent-ruby |
 | [two_layer_architecture.md](two_layer_architecture.md) | Core vs Upper layer | Always call `.wait` on Core methods |
-| [porting_puppeteer.md](porting_puppeteer.md) | Implementing features | Study TypeScript first, port tests |
+| [porting_puppeteer.md](porting_puppeteer.md) | Implementing features | Trace contracts, prerequisites, tests, and verification |
 | [query_handler.md](query_handler.md) | Selector handling | Override script methods, use PuppeteerUtil |
 | [javascript_evaluation.md](javascript_evaluation.md) | JS evaluation | IIFE detection is critical |
 | [jshandle_implementation.md](jshandle_implementation.md) | Handle management | resultOwnership must be 'root' |
@@ -19,7 +23,7 @@ This directory contains detailed documentation for specific implementation topic
 | [navigation_waiting.md](navigation_waiting.md) | waitForNavigation | Event-driven with Async::Promise |
 | [testing_strategy.md](testing_strategy.md) | Test optimization | Browser reuse = 19x faster |
 | [frame_architecture.md](frame_architecture.md) | Frame hierarchy | `(parent, browsing_context)` |
-| [rspec_pending_vs_skip.md](rspec_pending_vs_skip.md) | Test documentation | Use `pending` for Firefox |
+| [rspec_pending_vs_skip.md](rspec_pending_vs_skip.md) | Test exclusions | Require evidence and preserve test bodies |
 | [test_server_routes.md](test_server_routes.md) | Dynamic routes | `server.set_route` for tests |
 
 ## Architecture & Patterns
@@ -30,7 +34,7 @@ Guide to Fiber-based async programming with socketry/async.
 
 **Key concepts:**
 - Use Async (Fiber-based), NOT concurrent-ruby (Thread-based)
-- No Mutex needed - cooperative multitasking
+- Fibers interleave at waits and I/O; preserve guards and completion semantics
 - WebSocket messages must use `Async do` for non-blocking processing
 
 ### [Two-Layer Architecture](two_layer_architecture.md)
@@ -47,8 +51,9 @@ Core vs Upper layer separation for async complexity management.
 Best practices for implementing Puppeteer features in Ruby.
 
 **Key concepts:**
-- Study TypeScript implementation first
-- Port corresponding test cases
+- Pin upstream refs and trace each behavior through the public Ruby API
+- Port corresponding test bodies and assertions; document deviations and verification
+- Missing local documentation or prerequisites do not justify stubs or disabled tests
 - Use official test assets without modification
 
 ## Implementation Details
@@ -141,8 +146,8 @@ Test organization and optimization.
 Documenting browser limitations.
 
 **Key concepts:**
-- Use `pending` for Firefox BiDi limitations
-- Use `skip` for unimplemented features
+- Use `pending` only for verified external failures under the affected conditions
+- Use `skip` only for justified exclusions; missing in-scope implementation is work to complete
 
 ### [Test Server Routes](test_server_routes.md)
 
