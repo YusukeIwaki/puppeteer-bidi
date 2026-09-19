@@ -218,18 +218,12 @@ module Puppeteer
 
       private
 
-      # Error channel of the owning connection's logger. Handles only see
-      # core realms, so the factory is derived through the session instead
-      # of the explicit construction threading upstream uses.
+      # Error channel of the owning realm's logger. Handles only see core
+      # realms, so the factory comes from the realm instead of the explicit
+      # construction threading upstream uses.
       # @rbs return: (^(untyped) -> void)? -- Error channel, if logging is enabled
       def error_logger
-        session = @realm.session if @realm.respond_to?(:session)
-        return nil if session.nil?
-
-        connection = session.connection if session.respond_to?(:connection)
-        return nil if connection.nil?
-
-        logger = connection.logger if connection.respond_to?(:logger)
+        logger = @realm.logger if @realm.respond_to?(:logger)
         logger&.call(Debug::ERROR)
       end
 
