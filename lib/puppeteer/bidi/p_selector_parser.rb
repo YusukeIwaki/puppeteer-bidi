@@ -187,7 +187,7 @@ module Puppeteer
         def tokenize_by(text)
           return [] if text.empty?
 
-          tokens = [text]
+          tokens = [text] #: Array[String | Token]
           GRAMMAR.each do |type, pattern|
             index = 0
             while index < tokens.length
@@ -223,14 +223,16 @@ module Puppeteer
           end
 
           offset = 0
+          result = [] #: Array[Token]
           tokens.each do |token|
             raise "Unexpected sequence #{token} found" if token.is_a?(String)
 
             token.pos = [offset, offset + token.content.length]
             offset += token.content.length
             token.content = token.content.strip.empty? ? " " : token.content.strip if TRIM_TOKEN_TYPES.include?(token.type)
+            result << token
           end
-          tokens
+          result
         end
 
         # @rbs type: String -- Token type
@@ -254,6 +256,7 @@ module Puppeteer
         # @rbs selector: String -- Working selector text
         # @rbs pattern: Regexp -- Placeholder pattern
         # @rbs replacements: Array[Hash[Symbol, untyped]] -- Collected replacements
+        # @rbs &block: (String, MatchData?) -> String -- Placeholder replacement
         # @rbs return: String -- Selector with placeholders
         def replace_with_placeholders(selector, pattern, replacements)
           selector.gsub(pattern) do
