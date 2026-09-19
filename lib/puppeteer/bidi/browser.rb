@@ -184,7 +184,7 @@ module Puppeteer
       # Get the browser target.
       # @rbs return: BrowserTarget -- Browser target
       def target
-        @target ||= BrowserTarget.new(self)
+        @target ||= BrowserTarget.new(self, @logger)
       end
 
       # Get all cookies in the default browser context.

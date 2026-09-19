@@ -55,5 +55,26 @@ RSpec.describe Puppeteer::Bidi::Locator do
       expect(locator).to be_a(Puppeteer::Bidi::FilteredLocator)
       expect(locator.logger).to be(logger)
     end
+
+    it "routes a locator disposal failure to the supplied error logger" do
+      entries = []
+      logger = ->(prefix) { ->(error) { entries << [prefix, error.message] } }
+      locator = Puppeteer::Bidi::Locator.new(logger)
+      handle = double("handle")
+      allow(locator).to receive(:_wait).and_return(handle)
+      allow(locator).to receive(:ensure_element_is_in_viewport_if_needed)
+      allow(locator).to receive(:wait_for_stable_bounding_box_if_needed)
+      allow(locator).to receive(:wait_for_enabled_if_needed)
+      attempts = 0
+      allow(handle).to receive(:click) do
+        attempts += 1
+        raise "click error" if attempts == 1
+      end
+      allow(handle).to receive(:dispose).and_raise("disposal error")
+
+      locator.click
+
+      expect(entries).to include([Puppeteer::Bidi::Debug::ERROR, "disposal error"])
+    end
   end
 end

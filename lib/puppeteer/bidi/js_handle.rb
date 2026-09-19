@@ -47,7 +47,9 @@ module Puppeteer
         @disposed
       end
 
-      # Dispose this handle by releasing the remote object
+      # Dispose this handle by releasing the remote object. Disposal
+      # failures (e.g. after navigation) are logged and swallowed like
+      # upstream destroyHandles.
       # @rbs return: void
       def dispose
         return if @disposed
@@ -56,7 +58,13 @@ module Puppeteer
 
         # Release the remote reference if it has a handle
         handle_id = id
-        @realm.disown([handle_id]).wait if handle_id
+        return unless handle_id
+
+        begin
+          @realm.disown([handle_id]).wait
+        rescue StandardError => error
+          error_logger&.call(error)
+        end
       end
 
       # Get the handle ID (handle or sharedId)
@@ -209,6 +217,21 @@ module Puppeteer
       end
 
       private
+
+      # Error channel of the owning connection's logger. Handles only see
+      # core realms, so the factory is derived through the session instead
+      # of the explicit construction threading upstream uses.
+      # @rbs return: (^(untyped) -> void)? -- Error channel, if logging is enabled
+      def error_logger
+        session = @realm.session if @realm.respond_to?(:session)
+        return nil if session.nil?
+
+        connection = session.connection if session.respond_to?(:connection)
+        return nil if connection.nil?
+
+        logger = connection.logger if connection.respond_to?(:logger)
+        logger&.call(Debug::ERROR)
+      end
 
       # Check if this handle has been disposed and raise error if so
       # @rbs return: void

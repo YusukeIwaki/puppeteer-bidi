@@ -665,7 +665,7 @@ module Puppeteer
       # Get the target associated with this page.
       # @rbs return: PageTarget -- Page target
       def target
-        @target ||= PageTarget.new(self)
+        @target ||= PageTarget.new(self, @logger)
       end
 
       # Reloads the page.

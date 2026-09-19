@@ -357,7 +357,7 @@ module Puppeteer
       def target_for_frame(frame)
         context_id = frame.browsing_context.id
         @frame_targets[context_id] ||= begin
-          target = FrameTarget.new(frame)
+          target = FrameTarget.new(frame, @logger)
           frame.browsing_context.once(:closed) do
             @frame_targets.delete(context_id)
           end

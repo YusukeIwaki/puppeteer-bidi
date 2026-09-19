@@ -421,7 +421,11 @@ module Puppeteer
             @emitter.emit(LocatorEvent::ACTION, nil)
             block.call(handle)
           rescue StandardError => error
-            handle.dispose if handle.respond_to?(:dispose)
+            begin
+              handle.dispose if handle.respond_to?(:dispose)
+            rescue StandardError => dispose_error
+              @logger&.call(Debug::ERROR)&.call(dispose_error)
+            end
             raise error
           end
         end
