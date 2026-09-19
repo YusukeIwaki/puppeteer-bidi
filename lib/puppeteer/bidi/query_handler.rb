@@ -117,9 +117,11 @@ module Puppeteer
         # after navigation (mirrors Puppeteer's @bindIsolatedHandle decorator pattern).
         adopted_element = realm.adopt_handle(element)
 
+        # Upstream queryOne awaits its (possibly async) query via
+        # evaluateHandle; awaiting is identity for sync handler scripts.
         result = realm.call_function(
           query_one_script,
-          false,
+          true,
           arguments: [
             Serializer.serialize(realm.puppeteer_util_lazy_arg),
             adopted_element.remote_value,
@@ -263,7 +265,7 @@ module Puppeteer
       def query_one_script
         <<~JAVASCRIPT
         (PuppeteerUtil, element, selector) => {
-          return PuppeteerUtil.pQuerySelector(element, JSON.parse(selector));
+          return PuppeteerUtil.pQuerySelector(element, selector);
         }
         JAVASCRIPT
       end
@@ -271,15 +273,19 @@ module Puppeteer
       def query_all_script
         <<~JAVASCRIPT
         async (PuppeteerUtil, element, selector) => {
-          return [...PuppeteerUtil.pQuerySelectorAll(element, JSON.parse(selector))];
+          const results = [];
+          for await (const result of PuppeteerUtil.pQuerySelectorAll(element, selector)) {
+            results.push(result);
+          }
+          return results;
         }
         JAVASCRIPT
       end
 
       def wait_for_selector_script
         <<~JAVASCRIPT
-        (PuppeteerUtil, selector, root, visibility) => {
-          const element = PuppeteerUtil.pQuerySelector(root || document, JSON.parse(selector));
+        async (PuppeteerUtil, selector, root, visibility) => {
+          const element = await PuppeteerUtil.pQuerySelector(root || document, selector);
           return PuppeteerUtil.checkVisibility(element, visibility === null ? undefined : visibility);
         }
         JAVASCRIPT
