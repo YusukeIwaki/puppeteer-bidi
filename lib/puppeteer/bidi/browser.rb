@@ -317,13 +317,13 @@ module Puppeteer
       # Close the browser
       # @rbs return: void
       def close
-        return if @closed
+        return if @connection.closed?
 
         @closed = true
 
         begin
           begin
-            @connection.async_send_command('browser.close', {}).wait
+            @core_browser.close.wait
           rescue StandardError => e
             debug_error(e)
           ensure

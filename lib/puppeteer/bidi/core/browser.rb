@@ -63,7 +63,7 @@ module Puppeteer
             return if @closed
 
             begin
-              @session.async_send_command('browser.close', {})
+              @session.async_send_command('browser.close', {}).wait
             ensure
               dispose_browser('Browser already closed.', closed: true)
             end
@@ -160,8 +160,6 @@ module Puppeteer
 
         def perform_dispose
           @reason ||= 'Browser was disconnected, probably because the session ended.'
-          emit(:closed, @reason) if @closed
-          emit(:disconnected, @reason)
           @disposables.dispose
           super
         end
@@ -250,6 +248,9 @@ module Puppeteer
         def dispose_browser(reason, closed: false)
           @closed = closed
           @reason = reason
+          # Emit before dispose: the emitter ignores events once disposed.
+          emit(:closed, @reason) if @closed
+          emit(:disconnected, @reason)
           dispose
         end
       end
