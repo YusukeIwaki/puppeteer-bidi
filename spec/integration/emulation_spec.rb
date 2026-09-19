@@ -13,6 +13,26 @@ RSpec.describe "Emulation" do
         expect(page.evaluate("() => navigator.userAgent")).to include("iPhone")
       end
     end
+
+    it "should work twice on about:blank" do
+      with_test_state do |page:, **|
+        page.goto("about:blank")
+        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone SE (3rd gen)"])
+        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone SE (3rd gen) landscape"])
+      end
+    end
+
+    it "should support clicking" do
+      with_test_state do |page:, server:, **|
+        page.emulate(Puppeteer::Bidi::KnownDevices["iPhone SE (3rd gen)"])
+        page.goto("#{server.prefix}/input/button.html")
+        button = page.query_selector("button")
+        page.evaluate("(button) => { button.style.marginTop = '200px'; }", button)
+        button.click
+
+        expect(page.evaluate("() => globalThis.result")).to eq("Clicked")
+      end
+    end
   end
 
   describe "Page.emulate_locale" do
