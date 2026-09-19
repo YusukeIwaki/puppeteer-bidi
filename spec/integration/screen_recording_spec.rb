@@ -8,16 +8,7 @@ RSpec.describe 'Page.record', type: :integration do
       Dir.mktmpdir do |dir|
         path = File.join(dir, 'recording.webm')
 
-        begin
-          recording = page.record(path: path)
-        rescue Puppeteer::Bidi::Connection::ProtocolError => error
-          # Upstream expects Page.record to fail until the browser implements
-          # browsingContext.startScreencast (Firefox: https://bugzilla.mozilla.org/show_bug.cgi?id=2066782,
-          # Chrome: supported from 153). Recheck when the test browser supports screencasts.
-          # See TestExpectations at puppeteer-core-v25.10.0 ("[page.test] Page Page.record *").
-          pending "Screen recording is not supported by this browser: #{error.message}"
-          raise error
-        end
+        recording = page.record(path: path)
 
         page.goto('data:text/html,<input>')
         input = page.wait_for_selector('input')
