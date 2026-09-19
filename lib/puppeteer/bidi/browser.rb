@@ -132,10 +132,14 @@ module Puppeteer
         AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
         connection = Connection.new(transport, logger: logger)
 
-        # Verify that this endpoint speaks WebDriver BiDi (and is ready) before creating a new session.
-        status = connection.async_send_command('session.status', {}, timeout: timeout_ms).wait
-        unless status.is_a?(Hash) && status['ready'] == true
-          raise Error, "WebDriver BiDi endpoint is not ready: #{status.inspect}"
+        # Verify that this endpoint speaks WebDriver BiDi before creating a
+        # new session. A successful status response proves protocol support;
+        # readiness is not required (an endpoint with a running session
+        # reports ready=false).
+        begin
+          connection.async_send_command('session.status', {}, timeout: timeout_ms).wait
+        rescue Connection::ProtocolError => error
+          raise Error, "WebDriver BiDi endpoint is not available: #{error.message}"
         end
 
         create(connection: connection, launcher: nil, ws_endpoint: ws_endpoint,
