@@ -3,6 +3,20 @@
 require 'spec_helper'
 
 RSpec.describe 'Browser' do
+  describe 'Browser.connected' do
+    it 'should set the browser connected state' do
+      with_test_state do |browser:, **|
+        browser_ws_endpoint = browser.ws_endpoint
+
+        Puppeteer::Bidi.connect(browser_ws_endpoint) do |new_browser|
+          expect(new_browser.connected?).to be(true)
+          new_browser.disconnect
+          expect(new_browser.connected?).to be(false)
+        end
+      end
+    end
+  end
+
   describe "target events" do
     it "should work" do
       with_test_state do |browser:, server:, **|

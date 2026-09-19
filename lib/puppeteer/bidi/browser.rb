@@ -66,7 +66,10 @@ module Puppeteer
         @emitter = Core::EventEmitter.new
         @browser_contexts = {}
 
-        @core_browser.once(:disconnected) { @emitter.dispose }
+        @core_browser.once(:disconnected) do
+          @disconnected = true
+          @emitter.dispose
+        end
 
         # Create default browser context
         default_user_context = @core_browser.default_user_context
@@ -365,6 +368,13 @@ module Puppeteer
       # @rbs return: bool
       def disconnected?
         @disconnected
+      end
+
+      # Whether the browser is still connected, mirroring upstream
+      # `Browser.connected`.
+      # @rbs return: bool
+      def connected?
+        !@disconnected
       end
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
