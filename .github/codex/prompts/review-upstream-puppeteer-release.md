@@ -26,7 +26,9 @@ authorized GitHub write.
 2. Fetch the public `puppeteer/puppeteer` history for the exact range in
    `.github/codex/upstream-release-context.json`.
 3. Review the release notes, commits, pull requests, implementation changes, and tests in that range. Compare both
-   the TypeScript implementation and its tests when deciding parity.
+   the TypeScript implementation and its tests when deciding parity. Trace shared API/base classes, utilities,
+   guards, injected code, and required prerequisites as described in `CLAUDE/porting_puppeteer.md`; method presence
+   or generated-source changes alone do not establish behavior parity.
 4. List every material upstream Puppeteer behavior, public API, implementation, or test change in the release.
    Group commits only when they implement the same logical change. Repository-only release mechanics, formatting,
    and CI maintenance may be omitted when they have no bearing on shipped Puppeteer behavior.
@@ -43,6 +45,11 @@ This gem supports only WebDriver BiDi and Firefox.
 - Mark changes for browser engines or transports outside this gem's scope `do_not_port`.
 - Do not reject a browser-independent API change merely because upstream also has a CDP implementation; inspect its
   BiDi implementation and Firefox tests first.
+- Missing Ruby prerequisites or absence from local agent documentation do not justify `do_not_port`. Include
+  required prerequisites in `gem_scope` and explain necessary Ruby adaptations in `rationale`.
+- Check upstream test bodies and expectation conditions, including browser, protocol, platform, and version.
+  Do not infer a blanket Firefox limitation from a platform-specific exclusion or a historical issue. Include
+  pinned source/test references and distinguish source-based findings from executed verification in the rationale.
 - For a change marked `port`, identify the likely Ruby APIs or repository paths in `gem_scope`.
 - For a change marked `do_not_port`, use an empty `gem_scope` unless naming an existing gem surface materially
   clarifies the decision.

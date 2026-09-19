@@ -225,14 +225,16 @@ Ported from [Puppeteer's click.spec.ts](https://github.com/puppeteer/puppeteer/b
 #### Page Tests (3 tests in spec/integration/page_spec.rb)
 
 1. **Page.url**: Verify URL updates after navigation
-2. **Page.setJavaScriptEnabled**: Control JavaScript execution (pending - Firefox limitation)
+2. **Page.setJavaScriptEnabled**: Control JavaScript execution
 
-**All 108 integration tests pass** (4 pending due to Firefox BiDi limitations).
+Historical implementation results: 108 examples, 0 failures, 4 pending. These counts and pending reasons are not
+evidence of current browser support or current test results.
 
-### Firefox BiDi Limitations
+### Verifying Firefox BiDi Limitations
 
-- `emulation.setScriptingEnabled`: Part of WebDriver BiDi spec but not yet implemented in Firefox
-- Tests gracefully skip with clear messages using RSpec's `skip` feature
+Check the selected upstream expectations, current browser version, and observed failure before declaring a
+command unsupported. Do not copy historical Firefox limitations into new tests. Follow the
+[pending/skip policy](rspec_pending_vs_skip.md) and retain the complete assertions under the narrow affected condition.
 
 ### Implementation Best Practices Learned
 
@@ -307,7 +309,7 @@ got: [object Object] {"type":"viewport"}
 - **IntersectionObserver**: Fast and accurate visibility detection
 - **Auto-scrolling**: Ensures elements are clickable before interaction
 - **Event-driven**: URL updates via events enable proper async handling
-- **Thread-safe**: BiDi protocol handles concurrent operations naturally
+- **Concurrency**: Protocol request IDs do not protect shared Ruby state; verify guards and lifecycle ordering
 
 ### Future Enhancements
 
@@ -336,5 +338,4 @@ Based on Puppeteer's implementation:
 3. **BiDi protocol details matter** (string vs hash for origin parameter)
 4. **Follow Puppeteer's architecture** (delegation patterns, event handling)
 5. **Test simplicity** - stay faithful to Puppeteer's test structure
-6. **Browser limitations** - gracefully handle unimplemented features (setScriptingEnabled)
-
+6. **Browser limitations** - verify affected versions and conditions before excluding a test

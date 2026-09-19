@@ -278,13 +278,15 @@ end
 - `lib/puppeteer/bidi/frame.rb`: Constructor signature, page method, parent_frame method, frame events
 - `lib/puppeteer/bidi/page.rb`: main_frame initialization, event emitter delegation
 
-## BiDi Protocol Limitations
+## Historical Investigation of BiDi Behavior
 
 ### Frame.frameElement with Shadow DOM
 
-**Status**: Not supported in BiDi protocol
+This investigation did not record an upstream revision or browser version. Treat it as historical context, not a
+current support claim or permission to disable tests. Reproduce against the selected upstream implementation and
+browser, and apply the [pending/skip policy](rspec_pending_vs_skip.md).
 
-`Frame#frame_element` returns `nil` for iframes inside Shadow DOM (both open and closed).
+The recorded behavior was that `Frame#frame_element` returned `nil` for iframes inside Shadow DOM (both open and closed).
 
 #### Root Cause
 
@@ -333,13 +335,10 @@ Frame element tagName: iframe
 
 #### Test Status
 
-```ruby
-it 'should handle shadow roots', pending: 'BiDi protocol limitation: no DOM.getFrameOwner equivalent' do
-  # ...
-end
-```
-
-This is a **protocol limitation**, not an implementation bug in this library.
+Retain the full shadow-root test and check current upstream expectations before adding a narrowly conditioned
+pending declaration. The absence of a CDP-equivalent command alone does not prove a BiDi behavior is impossible;
+inspect the shared implementation and query traversal as well. Do not replace the body with a placeholder or
+classify missing Ruby support as a browser defect.
 
 ## Commit Reference
 
