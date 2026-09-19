@@ -31,6 +31,7 @@ require "puppeteer/bidi/lazy_arg"
 require "puppeteer/bidi/cookie_utils"
 require "puppeteer/bidi/devices"
 require "puppeteer/bidi/http_utils"
+require "puppeteer/bidi/p_selector_parser"
 require "puppeteer/bidi/js_handle"
 require "puppeteer/bidi/keyboard"
 require "puppeteer/bidi/mouse"
@@ -118,7 +119,9 @@ module Puppeteer
           args: args,
           timeout: timeout,
           accept_insecure_certs: accept_insecure_certs,
-          logger: logger
+          logger: logger,
+          headers: headers,
+          ws_options: ws_options
         )
       else
         runner = ReactorRunner.new
@@ -131,7 +134,9 @@ module Puppeteer
               args: args,
               timeout: timeout,
               accept_insecure_certs: accept_insecure_certs,
-              logger: logger
+              logger: logger,
+              headers: headers,
+              ws_options: ws_options
             )
           end
         rescue StandardError
