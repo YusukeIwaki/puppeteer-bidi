@@ -490,6 +490,11 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
 
       element = page.wait_for_selector('div >>> h1') do
         page.evaluate(add_shadow_host, 'div')
+        expect(page.query_selector('div >>> h1')).to be_nil
+
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(page.query_selector('div >>> h1')).to be_nil
+
         page.evaluate(add_element_to_shadow_root, 'div', 'h1')
       end
 
@@ -505,6 +510,11 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
       page.evaluate(add_shadow_host, 'div')
 
       element = page.wait_for_selector('div >>> h1') do
+        expect(page.query_selector('div >>> h1')).to be_nil
+
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(page.query_selector('div >>> h1')).to be_nil
+
         page.evaluate(add_element_to_shadow_root, 'div', 'h1')
       end
 
@@ -527,6 +537,11 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
             host.attachShadow({ mode: 'open' }).appendChild(inner);
           }
         JS
+        expect(page.query_selector('div >>> h1')).to be_nil
+
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(page.query_selector('div >>> h1')).to be_nil
+
         page.evaluate(<<~JS)
           () => {
             const h1 = document.createElement('h1');
@@ -550,6 +565,32 @@ RSpec.describe 'Frame.waitForSelector', type: :integration do
     # produce a mutation, so MutationPoller has nothing to react to.
     # See https://github.com/whatwg/dom/issues/1287.
     skip 'mutation polling cannot observe a shadow root attached without a mutation'
+
+    with_test_state do |page:, server:, **|
+      page.goto(server.empty_page)
+
+      element = page.wait_for_selector('div >>> h1') do
+        page.evaluate(add_element, 'div')
+        expect(page.query_selector('div >>> h1')).to be_nil
+
+        page.evaluate('() => new Promise(resolve => setTimeout(resolve, 40))')
+        expect(page.query_selector('div >>> h1')).to be_nil
+
+        page.evaluate(<<~JS)
+          () => {
+            const host = document.querySelector('div');
+            const shadow = host.attachShadow({ mode: 'open' });
+            const h1 = document.createElement('h1');
+            h1.textContent = 'inside';
+            shadow.appendChild(h1);
+          }
+        JS
+      end
+
+      text = page.evaluate('(element) => element.textContent', element)
+      expect(text).to eq('inside')
+      element.dispose
+    end
   end
 
   it 'should work for selector with a pseudo class' do
