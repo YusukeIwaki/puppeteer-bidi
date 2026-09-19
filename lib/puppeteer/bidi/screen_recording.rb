@@ -85,7 +85,7 @@ module Puppeteer
       # Iterate the recorded bytes, mirroring async iteration over the
       # upstream stream. Blocks until the recording has stopped.
       # @rbs &block: (String) -> void -- Chunk handler
-      # @rbs return: Enumerator | ScreenRecording -- Enumerator without a block
+      # @rbs return: Enumerator[String, void] | ScreenRecording -- Enumerator without a block
       def each(&block)
         return enum_for(:each) unless block
 
