@@ -17,6 +17,10 @@ module Puppeteer
 
       # Logger factory shared with browser objects created from this connection.
       attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)?
+      # Whether the logger was explicitly supplied. An explicit factory that
+      # returns nil for a channel disables that channel instead of falling
+      # back to legacy warnings.
+      attr_reader :logger_explicit #: bool
 
       # @rbs transport: Transport
       # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to env-gated debug output
@@ -28,6 +32,7 @@ module Puppeteer
         @event_listeners = {} #: Hash[String, Array[^(untyped) -> void]]
         @closed = false
         @logger = logger || Debug.default_logger
+        @logger_explicit = !logger.nil?
         @debug_send = @logger&.call(Debug::BIDI_SEND)
         @debug_receive = @logger&.call(Debug::BIDI_RECEIVE)
         @debug_error = @logger&.call(Debug::ERROR)
@@ -68,8 +73,6 @@ module Puppeteer
           # Wait for response with timeout
           begin
             result = AsyncUtils.async_timeout(timeout, promise).wait
-
-            @debug_receive&.call(result.inspect)
 
             unless result.is_a?(Hash) && result.key?('type')
               raise ProtocolError, "Protocol Error. Message is not in BiDi protocol format: #{result.inspect}"
@@ -144,14 +147,14 @@ module Puppeteer
 
       private
 
-      # Report diagnostics through the error logger when enabled,
-      # falling back to `warn` otherwise.
+      # Report diagnostics through the error logger when enabled. Without
+      # an explicit logger, fall back to `warn` for legacy behavior.
       # @rbs message: String -- Diagnostic message
       # @rbs return: void
       def log_error(message)
         if @debug_error
           @debug_error.call(message)
-        else
+        elsif !@logger_explicit
           warn message
         end
       end
@@ -177,6 +180,9 @@ module Puppeteer
       # @rbs message: Hash[String, untyped]
       # @rbs return: void
       def handle_message(message)
+        # Log each incoming protocol message once, mirroring upstream.
+        @debug_receive&.call(JSON.generate(message))
+
         # Response to a command (has 'id' field)
         if message['id']
           handle_response(message)
@@ -208,8 +214,6 @@ module Puppeteer
       def handle_event(message)
         method = message['method']
         params = message['params'] || {}
-
-        @debug_receive&.call("Event #{method}: #{params.inspect}")
 
         listeners = @event_listeners[method]
         return unless listeners

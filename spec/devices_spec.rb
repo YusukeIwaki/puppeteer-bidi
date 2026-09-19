@@ -42,7 +42,7 @@ RSpec.describe Puppeteer::Bidi::KnownDevices do
   describe "Page#emulate" do
     let(:page) do
       Puppeteer::Bidi::Page.new(
-        double("browser_context", logger: nil),
+        double("browser_context", logger: nil, logger_explicit: false),
         double("core_browsing_context", closed?: false)
       )
     end

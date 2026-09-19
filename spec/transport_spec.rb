@@ -270,8 +270,13 @@ RSpec.describe Puppeteer::Bidi::Transport do
       ->(prefix) { ->(*args) { logged_store[prefix] << args } }
     end
 
-    it "falls back to warn for diagnostics when the logger disables the error channel" do
+    it "stays silent when an explicit logger disables the error channel" do
       transport = described_class.new("ws://127.0.0.1:9222/session", logger: ->(_prefix) { nil })
+      expect { transport.send(:log_error, "boom") }.not_to output.to_stderr
+    end
+
+    it "falls back to warn for diagnostics without an explicit logger" do
+      transport = described_class.new("ws://127.0.0.1:9222/session")
       expect { transport.send(:log_error, "boom") }.to output(/boom/).to_stderr
     end
   end

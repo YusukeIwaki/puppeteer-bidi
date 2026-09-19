@@ -25,4 +25,35 @@ RSpec.describe Puppeteer::Bidi::Locator do
       expect(described_class.new.logger.call(Puppeteer::Bidi::Debug::ERROR)).to be_nil
     end
   end
+
+  describe "logger propagation" do
+    let(:logger) { ->(_prefix) { ->(*args) { args } } }
+    let(:page) do
+      Puppeteer::Bidi::Page.new(
+        double("browser_context", logger: logger, logger_explicit: true),
+        double("core_browsing_context", closed?: false)
+      )
+    end
+
+    it "inherits the page logger in NodeLocator" do
+      locator = page.locator("button")
+
+      expect(locator).to be_a(Puppeteer::Bidi::NodeLocator)
+      expect(locator.logger).to be(logger)
+    end
+
+    it "inherits the page logger in FunctionLocator" do
+      locator = page.locator(function: "() => document.body")
+
+      expect(locator).to be_a(Puppeteer::Bidi::FunctionLocator)
+      expect(locator.logger).to be(logger)
+    end
+
+    it "inherits the delegate logger in filtered locators" do
+      locator = page.locator("button").filter(->(handle) { handle })
+
+      expect(locator).to be_a(Puppeteer::Bidi::FilteredLocator)
+      expect(locator.logger).to be(logger)
+    end
+  end
 end

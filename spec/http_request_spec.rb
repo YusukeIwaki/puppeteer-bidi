@@ -53,6 +53,30 @@ RSpec.describe Puppeteer::Bidi::HTTPRequest do
         described_class.handle_interception_error(error)
       }.not_to output.to_stderr
     end
+
+    it "warns without an explicit logger when debugging is enabled" do
+      error = StandardError.new("NETWORK_ERROR")
+      ENV["DEBUG_BIDI_COMMAND"] = "1"
+      begin
+        expect {
+          described_class.handle_interception_error(error)
+        }.to output(/NETWORK_ERROR/).to_stderr
+      ensure
+        ENV.delete("DEBUG_BIDI_COMMAND")
+      end
+    end
+
+    it "stays silent with an explicitly disabled logger even when debugging is enabled" do
+      error = StandardError.new("NETWORK_ERROR")
+      ENV["DEBUG_BIDI_COMMAND"] = "1"
+      begin
+        expect {
+          described_class.handle_interception_error(error, ->(_prefix) { nil }, true)
+        }.not_to output.to_stderr
+      ensure
+        ENV.delete("DEBUG_BIDI_COMMAND")
+      end
+    end
   end
 
   describe ".from" do

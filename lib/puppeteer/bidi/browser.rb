@@ -15,6 +15,7 @@ module Puppeteer
       attr_reader :default_browser_context #: BrowserContext
       attr_reader :ws_endpoint #: String?
       attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      attr_reader :logger_explicit #: bool -- Whether the logger was explicitly supplied
 
       # @rbs connection: Connection -- BiDi connection
       # @rbs launcher: BrowserLauncher? -- Browser launcher instance
@@ -55,6 +56,7 @@ module Puppeteer
       def initialize(connection:, launcher:, core_browser:, session:, ws_endpoint:)
         @connection = connection
         @logger = connection.logger
+        @logger_explicit = connection.logger_explicit
         @launcher = launcher
         @closed = false
         @disconnected = false
@@ -473,10 +475,15 @@ module Puppeteer
         end
       end
 
+      # Report swallowed errors through the error logger when enabled.
+      # Without an explicit logger, preserve the legacy env-gated warning.
       def debug_error(error)
-        return unless ENV['DEBUG_BIDI_COMMAND']
-
-        warn(error.full_message)
+        debug_error_fn = @logger&.call(Debug::ERROR)
+        if debug_error_fn
+          debug_error_fn.call(error)
+        elsif !@logger_explicit && ENV['DEBUG_BIDI_COMMAND']
+          warn(error.full_message)
+        end
       end
 
       # @rbs () -> Enumerator[BrowserTarget | PageTarget | FrameTarget, void]

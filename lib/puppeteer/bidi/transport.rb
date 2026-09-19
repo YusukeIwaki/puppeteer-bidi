@@ -46,8 +46,7 @@ module Puppeteer
         @on_message = nil
         @on_close = nil
         @logger = logger || Debug.default_logger
-        @debug_send = @logger&.call(Debug::BIDI_SEND)
-        @debug_receive = @logger&.call(Debug::BIDI_RECEIVE)
+        @logger_explicit = !logger.nil?
         @debug_error = @logger&.call(Debug::ERROR)
         @headers = ws_option(ws_options, :headers) || headers
         @keep_alive = !!ws_option(ws_options, :keep_alive)
@@ -223,28 +222,30 @@ module Puppeteer
         close unless @closed
       end
 
+      # Protocol traffic itself is logged once by Connection. Without an
+      # explicit logger, preserve the legacy DEBUG_PROTOCOL output here.
       def debug_print_send(message)
-        if @debug_send
-          @debug_send.call(JSON.generate(message))
-        elsif %w[1 true].include?(ENV['DEBUG_PROTOCOL'])
+        return if @logger_explicit
+
+        if %w[1 true].include?(ENV['DEBUG_PROTOCOL'])
           puts "SEND >> #{JSON.generate(message)}"
         end
       end
 
       def debug_print_receive(message)
-        if @debug_receive
-          @debug_receive.call(JSON.generate(message))
-        elsif %w[1 true].include?(ENV['DEBUG_PROTOCOL'])
+        return if @logger_explicit
+
+        if %w[1 true].include?(ENV['DEBUG_PROTOCOL'])
           puts "RECV << #{JSON.generate(message)}"
         end
       end
 
-      # Report diagnostics through the error logger when enabled,
-      # falling back to `warn` otherwise.
+      # Report diagnostics through the error logger when enabled. Without
+      # an explicit logger, fall back to `warn` for legacy behavior.
       def log_error(message)
         if @debug_error
           @debug_error.call(message)
-        else
+        elsif !@logger_explicit
           warn message
         end
       end

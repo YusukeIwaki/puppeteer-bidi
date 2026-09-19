@@ -37,6 +37,7 @@ module Puppeteer
         @process = nil
         @ws_endpoint = nil
         resolved = logger || Debug.default_logger
+        @logger_explicit = !logger.nil?
         @debug_error = resolved&.call(Debug::ERROR)
       end
 
@@ -170,12 +171,12 @@ module Puppeteer
         end
       end
 
-      # Report diagnostics through the error logger when enabled,
-      # falling back to `warn` otherwise.
+      # Report diagnostics through the error logger when enabled. Without
+      # an explicit logger, fall back to `warn` for legacy behavior.
       def log_error(message)
         if @debug_error
           @debug_error.call(message)
-        else
+        elsif !@logger_explicit
           warn message
         end
       end

@@ -28,6 +28,14 @@ module Puppeteer
       attr_reader :timeout #: Numeric
       attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for diagnostics
 
+      # Extract the logger factory from a page, frame, or locator, mirroring
+      # how upstream constructors read `pageOrFrame.logger`/`delegate.logger`.
+      # @rbs owner: untyped -- Page, frame, or locator
+      # @rbs return: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, if any
+      def self.logger_for(owner)
+        owner.logger if owner.respond_to?(:logger)
+      end
+
       # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to a no-op
       # @rbs return: void
       def initialize(logger = nil)
@@ -553,7 +561,7 @@ module Puppeteer
       end
 
       def initialize(page_or_frame, function)
-        super()
+        super(Locator.logger_for(page_or_frame))
         @page_or_frame = page_or_frame
         @function = function
       end
@@ -580,7 +588,7 @@ module Puppeteer
     # Abstract locator that delegates to another locator.
     class DelegatedLocator < Locator
       def initialize(delegate)
-        super()
+        super(Locator.logger_for(delegate))
         @delegate = delegate
         copy_options(@delegate)
       end
@@ -688,7 +696,7 @@ module Puppeteer
       end
 
       def initialize(page_or_frame, selector_or_handle)
-        super()
+        super(Locator.logger_for(page_or_frame))
         @page_or_frame = page_or_frame
         @selector_or_handle = selector_or_handle
       end

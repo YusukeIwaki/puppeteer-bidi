@@ -123,7 +123,7 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
   end
 
   describe "Page#record" do
-    let(:browser_context) { double("browser_context", logger: nil) }
+    let(:browser_context) { double("browser_context", logger: nil, logger_explicit: false) }
     let(:recording_page) do
       Puppeteer::Bidi::Page.new(browser_context, double("page_browsing_context", closed?: false)).tap do |page_instance|
         frame = double("frame", browsing_context: core_context)

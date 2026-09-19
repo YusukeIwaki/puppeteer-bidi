@@ -57,14 +57,23 @@ RSpec.describe Puppeteer::Bidi::Connection do
       expect(sends.first.first).to include("session.status")
     end
 
-    it "logs incoming responses with the BiDi receive prefix" do
+    it "logs incoming responses with the BiDi receive prefix exactly once" do
       task = connection.async_send_command("session.status")
       transport.reply(transport.sent.first[:id], { "ready" => true })
       task.wait
 
       receives = logged[Puppeteer::Bidi::Debug::BIDI_RECEIVE]
       expect(receives.size).to eq(1)
-      expect(receives.first.first).to include("ready")
+      expect(JSON.parse(receives.first.first)).to include("id" => transport.sent.first[:id])
+    end
+
+    it "logs events with the BiDi receive prefix exactly once" do
+      connection
+      transport.receive({ "method" => "browsingContext.load", "params" => {} })
+
+      receives = logged[Puppeteer::Bidi::Debug::BIDI_RECEIVE]
+      expect(receives.size).to eq(1)
+      expect(JSON.parse(receives.first.first)).to include("method" => "browsingContext.load")
     end
 
     it "logs malformed messages with the error prefix instead of warning" do
@@ -77,6 +86,16 @@ RSpec.describe Puppeteer::Bidi::Connection do
 
     context "when the logger disables a channel" do
       let(:logger) { ->(_prefix) { nil } }
+
+      it "stays silent instead of warning" do
+        connection
+        expect { transport.receive({ "unexpected" => true }) }.not_to output.to_stderr
+        expect(logged).to be_empty
+      end
+    end
+
+    context "without an explicit logger" do
+      subject(:connection) { described_class.new(transport) }
 
       it "falls back to warn for diagnostics" do
         connection
