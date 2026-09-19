@@ -28,15 +28,15 @@ module Puppeteer
       WORD = "\\-\\w\\u0080-\\u{10FFFF}"
       GRAMMAR = [
         ["attribute",
-         /\[\s*(?:(?<namespace>\*|[#{WORD}]*)\\|)?(?<name>[#{WORD}]+)\s*(?:(?<operator>\W?=)\s*(?<value>.+?)\s*(\s(?<caseSensitive>[iIsS]))?\s*)?\]/u],
+         /\[\s*(?:(?<namespace>\*|[#{WORD}]*)\|)?(?<name>[#{WORD}]+)\s*(?:(?<operator>\W?=)\s*(?<value>.+?)\s*(\s(?<caseSensitive>[iIsS]))?\s*)?\]/u],
         ["id", /#(?<name>[#{WORD}]+)/u],
         ["class", /\.(?<name>[#{WORD}]+)/u],
         ["comma", /\s*,\s*/],
         ["combinator", /\s*(>>>>?|[\s>+~])\s*/],
         ["pseudo-element", /::(?<name>[#{WORD}]+)(?:\((?<argument>#{Regexp.escape(PAREN_PLACEHOLDER)}*)\))?/u],
         ["pseudo-class", /:(?<name>[#{WORD}]+)(?:\((?<argument>#{Regexp.escape(PAREN_PLACEHOLDER)}*)\))?/u],
-        ["universal", /(?:(?<namespace>\*|[#{WORD}]*)\\|)?\*/u],
-        ["type", /(?:(?<namespace>\*|[#{WORD}]*)\\|)?(?<name>[#{WORD}]+)/u],
+        ["universal", /(?:(?<namespace>\*|[#{WORD}]*)\|)?\*/u],
+        ["type", /(?:(?<namespace>\*|[#{WORD}]*)\|)?(?<name>[#{WORD}]+)/u],
         ["nesting", /&/],
       ].freeze
 
@@ -217,7 +217,8 @@ module Puppeteer
               )
               replacement << after unless after.nil? || after.empty?
               tokens[index, 1] = replacement
-              index += replacement.length - 1
+              # Mirror parsel-js `tokenizeBy`: advance a single step so the
+              # remaining string is re-examined with the same token rule.
               index += 1
             end
           end
@@ -225,7 +226,7 @@ module Puppeteer
           offset = 0
           result = [] #: Array[Token]
           tokens.each do |token|
-            raise "Unexpected sequence #{token} found" if token.is_a?(String)
+            raise "Unexpected sequence #{token} found at index #{offset}" if token.is_a?(String)
 
             token.pos = [offset, offset + token.content.length]
             offset += token.content.length
