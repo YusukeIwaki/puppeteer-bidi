@@ -16,7 +16,7 @@ module Puppeteer
       class LaunchError < Error; end
 
       # Removal retries for temporary profile directories, mirroring
-      # upstream's rm maxRetries/retryDelay.
+      # upstream's rm maxRetries/retryDelay with linear backoff.
       REMOVE_DIR_MAX_RETRIES = 10 #: Integer
       REMOVE_DIR_RETRY_DELAY = 0.1 #: Float
 
@@ -152,13 +152,17 @@ module Puppeteer
       def cleanup_temp_user_data_dir
         return unless @temp_user_data_dir && Dir.exist?(@temp_user_data_dir)
 
+        # rm_r (unlike rm_rf) surfaces deletion failures so they can be
+        # retried and reported instead of silently leaving a stale profile.
         attempts = 0
         begin
           attempts += 1
-          FileUtils.rm_rf(@temp_user_data_dir)
+          FileUtils.rm_r(@temp_user_data_dir)
+        rescue Errno::ENOENT
+          nil
         rescue SystemCallError => error
           if attempts <= REMOVE_DIR_MAX_RETRIES
-            sleep(REMOVE_DIR_RETRY_DELAY)
+            sleep(REMOVE_DIR_RETRY_DELAY * attempts)
             retry
           end
           # Log cleanup errors without replacing the original close/launch outcome.
