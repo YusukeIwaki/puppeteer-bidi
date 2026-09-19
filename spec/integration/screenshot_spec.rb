@@ -399,6 +399,28 @@ RSpec.describe 'Screenshot', type: :integration do
   end
 
   describe 'followSymlinks' do
+    it 'should follow symlinked screenshot paths by default' do
+      with_test_state do |page:, server:, **|
+        begin
+          tmpdir = Dir.mktmpdir('pptr-symlink-')
+          target_file = File.join(tmpdir, 'screenshot.png')
+          link_file = File.join(tmpdir, 'screenshot-link.png')
+          File.symlink(target_file, link_file)
+        rescue SystemCallError, NotImplementedError
+          skip 'symlinks are not supported on this platform'
+        end
+
+        begin
+          page.goto(server.empty_page)
+          page.screenshot(path: link_file)
+
+          expect(File.size(target_file)).to be > 0
+        ensure
+          FileUtils.rm_rf(tmpdir)
+        end
+      end
+    end
+
     it 'should reject screenshot to an existing symlink path' do
       with_test_state do |page:, server:, **|
         begin
