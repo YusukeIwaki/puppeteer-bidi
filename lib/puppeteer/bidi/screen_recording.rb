@@ -8,7 +8,20 @@ module Puppeteer
     # A screen recording started with `Page#record`, backed by the WebDriver
     # BiDi `browsingContext.startScreencast`/`stopScreencast` commands.
     # Mirrors upstream's `ScreenRecording`/`BidiScreenRecording`.
+    #
+    # Adaptation scope: upstream is a ReadableStream; Ruby exposes the bytes
+    # through `each` (blocking until stop, like stream iteration) and `data`.
+    # `pipe` accepts IO-like destinations responding to `write`, plus
+    # `end`/`close` for completion and optional `once` with `writableFinished`/
+    # `closed`/`destroyed` state for completion tracking. There is no Ruby
+    # equivalent of the `WritableStream` `pipeTo` overload; `close` covers the
+    # async-dispose contract (`close` stops the recording).
     class ScreenRecording
+      # Methods consulted, in any combination, to detect an already finished
+      # destination, mirroring upstream's
+      # `writableFinished || closed || destroyed` check plus Ruby's `closed?`.
+      FINISHED_STATE_METHODS = %i[writableFinished closed closed? destroyed].freeze #: Array[Symbol]
+
       attr_reader :page #: Page -- Recorded page
       attr_reader :options #: Hash[Symbol, untyped] -- Recording options
       attr_reader :data #: String? -- Recorded bytes, available after stop
@@ -24,7 +37,8 @@ module Puppeteer
         @debug_error = @logger&.call(Debug::ERROR)
         @destinations = Set.new #: Set[untyped]
         @data = nil
-        @stop_promise = nil #: Async::Promise? -- Completion of the in-flight stop, if any
+        @stopped = false
+        @completion = Async::Promise.new #: Async::Promise -- Settled when stop finishes, shared like `@guarded`
         @screencast_id = nil
         @path = nil
 
@@ -41,7 +55,7 @@ module Puppeteer
 
       # @rbs return: bool -- Whether the recording has stopped
       def stopped?
-        !@stop_promise.nil?
+        @stopped
       end
 
       # Start the screencast. Called by `Page#record`.
@@ -73,43 +87,57 @@ module Puppeteer
       # @rbs destination: untyped -- Object responding to `write`
       # @rbs return: untyped -- The destination
       def pipe(destination)
+        @destinations << destination
         if destination.respond_to?(:once)
           [:unpipe, :error, :close, :finish].each do |event|
             destination.once(event) { @destinations.delete(destination) }
           end
         end
-        @destinations << destination
         destination
       end
 
-      # Iterate the recorded bytes, mirroring async iteration over the
-      # upstream stream. Blocks until the recording has stopped.
+      # Iterate the recorded bytes, blocking until the recording has stopped,
+      # mirroring async iteration over the upstream stream.
       # @rbs &block: (String) -> void -- Chunk handler
       # @rbs return: Enumerator[String, void] | ScreenRecording -- Enumerator without a block
       def each(&block)
         return enum_for(:each) unless block
 
-        @stop_promise&.wait
+        @completion.wait
         yield @data if @data
         self
       end
 
       # Stop the recording. Concurrent callers wait for the in-flight stop
-      # instead of issuing duplicate stop commands, mirroring upstream's
-      # guarded stop.
+      # and share its outcome, mirroring upstream's `@guarded` stop.
       # @rbs return: void
       def stop
-        if @stop_promise
-          @stop_promise.wait
+        if @stopped
+          @completion.wait
           return
         end
-        @stop_promise = Async::Promise.new
+        @stopped = true
+        settled = false
         begin
           perform_stop
-        ensure
           close_destinations
-          @stop_promise.resolve(nil)
+        rescue StandardError => error
+          settled = true
+          @completion.reject(error)
+          raise
+        else
+          settled = true
+          @completion.resolve(nil)
+        ensure
+          # Cancellations bypass StandardError; still wake any waiters.
+          @completion.resolve(nil) unless settled
         end
+      end
+
+      # Stop the recording, covering upstream's async-dispose contract.
+      # @rbs return: void
+      def close
+        stop
       end
 
       private
@@ -129,35 +157,36 @@ module Puppeteer
         @debug_error&.call(result["error"]) if result.is_a?(Hash) && result["error"]
 
         file_path = (result.is_a?(Hash) ? result["path"] : nil) || @path
-        if file_path
-          begin
-            buffer = Bidi.read_binary_file(file_path)
-            @data = buffer
-            @destinations.each { |destination| destination.write(buffer) }
-          rescue => error
-            @debug_error&.call(error)
-          end
+        # An empty path reads nothing, mirroring the upstream falsy check.
+        return if file_path.nil? || file_path.empty?
+
+        begin
+          buffer = Bidi.read_binary_file(file_path)
+          @data = buffer
+          @destinations.each { |destination| destination.write(buffer) }
+        rescue => error
+          @debug_error&.call(error)
         end
       end
 
-      # End all piped destinations, never raising, then wait for evented
-      # destinations to finish, mirroring upstream `closeDestinations`.
+      # End all piped destinations, then wait for every completion together,
+      # mirroring upstream `closeDestinations`: listeners are registered for
+      # all destinations before waiting for any, so out-of-order completions
+      # are never missed. End errors propagate like upstream.
+      # Destinations without completion signaling are not waited on; upstream
+      # would await them forever.
       # @rbs return: void
       def close_destinations
         # Iterate over a copy: ending a destination fires its removal
         # handlers, which mutate the set.
         @destinations.dup.each do |destination|
-          begin
-            if destination.respond_to?(:end)
-              destination.end
-            elsif destination.respond_to?(:close)
-              destination.close
-            end
-          rescue
-            nil
+          if destination.respond_to?(:end)
+            destination.end
+          elsif destination.respond_to?(:close)
+            destination.close
           end
         end
-        @destinations.dup.each do |destination|
+        completions = @destinations.dup.filter_map do |destination|
           next unless destination.respond_to?(:once)
           next if destination_finished?(destination)
 
@@ -165,18 +194,18 @@ module Puppeteer
           [:finish, :close, :error].each do |event|
             destination.once(event) { finished.resolve(nil) unless finished.resolved? }
           end
-          finished.wait
+          finished
         end
+        completions.each(&:wait)
         @destinations.clear
       end
 
       # @rbs destination: untyped -- Piped destination
       # @rbs return: bool -- Whether the destination already completed
       def destination_finished?(destination)
-        return destination.closed? if destination.respond_to?(:closed?)
-        return !!destination.destroyed if destination.respond_to?(:destroyed)
-
-        false
+        FINISHED_STATE_METHODS.any? do |method|
+          destination.respond_to?(method) && destination.public_send(method)
+        end
       end
     end
   end

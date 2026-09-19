@@ -9,25 +9,40 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def stub_close_event(context)
+  # Mock core context mirroring upstream MockBrowsingContext: a command log,
+  # scripted start/stop responses, and close-event emission.
+  def stub_core_context(start_result:, stop_result:)
+    commands = []
+    context = double("core_browsing_context")
     closed_handlers = []
     allow(context).to receive(:once) do |event, &block|
       closed_handlers << block if event == :closed
     end
     allow(context).to receive(:fire_closed) { closed_handlers.each(&:call) }
-  end
-
-  def stub_core_context(start_result:, stop_result: { "path" => nil })
-    context = double("core_browsing_context")
-    stub_close_event(context)
-    allow(context).to receive(:start_screencast) { |*| Async { start_result } }
-    allow(context).to receive(:stop_screencast) { |*| Async { stop_result } }
+    allow(context).to receive(:start_screencast) do |**kwargs|
+      commands << [:start_screencast, kwargs]
+      Async { start_result }
+    end
+    allow(context).to receive(:stop_screencast) do |screencast_id|
+      commands << [:stop_screencast, screencast_id]
+      Async { stop_result }
+    end
+    allow(context).to receive(:commands) { commands }
     context
   end
 
   def stub_page(core_context)
     frame = double("frame", browsing_context: core_context)
     double("page", main_frame: frame)
+  end
+
+  # Real Page going through Page#record, mirroring upstream MockBidiPage.
+  def recording_page(core_context)
+    browser_context = double("browser_context", logger: nil, logger_explicit: false)
+    Puppeteer::Bidi::Page.new(browser_context, double("page_browsing_context", closed?: false)).tap do |page_instance|
+      frame = double("frame", browsing_context: core_context)
+      allow(page_instance).to receive(:main_frame).and_return(frame)
+    end
   end
 
   # Evented writable destination with upstream WritableDestination behavior.
@@ -79,6 +94,33 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
     end
   end
 
+  # Destination finishing after a delay, mirroring Node EventEmitter timing.
+  class DelayedFinishDestination < Puppeteer::Bidi::Core::EventEmitter
+    def initialize(delay, event: :finish)
+      super()
+      @delay = delay
+      @event = event
+      @written = []
+    end
+
+    attr_reader :written
+
+    def write(data)
+      @written << data
+      true
+    end
+
+    define_method(:end) do
+      delay = @delay
+      event = @event
+      Async do |task|
+        task.sleep(delay)
+        emit(event)
+      end
+      nil
+    end
+  end
+
   def wait_until(timeout: 5)
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
     until yield
@@ -88,86 +130,197 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
     end
   end
 
-  let(:core_context) do
-    File.binwrite(video_path, "video-bytes")
-    stub_core_context(start_result: { "screencast" => "cast-1", "path" => video_path })
-  end
-  let(:page) { stub_page(core_context) }
-  let(:options) { {} }
-
-  subject(:recording) do
-    described_class.new(page, options, ->(_prefix) { nil })
+  def stop_calls(context)
+    context.commands.count { |method, _| method == :stop_screencast }
   end
 
-  describe "#start" do
+  describe "upstream BidiScreenRecording cases" do
+    it "should start screen recording and read file on stop" do
+      File.binwrite(video_path, "video-data")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "screencast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      recording = recording_page(core_context).record(
+        audio: true, max_width: 1920, max_height: 1080, frame_rate: 60
+      )
+
+      expect(core_context.commands[0]).to eq(
+        [:start_screencast, { audio: true, video: { width: 1920, height: 1080, frameRate: 60 } }]
+      )
+
+      destination = StringIO.new
+      recording.pipe(destination)
+      recording.stop
+
+      expect(destination.string).to eq("video-data")
+      expect(recording.data).to eq("video-data")
+      expect(core_context.commands).to include([:stop_screencast, "screencast-1"])
+    end
+
+    it "should support fps as alias for frameRate" do
+      File.binwrite(video_path, "")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "screencast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      recording = recording_page(core_context).record(fps: 24)
+
+      expect(core_context.commands[0]).to eq(
+        [:start_screencast, { audio: nil, video: { frameRate: 24 } }]
+      )
+
+      recording.stop
+    end
+
+    it "should validate options" do
+      core_context = stub_core_context(start_result: {}, stop_result: {})
+      page = recording_page(core_context)
+
+      expect { page.record(max_width: 0) }
+        .to raise_error(Puppeteer::Bidi::Error, "`maxWidth` must be greater than 0.")
+      expect { page.record(max_width: -10) }
+        .to raise_error(Puppeteer::Bidi::Error, "`maxWidth` must be greater than 0.")
+      expect { page.record(max_height: 0) }
+        .to raise_error(Puppeteer::Bidi::Error, "`maxHeight` must be greater than 0.")
+      expect { page.record(max_height: -10) }
+        .to raise_error(Puppeteer::Bidi::Error, "`maxHeight` must be greater than 0.")
+      expect { page.record(frame_rate: 0) }
+        .to raise_error(Puppeteer::Bidi::Error, "`frameRate` must be greater than 0.")
+      expect { page.record(frame_rate: -5) }
+        .to raise_error(Puppeteer::Bidi::Error, "`frameRate` must be greater than 0.")
+      expect { page.record(fps: 0) }
+        .to raise_error(Puppeteer::Bidi::Error, "`fps` must be greater than 0.")
+      expect { page.record(fps: -5) }
+        .to raise_error(Puppeteer::Bidi::Error, "`fps` must be greater than 0.")
+    end
+
+    it "should support path returned from stopScreencast" do
+      stop_path = File.join(tmpdir, "from-stop.webm")
+      File.binwrite(stop_path, "hello")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "screencast-start", "path" => "" },
+        stop_result: { "path" => stop_path }
+      )
+      recording = recording_page(core_context).record
+
+      destination = StringIO.new
+      recording.pipe(destination)
+      recording.stop
+
+      expect(destination.string).to eq("hello")
+      expect(recording.data).to eq("hello")
+      expect(core_context.commands).to include([:stop_screencast, "screencast-start"])
+    end
+
+    it "should support async iteration" do
+      File.binwrite(video_path, "chunkA")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "screencast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      recording = recording_page(core_context).record
+
+      stopper = Async { recording.stop }
+
+      received = []
+      recording.each { |chunk| received << chunk }
+      stopper.wait
+
+      expect(received.join).to eq("chunkA")
+    end
+
+    it "should stop on browsing context closed" do
+      File.binwrite(video_path, "")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "screencast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      recording = recording_page(core_context).record
+
+      core_context.fire_closed
+      # Calling stop again should be a no-op
+      recording.stop
+
+      expect(stop_calls(core_context)).to eq(1)
+    end
+
+    it "should stop on close" do
+      File.binwrite(video_path, "")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "screencast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      recording = recording_page(core_context).record
+
+      recording.close
+
+      expect(recording.stopped?).to be(true)
+      expect(stop_calls(core_context)).to eq(1)
+    end
+  end
+
+  describe "supplementary stream contracts" do
+    def started_recording(start_result:, stop_result:)
+      File.binwrite(video_path, "video-bytes")
+      core_context = stub_core_context(start_result: start_result, stop_result: stop_result)
+      [recording_page(core_context).record, core_context]
+    end
+
     it "registers close handling before starting" do
-      recording
+      core_context = stub_core_context(start_result: {}, stop_result: {})
+      described_class.new(stub_page(core_context), {}, ->(_prefix) { nil })
 
       expect(core_context).to have_received(:once).with(:closed)
       expect(core_context).not_to have_received(:start_screencast)
     end
 
-    it "omits absent protocol keys" do
-      recording.start
-
-      expect(core_context).to have_received(:start_screencast).with(audio: nil, video: nil)
-    end
-
-    it "sends audio and video constraints" do
-      options.merge!(audio: true, max_width: 800, max_height: 600, frame_rate: 30)
-      recording.start
-
-      expect(core_context).to have_received(:start_screencast)
-        .with(audio: true, video: { width: 800, height: 600, frameRate: 30 })
-    end
-
     it "prefers frameRate over its fps alias" do
-      options.merge!(frame_rate: 30, fps: 15)
-      recording.start
+      core_context = stub_core_context(start_result: {}, stop_result: {})
+      recording_page(core_context).record(frame_rate: 30, fps: 15)
 
       expect(core_context).to have_received(:start_screencast)
         .with(audio: nil, video: { frameRate: 30 })
     end
 
-    it "falls back to fps when frameRate is absent" do
-      options.merge!(fps: 15)
-      recording.start
+    it "keeps an iterator open until the recording stops without caller-side polling" do
+      File.binwrite(video_path, "chunkA")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "screencast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      recording = recording_page(core_context).record
 
-      expect(core_context).to have_received(:start_screencast)
-        .with(audio: nil, video: { frameRate: 15 })
-    end
-  end
-
-  describe "#stop" do
-    it "delivers the recorded bytes to piped destinations and closes them" do
-      recording.start
-      destination = StringIO.new
-      recording.pipe(destination)
-
+      received = []
+      completed = false
+      reader = Async do
+        recording.each { |chunk| received << chunk }
+        completed = true
+      end
+      Async::Task.current.sleep(0.02)
+      returned_before_stop = completed
       recording.stop
+      reader.wait
 
-      expect(recording.stopped?).to be(true)
-      expect(recording.data).to eq("video-bytes")
-      expect(destination.string).to eq("video-bytes")
-      expect(destination.closed?).to be(true)
-    end
-
-    it "is idempotent" do
-      recording.start
-      recording.stop
-      recording.stop
-
-      expect(core_context).to have_received(:stop_screencast).once
+      expect([returned_before_stop, received]).to eq([false, ["chunkA"]])
     end
 
     it "makes concurrent stops wait for the in-flight stop" do
+      recording, core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
       gate = Async::Promise.new
       entered = false
+      stop_count = 0
       allow(core_context).to receive(:stop_screencast) do
         entered = true
-        Async { gate.wait; { "path" => video_path } }
+        stop_count += 1
+        Async do
+          gate.wait
+          { "path" => video_path }
+        end
       end
-      recording.start
 
       first = Async { recording.stop }
       wait_until { entered }
@@ -184,29 +337,45 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       first.wait
       second.wait
 
-      expect(core_context).to have_received(:stop_screencast).once
+      expect(stop_count).to eq(1)
       expect(recording.data).to eq("video-bytes")
     end
 
-    it "supports iterating the recorded bytes" do
-      recording.start
-      received = []
-      reader = Async do
-        loop do
-          recording.each { |chunk| received << chunk }
-          break unless received.empty?
+    it "shares stop failures with concurrent callers" do
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      broken = double("broken destination", write: true)
+      allow(broken).to receive(:end).and_raise(StandardError, "end boom")
+      recording.pipe(broken)
 
-          Async::Task.current.sleep(0.01)
+      errors = []
+      first = Async do
+        begin
+          recording.stop
+        rescue StandardError => error
+          errors << error
         end
       end
-      recording.stop
-      reader.wait
+      second = Async do
+        begin
+          recording.stop
+        rescue StandardError => error
+          errors << error
+        end
+      end
+      first.wait
+      second.wait
 
-      expect(received).to eq(["video-bytes"])
+      expect(errors.map(&:message)).to eq(["end boom", "end boom"])
     end
 
     it "writes each destination once even when piped twice" do
-      recording.start
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
       destination = StringIO.new
       recording.pipe(destination)
       recording.pipe(destination)
@@ -216,7 +385,10 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
     end
 
     it "removes destinations that error before the bytes arrive" do
-      recording.start
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
       destination = EventedDestination.new
       recording.pipe(destination)
       destination.fire(:error)
@@ -227,7 +399,10 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
     end
 
     it "waits for evented destinations to finish closing" do
-      recording.start
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
       destination = EventedDestination.new(async_finish: true)
       recording.pipe(destination)
 
@@ -239,7 +414,70 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       expect(destination.written).to eq(["video-bytes"])
     end
 
+    it "completes when a destination errors while closing" do
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      destination = EventedDestination.new(async_finish: true)
+      recording.pipe(destination)
+
+      stopper = Async { recording.stop }
+      wait_until { destination.close_called? }
+      destination.fire(:error)
+      stopper.wait
+
+      expect(destination.written).to eq(["video-bytes"])
+    end
+
+    it "recognizes an already finished writable destination without waiting for another finish event" do
+      File.binwrite(video_path, "chunkA")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      recording = recording_page(core_context).record
+      destination = double("finished destination", write: true, end: nil, writableFinished: true, closed?: false)
+      allow(destination).to receive(:once)
+      recording.pipe(destination)
+
+      finished = false
+      stopper = Async do
+        recording.stop
+        finished = true
+      end
+      Async::Task.current.sleep(0.02)
+
+      expect(finished).to be(true)
+    ensure
+      stopper&.stop
+    end
+
+    it "registers completion listeners for all destinations before waiting for the first" do
+      File.binwrite(video_path, "chunkA")
+      core_context = stub_core_context(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      recording = recording_page(core_context).record
+      recording.pipe(DelayedFinishDestination.new(0.05))
+      recording.pipe(DelayedFinishDestination.new(0.01))
+
+      finished = false
+      stopper = Async do
+        recording.stop
+        finished = true
+      end
+      Async::Task.current.sleep(0.1)
+
+      expect(finished).to be(true)
+    ensure
+      stopper&.stop
+    end
+
     it "stops without a screencast id and still closes destinations" do
+      core_context = stub_core_context(start_result: {}, stop_result: {})
+      recording = described_class.new(stub_page(core_context), {}, ->(_prefix) { nil })
       destination = StringIO.new
       recording.pipe(destination)
 
@@ -250,23 +488,15 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       expect(destination.closed?).to be(true)
     end
 
-    it "dispatches stop when the browsing context closes" do
-      recording.start
-      core_context.fire_closed
-
-      expect(core_context).to have_received(:stop_screencast).once
-      expect(recording.stopped?).to be(true)
-    end
-
     it "logs stop failures and falls back to the start path" do
-      File.binwrite(video_path, "video-bytes")
       logged = []
       logger = ->(_prefix) { ->(*args) { logged << args } }
-      failing = stub_core_context(
+      core_context = stub_core_context(
         start_result: { "screencast" => "cast-1", "path" => video_path },
         stop_result: { "path" => nil, "error" => "timed out" }
       )
-      recording = described_class.new(stub_page(failing), {}, logger)
+      File.binwrite(video_path, "video-bytes")
+      recording = described_class.new(stub_page(core_context), {}, logger)
       recording.start
       recording.stop
 
@@ -275,43 +505,33 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
     end
   end
 
-  describe "Page#record" do
-    let(:browser_context) { double("browser_context", logger: nil, logger_explicit: false) }
-    let(:recording_page) do
-      Puppeteer::Bidi::Page.new(browser_context, double("page_browsing_context", closed?: false)).tap do |page_instance|
-        frame = double("frame", browsing_context: core_context)
-        allow(page_instance).to receive(:main_frame).and_return(frame)
-      end
-    end
-
-    it "rejects non-positive dimensions and rates with the upstream errors" do
-      expect { recording_page.record(max_width: 0) }
-        .to raise_error(Puppeteer::Bidi::Error, "`maxWidth` must be greater than 0.")
-      expect { recording_page.record(max_height: -1) }
-        .to raise_error(Puppeteer::Bidi::Error, "`maxHeight` must be greater than 0.")
-      expect { recording_page.record(frame_rate: 0) }
-        .to raise_error(Puppeteer::Bidi::Error, "`frameRate` must be greater than 0.")
-      expect { recording_page.record(fps: 0) }
-        .to raise_error(Puppeteer::Bidi::Error, "`fps` must be greater than 0.")
+  describe "Page#record file handling" do
+    def file_recording_page(start_result:, stop_result: {})
+      core_context = stub_core_context(start_result: start_result, stop_result: stop_result)
+      recording_page(core_context)
     end
 
     it "stops the recording and re-raises when starting fails" do
+      page = file_recording_page(start_result: {}, stop_result: {})
+      core_context = page.main_frame.browsing_context
       allow(core_context).to receive(:start_screencast).and_raise(StandardError, "no screencast")
       path = File.join(tmpdir, "nested", "out.webm")
 
-      expect { recording_page.record(path: path) }.to raise_error(StandardError, "no screencast")
+      expect { page.record(path: path) }.to raise_error(StandardError, "no screencast")
       expect(File.exist?(path)).to be(true)
     end
 
     it "refuses to overwrite an existing file when overwrite is false" do
+      page = file_recording_page(start_result: {}, stop_result: {})
       path = File.join(tmpdir, "out.webm")
       File.binwrite(path, "original")
 
-      expect { recording_page.record(path: path, overwrite: false) }.to raise_error(Errno::EEXIST)
+      expect { page.record(path: path, overwrite: false) }.to raise_error(Errno::EEXIST)
       expect(File.binread(path)).to eq("original")
     end
 
     it "rejects symlinked paths with ELOOP while following is disabled" do
+      page = file_recording_page(start_result: {}, stop_result: {})
       target = File.join(tmpdir, "out.webm")
       link = File.join(tmpdir, "out-link.webm")
       File.binwrite(target, "original")
@@ -324,7 +544,7 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       saved = Puppeteer::Bidi.follow_symlinks?
       Puppeteer::Bidi.set_follow_symlinks(false)
       begin
-        expect { recording_page.record(path: link) }.to raise_error(Errno::ELOOP)
+        expect { page.record(path: link) }.to raise_error(Errno::ELOOP)
       ensure
         Puppeteer::Bidi.set_follow_symlinks(saved)
       end
