@@ -23,6 +23,8 @@ module Puppeteer
       end
 
       class Proxy < SimpleDelegator
+        LIFECYCLE_STATE_PREDICATES = %i[connected? closed? disconnected?].freeze
+
         # @rbs runner: ReactorRunner -- Reactor runner
         # @rbs target: untyped -- Target object to proxy
         # @rbs owns_runner: bool -- Whether to close runner on close/disconnect
@@ -34,8 +36,12 @@ module Puppeteer
         end
 
         def method_missing(name, *args, **kwargs, &block)
-          if @owns_runner && @runner.closed? && close_like?(name)
-            return nil
+          if @runner.closed?
+            return nil if @owns_runner && close_like?(name)
+
+            if args.empty? && kwargs.empty? && block.nil? && lifecycle_state_predicate?(name)
+              return @runner.wrap(__getobj__.public_send(name))
+            end
           end
 
           begin
@@ -84,6 +90,13 @@ module Puppeteer
 
         def close_like?(name)
           name == :close || name == :disconnect
+        end
+
+        def lifecycle_state_predicate?(name)
+          return false unless LIFECYCLE_STATE_PREDICATES.include?(name)
+          return false unless defined?(Browser)
+
+          __getobj__.is_a?(Browser)
         end
       end
 

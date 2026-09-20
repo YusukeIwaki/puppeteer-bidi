@@ -111,9 +111,11 @@ module Puppeteer
       # @rbs frame: Frame -- Owning frame
       # @rbs interception_enabled: bool -- Whether interception is enabled
       # @rbs redirect: HTTPRequest? -- Redirected request
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Retained logger for error paths detached from the frame
+      # @rbs logger_explicit: bool -- Whether the logger was explicitly supplied
       # @rbs return: HTTPRequest
-      def self.from(core_request, frame, interception_enabled, redirect: nil)
-        request = new(core_request, frame, interception_enabled, redirect)
+      def self.from(core_request, frame, interception_enabled, redirect: nil, logger: nil, logger_explicit: false)
+        request = new(core_request, frame, interception_enabled, redirect, logger, logger_explicit)
         request.send(:initialize_request)
         request
       end
@@ -130,10 +132,15 @@ module Puppeteer
       # @rbs frame: Frame -- Owning frame
       # @rbs interception_enabled: bool -- Whether interception is enabled
       # @rbs redirect: HTTPRequest? -- Redirected request
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Retained logger for error paths detached from the frame
+      # @rbs logger_explicit: bool -- Whether the logger was explicitly supplied
       # @rbs return: void
-      def initialize(core_request, frame, interception_enabled, redirect)
+      def initialize(core_request, frame, interception_enabled, redirect, logger = nil, logger_explicit = false)
         @request = core_request
         @frame = frame
+        @logger = logger
+        @logger_explicit = logger_explicit
+        @debug_error = logger&.call(Debug::ERROR)
         @redirect_chain = redirect ? redirect.send(:redirect_chain_internal) : []
         @response = nil
         @authentication_handled = false
@@ -392,6 +399,8 @@ module Puppeteer
             @frame,
             @interception[:enabled],
             redirect: self,
+            logger: @logger,
+            logger_explicit: @logger_explicit,
           )
           @redirect_chain << self
 
@@ -449,7 +458,7 @@ module Puppeteer
           ).wait
         rescue => error
           @interception[:handled] = false
-          self.class.handle_interception_error(error)
+          self.class.handle_interception_error(error, @logger, @logger_explicit)
         end
       end
 
@@ -560,7 +569,11 @@ module Puppeteer
         headers
       end
 
-      def self.handle_interception_error(error)
+      # @rbs error: StandardError -- Interception failure
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Retained logger, used instead of reaching through the frame
+      # @rbs logger_explicit: bool -- Whether the logger was explicitly supplied
+      # @rbs return: nil
+      def self.handle_interception_error(error, logger = nil, logger_explicit = false)
         message = error.message.to_s
         if message.include?("Invalid header") ||
            message.include?("Unsafe header") ||
@@ -569,7 +582,12 @@ module Puppeteer
           raise error
         end
 
-        warn(error.full_message) if ENV["DEBUG_BIDI_COMMAND"]
+        debug_error = logger&.call(Debug::ERROR)
+        if debug_error
+          debug_error.call(error.full_message)
+        elsif !logger_explicit
+          warn(error.full_message) if ENV["DEBUG_BIDI_COMMAND"]
+        end
         nil
       end
     end

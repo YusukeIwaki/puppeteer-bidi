@@ -3,6 +3,36 @@
 require 'spec_helper'
 
 RSpec.describe 'Browser' do
+  describe 'Browser.connected' do
+    it 'should set the browser connected state' do
+      with_test_state do |browser:, **|
+        browser_ws_endpoint = browser.ws_endpoint
+
+        begin
+          new_browser = Puppeteer::Bidi::Browser.connect(browser_ws_endpoint)
+        rescue Puppeteer::Bidi::Connection::ProtocolError => error
+          raise unless error.message.include?('Maximum number of active sessions')
+
+          # Firefox's WebDriver BiDi server allows a single active session, so a second
+          # connection to the shared test browser cannot start a session.
+          # Upstream allows FAIL/PASS for this Firefox remote-lifecycle case
+          # (TestExpectations at puppeteer-v25.11.0); recheck if the browser
+          # lifts the limit.
+          pending "Firefox WebDriver BiDi supports a single active session: #{error.message}"
+          raise error
+        end
+
+        begin
+          expect(new_browser.connected?).to be(true)
+          new_browser.disconnect
+          expect(new_browser.connected?).to be(false)
+        ensure
+          new_browser.close unless new_browser.closed?
+        end
+      end
+    end
+  end
+
   describe "target events" do
     it "should work" do
       with_test_state do |browser:, server:, **|

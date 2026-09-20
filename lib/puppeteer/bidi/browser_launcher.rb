@@ -15,9 +15,20 @@ module Puppeteer
     class BrowserLauncher
       class LaunchError < Error; end
 
+      # Removal retries for temporary profile directories, mirroring
+      # upstream's rm maxRetries/retryDelay with linear backoff.
+      REMOVE_DIR_MAX_RETRIES = 10 #: Integer
+      REMOVE_DIR_RETRY_DELAY = 0.1 #: Float
+
       attr_reader :executable_path, :user_data_dir
 
-      def initialize(executable_path: nil, user_data_dir: nil, headless: true, args: [])
+      # @rbs executable_path: String? -- Path to browser executable
+      # @rbs user_data_dir: String? -- Path to user data directory
+      # @rbs headless: bool -- Run browser in headless mode
+      # @rbs args: Array[String] -- Additional browser arguments
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to env-gated debug output
+      # @rbs return: void
+      def initialize(executable_path: nil, user_data_dir: nil, headless: true, args: [], logger: nil)
         @executable_path = executable_path || find_firefox
         @user_data_dir = user_data_dir
         @headless = headless
@@ -25,6 +36,9 @@ module Puppeteer
         @temp_user_data_dir = nil
         @process = nil
         @ws_endpoint = nil
+        resolved = logger || Debug.default_logger
+        @logger_explicit = !logger.nil?
+        @debug_error = resolved&.call(Debug::ERROR)
       end
 
       # Launch Firefox and return BiDi WebSocket endpoint
@@ -130,12 +144,40 @@ module Puppeteer
           # this once Firefox supports mouse event dispatch from the main frame
           # context. See https://bugzilla.mozilla.org/show_bug.cgi?id=1773393.
           'fission.webContentIsolationStrategy': 0,
+          # Ensure remote settings do not hit the network, mirroring upstream's
+          # Firefox default profile preferences.
+          'services.settings.server': 'data:,#remote-settings-dummy/v1',
         }
       end
 
       def cleanup_temp_user_data_dir
-        if @temp_user_data_dir && Dir.exist?(@temp_user_data_dir)
-          FileUtils.rm_rf(@temp_user_data_dir)
+        return unless @temp_user_data_dir && Dir.exist?(@temp_user_data_dir)
+
+        # rm_r (unlike rm_rf) surfaces deletion failures so they can be
+        # retried and reported instead of silently leaving a stale profile.
+        attempts = 0
+        begin
+          attempts += 1
+          FileUtils.rm_r(@temp_user_data_dir)
+        rescue Errno::ENOENT
+          nil
+        rescue SystemCallError => error
+          if attempts <= REMOVE_DIR_MAX_RETRIES
+            sleep(REMOVE_DIR_RETRY_DELAY * attempts)
+            retry
+          end
+          # Log cleanup errors without replacing the original close/launch outcome.
+          log_error("Failed to remove temporary user data dir #{@temp_user_data_dir}: #{error.message}")
+        end
+      end
+
+      # Report diagnostics through the error logger when enabled. Without
+      # an explicit logger, fall back to `warn` for legacy behavior.
+      def log_error(message)
+        if @debug_error
+          @debug_error.call(message)
+        elsif !@logger_explicit
+          warn message
         end
       end
 
@@ -186,7 +228,7 @@ module Puppeteer
             end
           end
         rescue => e
-          warn "Error reading stdout: #{e.message}"
+          log_error("Error reading stdout: #{e.message}")
         end
 
         stderr_thread = Thread.new do
@@ -200,7 +242,7 @@ module Puppeteer
             end
           end
         rescue => e
-          warn "Error reading stderr: #{e.message}"
+          log_error("Error reading stderr: #{e.message}")
         end
 
         # Wait for WebSocket endpoint to be detected
@@ -208,14 +250,14 @@ module Puppeteer
           if Time.now > deadline
             stdout_thread.kill
             stderr_thread.kill
-            warn "Timeout waiting for BiDi endpoint. stdout: #{output_lines.join}"
-            warn "stderr: #{error_lines.join}"
+            log_error("Timeout waiting for BiDi endpoint. stdout: #{output_lines.join}")
+            log_error("stderr: #{error_lines.join}")
             return nil
           end
 
           # Check if process died
           unless @process.alive?
-            warn "Firefox process died. stderr: #{error_lines.join}"
+            log_error("Firefox process died. stderr: #{error_lines.join}")
             return nil
           end
 

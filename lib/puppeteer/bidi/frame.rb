@@ -8,6 +8,8 @@ module Puppeteer
     # Following Puppeteer's BidiFrame implementation
     class Frame
       attr_reader :browsing_context #: Core::BrowsingContext
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      attr_reader :logger_explicit #: bool -- Whether the logger was explicitly supplied
 
       # Factory method following Puppeteer's BidiFrame.from pattern
       # @rbs parent: Page | Frame -- Parent page or frame
@@ -24,6 +26,8 @@ module Puppeteer
       # @rbs return: void
       def initialize(parent, browsing_context)
         @parent = parent
+        @logger = parent.logger
+        @logger_explicit = parent.logger_explicit
         @browsing_context = browsing_context
         @frames = {} # Map of browsing context id to Frame (like WeakMap in JS)
         @exposed_functions = {} # Map of function name to ExposedFunction
@@ -627,6 +631,19 @@ module Puppeteer
 
       private
 
+      # Report diagnostics through the error logger when enabled. Without
+      # an explicit logger, fall back to `warn` for legacy behavior.
+      # @rbs message: String -- Diagnostic message
+      # @rbs return: void
+      def log_error(message)
+        debug_error = @logger&.call(Debug::ERROR)
+        if debug_error
+          debug_error.call(message)
+        elsif !@logger_explicit
+          warn message
+        end
+      end
+
       # Initialize the frame by setting up child frame tracking
       # Following Puppeteer's BidiFrame.#initialize pattern exactly
       # @rbs return: void
@@ -671,7 +688,9 @@ module Puppeteer
           http_request = HTTPRequest.from(
             request,
             self,
-            page.network_interception_enabled?
+            page.network_interception_enabled?,
+            logger: @logger,
+            logger_explicit: @logger_explicit
           )
 
           request.once(:success) do
@@ -691,6 +710,8 @@ module Puppeteer
             page.emit(:console, console_message_from_log_entry(entry))
           elsif entry["type"] == "javascript"
             page.emit(:pageerror, Error.new(entry["text"].to_s))
+          else
+            log_error("Unhandled LogEntry with type #{entry["type"].inspect} and level #{entry["level"].inspect}")
           end
         end
       end

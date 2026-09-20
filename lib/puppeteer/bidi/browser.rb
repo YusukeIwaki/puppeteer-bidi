@@ -14,6 +14,8 @@ module Puppeteer
       attr_reader :process #: untyped
       attr_reader :default_browser_context #: BrowserContext
       attr_reader :ws_endpoint #: String?
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      attr_reader :logger_explicit #: bool -- Whether the logger was explicitly supplied
 
       # @rbs connection: Connection -- BiDi connection
       # @rbs launcher: BrowserLauncher? -- Browser launcher instance
@@ -53,6 +55,8 @@ module Puppeteer
       # @rbs return: void
       def initialize(connection:, launcher:, core_browser:, session:, ws_endpoint:)
         @connection = connection
+        @logger = connection.logger
+        @logger_explicit = connection.logger_explicit
         @launcher = launcher
         @closed = false
         @disconnected = false
@@ -62,7 +66,10 @@ module Puppeteer
         @emitter = Core::EventEmitter.new
         @browser_contexts = {}
 
-        @core_browser.once(:disconnected) { @emitter.dispose }
+        @core_browser.once(:disconnected) do
+          @disconnected = true
+          @emitter.dispose
+        end
 
         # Create default browser context
         default_user_context = @core_browser.default_user_context
@@ -78,27 +85,31 @@ module Puppeteer
       # @rbs args: Array[String]? -- Additional browser arguments
       # @rbs timeout: Numeric? -- Launch timeout in seconds
       # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+      # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
       # @rbs return: Browser -- Browser instance
       def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                      accept_insecure_certs: false)
+                      accept_insecure_certs: false, logger: nil, headers: nil, ws_options: nil)
         launcher = BrowserLauncher.new(
           executable_path: executable_path,
           user_data_dir: user_data_dir,
           headless: headless,
-          args: args || []
+          args: args || [],
+          logger: logger
         )
 
         ws_endpoint = launcher.launch
 
         # Create transport and connection
-        transport = Transport.new(ws_endpoint)
+        transport = Transport.new(ws_endpoint, logger: logger, headers: headers, ws_options: ws_options)
 
         # Start transport connection in background thread with Sync reactor
         # Sync is the preferred way to run async code at the top level
         timeout_ms = ((timeout || 30) * 1000).to_i
         AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
 
-        connection = Connection.new(transport)
+        connection = Connection.new(transport, logger: logger)
 
         browser = create(connection: connection, launcher: launcher, ws_endpoint: ws_endpoint,
                          accept_insecure_certs: accept_insecure_certs)
@@ -110,17 +121,25 @@ module Puppeteer
       # @rbs ws_endpoint: String -- WebSocket endpoint URL
       # @rbs timeout: Numeric? -- Connect timeout in seconds
       # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+      # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
       # @rbs return: Browser -- Browser instance
-      def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false)
-        transport = Transport.new(ws_endpoint)
+      def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil,
+                       headers: nil, ws_options: nil)
+        transport = Transport.new(ws_endpoint, logger: logger, headers: headers, ws_options: ws_options)
         timeout_ms = ((timeout || 30) * 1000).to_i
         AsyncUtils.async_timeout(timeout_ms) { transport.connect }.wait
-        connection = Connection.new(transport)
+        connection = Connection.new(transport, logger: logger)
 
-        # Verify that this endpoint speaks WebDriver BiDi (and is ready) before creating a new session.
-        status = connection.async_send_command('session.status', {}, timeout: timeout_ms).wait
-        unless status.is_a?(Hash) && status['ready'] == true
-          raise Error, "WebDriver BiDi endpoint is not ready: #{status.inspect}"
+        # Verify that this endpoint speaks WebDriver BiDi before creating a
+        # new session. A successful status response proves protocol support;
+        # readiness is not required (an endpoint with a running session
+        # reports ready=false).
+        begin
+          connection.async_send_command('session.status', {}, timeout: timeout_ms).wait
+        rescue Connection::ProtocolError => error
+          raise Error, "WebDriver BiDi endpoint is not available: #{error.message}"
         end
 
         create(connection: connection, launcher: nil, ws_endpoint: ws_endpoint,
@@ -172,7 +191,7 @@ module Puppeteer
       # Get the browser target.
       # @rbs return: BrowserTarget -- Browser target
       def target
-        @target ||= BrowserTarget.new(self)
+        @target ||= BrowserTarget.new(self, @logger)
       end
 
       # Get all cookies in the default browser context.
@@ -302,13 +321,13 @@ module Puppeteer
       # Close the browser
       # @rbs return: void
       def close
-        return if @closed
+        return if @connection.closed?
 
         @closed = true
 
         begin
           begin
-            @connection.async_send_command('browser.close', {}).wait
+            @core_browser.close.wait
           rescue StandardError => e
             debug_error(e)
           ensure
@@ -353,6 +372,13 @@ module Puppeteer
       # @rbs return: bool
       def disconnected?
         @disconnected
+      end
+
+      # Whether the browser is still connected, mirroring upstream
+      # `Browser.connected`.
+      # @rbs return: bool
+      def connected?
+        !@disconnected
       end
 
       # Wait until a target (top-level browsing context) satisfies the predicate.
@@ -463,10 +489,15 @@ module Puppeteer
         end
       end
 
+      # Report swallowed errors through the error logger when enabled.
+      # Without an explicit logger, preserve the legacy env-gated warning.
       def debug_error(error)
-        return unless ENV['DEBUG_BIDI_COMMAND']
-
-        warn(error.full_message)
+        debug_error_fn = @logger&.call(Debug::ERROR)
+        if debug_error_fn
+          debug_error_fn.call(error)
+        elsif !@logger_explicit && ENV['DEBUG_BIDI_COMMAND']
+          warn(error.full_message)
+        end
       end
 
       # @rbs () -> Enumerator[BrowserTarget | PageTarget | FrameTarget, void]

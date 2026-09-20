@@ -15,8 +15,10 @@ elsif ruby_version >= Gem::Version.new('3.3.0') && ruby_version < Gem::Version.n
         "See: https://github.com/socketry/async/issues/424"
 end
 
+require "fileutils"
 require "puppeteer/bidi/version"
 require "puppeteer/bidi/errors"
+require "puppeteer/bidi/debug"
 
 require "puppeteer/bidi/async_utils"
 require "puppeteer/bidi/reactor_runner"
@@ -27,7 +29,9 @@ require "puppeteer/bidi/deserializer"
 require "puppeteer/bidi/injected_source"
 require "puppeteer/bidi/lazy_arg"
 require "puppeteer/bidi/cookie_utils"
+require "puppeteer/bidi/devices"
 require "puppeteer/bidi/http_utils"
+require "puppeteer/bidi/p_selector_parser"
 require "puppeteer/bidi/js_handle"
 require "puppeteer/bidi/keyboard"
 require "puppeteer/bidi/mouse"
@@ -43,6 +47,7 @@ require "puppeteer/bidi/realm"
 require "puppeteer/bidi/exposed_function"
 require "puppeteer/bidi/frame"
 require "puppeteer/bidi/file_chooser"
+require "puppeteer/bidi/screen_recording"
 require "puppeteer/bidi/page"
 require "puppeteer/bidi/target"
 require "puppeteer/bidi/browser_context"
@@ -61,10 +66,13 @@ module Puppeteer
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+    # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+    # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+    # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
     def self.launch(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                    accept_insecure_certs: false, &block)
+                    accept_insecure_certs: false, logger: nil, headers: nil, ws_options: nil, &block)
       unless block
         raise ArgumentError, 'Block is required for launch_with_sync'
       end
@@ -77,7 +85,10 @@ module Puppeteer
             headless: headless,
             args: args,
             timeout: timeout,
-            accept_insecure_certs: accept_insecure_certs
+            accept_insecure_certs: accept_insecure_certs,
+            logger: logger,
+            headers: headers,
+            ws_options: ws_options
           )
           block.call(browser)
         ensure
@@ -93,9 +104,13 @@ module Puppeteer
     # @rbs args: Array[String]? -- Additional browser arguments
     # @rbs timeout: Numeric? -- Launch timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+    # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+    # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+    # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
     # @rbs return: Browser -- Browser instance
     def self.launch_browser_instance(executable_path: nil, user_data_dir: nil, headless: true, args: nil, timeout: nil,
-                                     accept_insecure_certs: false)
+                                     accept_insecure_certs: false, logger: nil, headers: nil,
+                                     ws_options: nil)
       if async_context?
         Browser.launch(
           executable_path: executable_path,
@@ -103,7 +118,10 @@ module Puppeteer
           headless: headless,
           args: args,
           timeout: timeout,
-          accept_insecure_certs: accept_insecure_certs
+          accept_insecure_certs: accept_insecure_certs,
+          logger: logger,
+          headers: headers,
+          ws_options: ws_options
         )
       else
         runner = ReactorRunner.new
@@ -115,7 +133,10 @@ module Puppeteer
               headless: headless,
               args: args,
               timeout: timeout,
-              accept_insecure_certs: accept_insecure_certs
+              accept_insecure_certs: accept_insecure_certs,
+              logger: logger,
+              headers: headers,
+              ws_options: ws_options
             )
           end
         rescue StandardError
@@ -132,9 +153,13 @@ module Puppeteer
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
     # @rbs timeout: Numeric? -- Connect timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+    # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+    # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+    # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
     # @rbs &block: (Browser) -> untyped -- Block to execute with the browser instance
     # @rbs return: untyped
-    def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, &block)
+    def self.connect(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil, headers: nil,
+                   ws_options: nil, &block)
       unless block
         raise ArgumentError, 'Block is required for connect_with_sync'
       end
@@ -142,7 +167,9 @@ module Puppeteer
       Sync do
         begin
           browser = connect_to_browser_instance(ws_endpoint, timeout: timeout,
-                                                accept_insecure_certs: accept_insecure_certs)
+                                                accept_insecure_certs: accept_insecure_certs,
+                                                logger: logger, headers: headers,
+                                                ws_options: ws_options)
           block.call(browser)
         ensure
           browser&.close
@@ -154,15 +181,21 @@ module Puppeteer
     # @rbs ws_endpoint: String -- WebSocket endpoint URL
     # @rbs timeout: Numeric? -- Connect timeout in seconds
     # @rbs accept_insecure_certs: bool -- Accept insecure certificates
+    # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+    # @rbs headers: Hash[String, String]? -- Deprecated handshake headers, superseded by ws_options
+    # @rbs ws_options: Hash[Symbol, untyped]? -- WebSocket options (:headers, :keep_alive, :keep_alive_interval_ms)
     # @rbs return: Browser -- Browser instance
-    def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false)
+    def self.connect_to_browser_instance(ws_endpoint, timeout: nil, accept_insecure_certs: false, logger: nil,
+                                         headers: nil, ws_options: nil)
       if async_context?
-        Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
+        Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs,
+                          logger: logger, headers: headers, ws_options: ws_options)
       else
         runner = ReactorRunner.new
         begin
           browser = runner.sync do
-            Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs)
+            Browser.connect(ws_endpoint, timeout: timeout, accept_insecure_certs: accept_insecure_certs,
+                          logger: logger, headers: headers, ws_options: ws_options)
           end
         rescue StandardError
           runner.close
@@ -172,6 +205,56 @@ module Puppeteer
         proxy = ReactorRunner::Proxy.new(runner, browser, owns_runner: true)
         proxy
       end
+    end
+
+    @follow_symlinks = true
+
+    # Defines whether file operations follow symlinks, mirroring upstream
+    # `PuppeteerNode.setFollowSymlinks`. Defaults to true for compatibility;
+    # when false, writes to symlinked paths raise Errno::ELOOP.
+    # @rbs follow_symlinks: bool -- Whether to follow symlinks
+    # @rbs return: void
+    def self.set_follow_symlinks(follow_symlinks)
+      @follow_symlinks = !!follow_symlinks
+    end
+
+    # @rbs return: bool -- Whether file operations follow symlinks
+    def self.follow_symlinks?
+      @follow_symlinks
+    end
+
+    # Write binary data to a file, creating parent directories as needed.
+    # Honors the global symlink policy: with following disabled, symlinked
+    # paths raise Errno::ELOOP instead of being traversed, and new files are
+    # created with mode 0600, mirroring upstream's no-follow file setup.
+    # @rbs path: String -- Destination file path
+    # @rbs data: String -- Binary data to write
+    # @rbs return: Integer -- Bytes written
+    def self.write_binary_file(path, data)
+      dir = File.dirname(path)
+      FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
+      unless follow_symlinks?
+        if File.const_defined?(:NOFOLLOW)
+          flags = File::WRONLY | File::CREAT | File::TRUNC | File::NOFOLLOW
+          File.open(path, flags, 0o600, binmode: true) { |file| file.write(data) }
+          return data.bytesize
+        end
+      end
+      File.binwrite(path, data)
+    end
+
+    # Read binary data from a file, honoring the global symlink policy:
+    # with following disabled, symlinked paths raise Errno::ELOOP instead of
+    # being traversed, mirroring upstream's no-follow file reads.
+    # @rbs path: String -- Source file path
+    # @rbs return: String -- File contents
+    def self.read_binary_file(path)
+      unless follow_symlinks?
+        if File.const_defined?(:NOFOLLOW)
+          return File.open(path, File::RDONLY | File::NOFOLLOW, binmode: true, &:read)
+        end
+      end
+      File.binread(path)
     end
 
     # @rbs return: bool -- Whether we're inside an Async task

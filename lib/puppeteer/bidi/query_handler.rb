@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 # rbs_inline: enabled
 
+require 'json'
 require 'singleton'
 
 module Puppeteer
@@ -31,59 +32,6 @@ module Puppeteer
 
       private
 
-      class SelectorAnalysis
-        attr_reader :selector
-
-        def initialize(selector)
-          @selector = selector
-        end
-
-        def requires_raf_polling?
-          pseudo_class_present?
-        end
-
-        private
-
-        def pseudo_class_present?
-          in_string = nil
-          escape = false
-          bracket_depth = 0
-
-          selector.each_char.with_index do |char, index|
-            if escape
-              escape = false
-              next
-            end
-
-            if in_string
-              if char == '\\'
-                escape = true
-              elsif char == in_string
-                in_string = nil
-              end
-              next
-            end
-
-            case char
-            when '"', "'"
-              in_string = char
-            when '['
-              bracket_depth += 1
-            when ']'
-              bracket_depth -= 1 if bracket_depth.positive?
-            when '\\'
-              escape = true
-            when ':'
-              next_char = selector[index + 1]
-              next if next_char == ':'
-              return true if bracket_depth.zero?
-            end
-          end
-
-          false
-        end
-      end
-
       def builtin_query_handler_entries
         Enumerator.new do |y|
           BUILTIN_QUERY_HANDLERS.each do |name, const_name|
@@ -110,18 +58,28 @@ module Puppeteer
         nil
       end
 
+      # Analyze a selector without an explicit handler prefix, mirroring
+      # upstream `GetQueryHandler`: pure CSS stays on the CSS handler while
+      # P-selectors (`>>>`, `>>>>`, `-p` pseudo-elements) go to the pierce
+      # handler with their parsed JSON form.
       def analyze_default_query_handler(selector)
-        analysis = SelectorAnalysis.new(selector)
-        polling = analysis.requires_raf_polling? ? 'raf' : 'mutation'
+        selectors, pure_css, has_pseudo_classes, has_aria =
+          PSelectorParser.parse_p_selectors(selector)
+
+        if pure_css
+          return Result.new(
+            updated_selector: selector,
+            polling: (has_pseudo_classes ? 'raf' : 'mutation'),
+            query_handler: resolve_handler_constant('CSSQueryHandler'),
+          )
+        end
 
         Result.new(
-          updated_selector: selector,
-          polling: polling,
-          query_handler: resolve_handler_constant('CSSQueryHandler'),
+          updated_selector: JSON.generate(selectors),
+          polling: (has_aria ? 'raf' : 'mutation'),
+          query_handler: resolve_handler_constant('PQueryHandler'),
         )
-      end
-
-      def default_query_handler_result(selector)
+      rescue StandardError
         Result.new(
           updated_selector: selector,
           polling: 'mutation',
@@ -159,9 +117,11 @@ module Puppeteer
         # after navigation (mirrors Puppeteer's @bindIsolatedHandle decorator pattern).
         adopted_element = realm.adopt_handle(element)
 
+        # Upstream queryOne awaits its (possibly async) query via
+        # evaluateHandle; awaiting is identity for sync handler scripts.
         result = realm.call_function(
           query_one_script,
-          false,
+          true,
           arguments: [
             Serializer.serialize(realm.puppeteer_util_lazy_arg),
             adopted_element.remote_value,
@@ -293,6 +253,42 @@ module Puppeteer
           end
           raise StandardError.new(message), cause: e
         end
+      end
+    end
+
+    # Pierce query handler for P-selectors (`>>>`, `>>>>`, `-p`
+    # pseudo-elements), mirroring upstream `PQueryHandler`. The selector is
+    # the parsed JSON form produced by `PSelectorParser.parse_p_selectors`.
+    class PQueryHandler < BaseQueryHandler
+      private
+
+      def query_one_script
+        <<~JAVASCRIPT
+        (PuppeteerUtil, element, selector) => {
+          return PuppeteerUtil.pQuerySelector(element, selector);
+        }
+        JAVASCRIPT
+      end
+
+      def query_all_script
+        <<~JAVASCRIPT
+        async (PuppeteerUtil, element, selector) => {
+          const results = [];
+          for await (const result of PuppeteerUtil.pQuerySelectorAll(element, selector)) {
+            results.push(result);
+          }
+          return results;
+        }
+        JAVASCRIPT
+      end
+
+      def wait_for_selector_script
+        <<~JAVASCRIPT
+        async (PuppeteerUtil, selector, root, visibility) => {
+          const element = await PuppeteerUtil.pQuerySelector(root || document, selector);
+          return PuppeteerUtil.checkVisibility(element, visibility === null ? undefined : visibility);
+        }
+        JAVASCRIPT
       end
     end
 

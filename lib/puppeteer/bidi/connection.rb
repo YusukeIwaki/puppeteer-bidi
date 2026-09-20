@@ -3,6 +3,7 @@
 
 require 'async'
 require 'async/promise'
+require 'json'
 
 module Puppeteer
   module Bidi
@@ -14,14 +15,27 @@ module Puppeteer
 
       DEFAULT_TIMEOUT = 30_000 #: Integer -- 30 seconds in milliseconds
 
+      # Logger factory shared with browser objects created from this connection.
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)?
+      # Whether the logger was explicitly supplied. An explicit factory that
+      # returns nil for a channel disables that channel instead of falling
+      # back to legacy warnings.
+      attr_reader :logger_explicit #: bool
+
       # @rbs transport: Transport
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to env-gated debug output
       # @rbs return: void
-      def initialize(transport)
+      def initialize(transport, logger: nil)
         @transport = transport
         @next_id = 1
         @pending_commands = {} #: Hash[Integer, Hash[Symbol, untyped]]
         @event_listeners = {} #: Hash[String, Array[^(untyped) -> void]]
         @closed = false
+        @logger = logger || Debug.default_logger
+        @logger_explicit = !logger.nil?
+        @debug_send = @logger&.call(Debug::BIDI_SEND)
+        @debug_receive = @logger&.call(Debug::BIDI_RECEIVE)
+        @debug_error = @logger&.call(Debug::ERROR)
 
         setup_transport_handlers
       end
@@ -50,10 +64,7 @@ module Puppeteer
           sent_at: Time.now
         }
 
-        # Debug output
-        if ENV['DEBUG_BIDI_COMMAND']
-          puts "[BiDi] Request #{method}: #{command.inspect}"
-        end
+        @debug_send&.call(JSON.generate(command))
 
         Async do
           # Send command through transport
@@ -62,11 +73,6 @@ module Puppeteer
           # Wait for response with timeout
           begin
             result = AsyncUtils.async_timeout(timeout, promise).wait
-
-            # Debug output
-            if ENV['DEBUG_BIDI_COMMAND']
-              puts "[BiDi] Response for #{method}: #{result.inspect}"
-            end
 
             unless result.is_a?(Hash) && result.key?('type')
               raise ProtocolError, "Protocol Error. Message is not in BiDi protocol format: #{result.inspect}"
@@ -141,6 +147,18 @@ module Puppeteer
 
       private
 
+      # Report diagnostics through the error logger when enabled. Without
+      # an explicit logger, fall back to `warn` for legacy behavior.
+      # @rbs message: String -- Diagnostic message
+      # @rbs return: void
+      def log_error(message)
+        if @debug_error
+          @debug_error.call(message)
+        elsif !@logger_explicit
+          warn message
+        end
+      end
+
       # @rbs return: Integer
       def next_id
         id = @next_id
@@ -162,6 +180,9 @@ module Puppeteer
       # @rbs message: Hash[String, untyped]
       # @rbs return: void
       def handle_message(message)
+        # Log each incoming protocol message once, mirroring upstream.
+        @debug_receive&.call(JSON.generate(message))
+
         # Response to a command (has 'id' field)
         if message['id']
           handle_response(message)
@@ -169,7 +190,7 @@ module Puppeteer
         elsif message['method']
           handle_event(message)
         else
-          warn "Unknown BiDi message format: #{message}"
+          log_error("Unknown BiDi message format: #{message}")
         end
       end
 
@@ -180,7 +201,7 @@ module Puppeteer
         pending = @pending_commands.delete(id)
 
         unless pending
-          warn "Received response for unknown command id: #{id}"
+          log_error("Received response for unknown command id: #{id}")
           return
         end
 
@@ -193,10 +214,6 @@ module Puppeteer
       def handle_event(message)
         method = message['method']
         params = message['params'] || {}
-
-        if ENV['DEBUG_BIDI_COMMAND']
-          puts "[BiDi] Event #{method}: #{params.inspect}"
-        end
 
         listeners = @event_listeners[method]
         return unless listeners

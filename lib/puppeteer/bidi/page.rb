@@ -67,12 +67,16 @@ module Puppeteer
       attr_reader :browsing_context #: Core::BrowsingContext
       attr_reader :browser_context #: BrowserContext
       attr_reader :timeout_settings #: TimeoutSettings
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      attr_reader :logger_explicit #: bool -- Whether the logger was explicitly supplied
 
       # @rbs browser_context: BrowserContext -- Parent browser context
       # @rbs browsing_context: Core::BrowsingContext -- Associated browsing context
       # @rbs return: void
       def initialize(browser_context, browsing_context)
         @browser_context = browser_context
+        @logger = browser_context.logger
+        @logger_explicit = browser_context.logger_explicit
         @browsing_context = browsing_context
         @timeout_settings = TimeoutSettings.new
         @emitter = Core::EventEmitter.new
@@ -253,7 +257,7 @@ module Puppeteer
             if path
               dir = File.dirname(path)
               FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
-              File.binwrite(path, Base64.decode64(data))
+              Bidi.write_binary_file(path, Base64.decode64(data))
             end
 
             return data
@@ -316,7 +320,7 @@ module Puppeteer
           FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
 
           # data is base64 encoded, decode and write
-          File.binwrite(path, Base64.decode64(data))
+          Bidi.write_binary_file(path, Base64.decode64(data))
         end
 
         data
@@ -428,8 +432,61 @@ module Puppeteer
         end
 
         pdf_data = Base64.decode64(data)
-        File.binwrite(path, pdf_data) if path
+        Bidi.write_binary_file(path, pdf_data) if path
         pdf_data
+      end
+
+      # Record this page using the WebDriver BiDi screencast commands.
+      # Returns a stoppable, pipeable recording.
+      # @rbs path: String? -- File path to save the recording to
+      # @rbs overwrite: bool? -- Overwrite the output file if it exists
+      # @rbs audio: bool? -- Whether to record audio
+      # @rbs max_width: Numeric? -- Maximum frame width in pixels
+      # @rbs max_height: Numeric? -- Maximum frame height in pixels
+      # @rbs frame_rate: Numeric? -- Maximum frame rate in frames per second
+      # @rbs fps: Numeric? -- Frame rate alias for frame_rate
+      # @rbs return: ScreenRecording -- The running recording
+      def record(path: nil, overwrite: nil, audio: nil, max_width: nil, max_height: nil, frame_rate: nil, fps: nil)
+        assert_not_closed
+
+        raise Error, "`maxWidth` must be greater than 0." unless max_width.nil? || max_width > 0
+        raise Error, "`maxHeight` must be greater than 0." unless max_height.nil? || max_height > 0
+        raise Error, "`frameRate` must be greater than 0." unless frame_rate.nil? || frame_rate > 0
+        raise Error, "`fps` must be greater than 0." unless fps.nil? || fps > 0
+
+        if path
+          dir = File.dirname(path)
+          if overwrite == false
+            Dir.mkdir(dir)
+          else
+            FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
+          end
+        end
+
+        stream = path ? open_record_stream(path, overwrite) : nil
+
+        recording = ScreenRecording.new(
+          self,
+          {
+            path: path,
+            overwrite: overwrite,
+            audio: audio,
+            max_width: max_width,
+            max_height: max_height,
+            frame_rate: frame_rate,
+            fps: fps,
+          },
+          @logger,
+        )
+
+        begin
+          recording.start
+        rescue => error
+          recording.stop
+          raise error
+        end
+        recording.pipe(stream) if stream
+        recording
       end
 
       # Evaluate JavaScript in the page context
@@ -608,7 +665,7 @@ module Puppeteer
       # Get the target associated with this page.
       # @rbs return: PageTarget -- Page target
       def target
-        @target ||= PageTarget.new(self)
+        @target ||= PageTarget.new(self, @logger)
       end
 
       # Reloads the page.
@@ -1149,6 +1206,27 @@ module Puppeteer
         nil
       end
 
+      # Emulate a device, combining user agent and viewport emulation.
+      # Accepts a `KnownDevices` entry (symbol keys) or an upstream-shaped
+      # device hash with string keys.
+      # @rbs device: Hash[Symbol | String, untyped] -- Device descriptor
+      # @rbs return: void
+      def emulate(device)
+        viewport = device[:viewport] || device["viewport"] || {}
+        user_agent = device[:user_agent] || device["userAgent"] || device["user_agent"]
+
+        set_user_agent(user_agent)
+        set_viewport(
+          width: viewport[:width] || viewport["width"],
+          height: viewport[:height] || viewport["height"],
+          device_scale_factor: viewport[:device_scale_factor].nil? ?
+            viewport["deviceScaleFactor"] : viewport[:device_scale_factor],
+          has_touch: viewport[:has_touch].nil? ? viewport["hasTouch"] : viewport[:has_touch],
+          is_mobile: viewport[:is_mobile].nil? ? viewport["isMobile"] : viewport[:is_mobile],
+          is_landscape: viewport[:is_landscape].nil? ? viewport["isLandscape"] : viewport[:is_landscape],
+        )
+      end
+
       # Set viewport size
       # @rbs width: Integer -- Viewport width in pixels
       # @rbs height: Integer -- Viewport height in pixels
@@ -1367,6 +1445,27 @@ module Puppeteer
       end
 
       private
+
+      # Open the recording output file, honoring the overwrite flag and the
+      # global symlink policy. With overwrite false, an existing file raises
+      # Errno::EEXIST; symlinked paths raise Errno::ELOOP when following is
+      # disabled.
+      # @rbs path: String -- Destination file path
+      # @rbs overwrite: bool? -- Overwrite an existing file
+      # @rbs return: File -- Open binary write handle
+      def open_record_stream(path, overwrite)
+        no_follow = !Bidi.follow_symlinks? && File.const_defined?(:NOFOLLOW)
+        flags = File::WRONLY | File::CREAT
+        flags |= overwrite == false ? File::EXCL : File::TRUNC
+        flags |= File::NOFOLLOW if no_follow
+
+        # No-follow files are created with mode 0600, mirroring upstream.
+        if no_follow
+          File.open(path, flags, 0o600, binmode: true)
+        else
+          File.open(path, flags, binmode: true)
+        end
+      end
 
       def request_listener_for(listener)
         @request_handlers[listener] ||= lambda do |request|

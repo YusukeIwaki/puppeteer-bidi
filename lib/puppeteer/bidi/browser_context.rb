@@ -34,12 +34,16 @@ module Puppeteer
 
       attr_reader :user_context #: Core::UserContext
       attr_reader :browser #: Browser
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for protocol diagnostics
+      attr_reader :logger_explicit #: bool -- Whether the logger was explicitly supplied
 
       # @rbs browser: Browser -- Parent browser instance
       # @rbs user_context: Core::UserContext -- Associated user context
       # @rbs return: void
       def initialize(browser, user_context)
         @browser = browser
+        @logger = browser.logger
+        @logger_explicit = browser.logger_explicit
         @user_context = user_context
         @pages = {}
         @frame_targets = {}
@@ -353,7 +357,7 @@ module Puppeteer
       def target_for_frame(frame)
         context_id = frame.browsing_context.id
         @frame_targets[context_id] ||= begin
-          target = FrameTarget.new(frame)
+          target = FrameTarget.new(frame, @logger)
           frame.browsing_context.once(:closed) do
             @frame_targets.delete(context_id)
           end

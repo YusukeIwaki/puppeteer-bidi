@@ -21,15 +21,31 @@ module Puppeteer
     class Locator
       RETRY_DELAY = 0.1
 
-      attr_reader :timeout #: Numeric
+      # No-op logger factory used when a locator has no logger of its own
+      # (e.g. an empty race), mirroring upstream's `?? noop` fallback.
+      NOOP_LOGGER = ->(_prefix) { nil }
 
-      def initialize
+      attr_reader :timeout #: Numeric
+      attr_reader :logger #: (^(String) -> (^(untyped) -> void)?)? -- Logger factory for diagnostics
+
+      # Extract the logger factory from a page, frame, or locator, mirroring
+      # how upstream constructors read `pageOrFrame.logger`/`delegate.logger`.
+      # @rbs owner: untyped -- Page, frame, or locator
+      # @rbs return: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, if any
+      def self.logger_for(owner)
+        owner.logger if owner.respond_to?(:logger)
+      end
+
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, defaults to a no-op
+      # @rbs return: void
+      def initialize(logger = nil)
         @visibility = nil
         @timeout = 30_000
         @ensure_element_is_in_viewport = true
         @wait_for_enabled = true
         @wait_for_stable_bounding_box = true
         @emitter = Core::EventEmitter.new
+        @logger = logger || NOOP_LOGGER
       end
 
       # Create a race between multiple locators.
@@ -405,7 +421,11 @@ module Puppeteer
             @emitter.emit(LocatorEvent::ACTION, nil)
             block.call(handle)
           rescue StandardError => error
-            handle.dispose if handle.respond_to?(:dispose)
+            begin
+              handle.dispose if handle.respond_to?(:dispose)
+            rescue StandardError => dispose_error
+              @logger&.call(Debug::ERROR)&.call(dispose_error)
+            end
             raise error
           end
         end
@@ -545,7 +565,7 @@ module Puppeteer
       end
 
       def initialize(page_or_frame, function)
-        super()
+        super(Locator.logger_for(page_or_frame))
         @page_or_frame = page_or_frame
         @function = function
       end
@@ -572,7 +592,7 @@ module Puppeteer
     # Abstract locator that delegates to another locator.
     class DelegatedLocator < Locator
       def initialize(delegate)
-        super()
+        super(Locator.logger_for(delegate))
         @delegate = delegate
         copy_options(@delegate)
       end
@@ -680,7 +700,7 @@ module Puppeteer
       end
 
       def initialize(page_or_frame, selector_or_handle)
-        super()
+        super(Locator.logger_for(page_or_frame))
         @page_or_frame = page_or_frame
         @selector_or_handle = selector_or_handle
       end
@@ -806,8 +826,10 @@ module Puppeteer
 
     # Locator that races multiple locators.
     class RaceLocator < Locator
+      # @rbs locators: Array[Locator] -- Locators to race
+      # @rbs return: void
       def initialize(locators)
-        super()
+        super(locators.first&.logger || NOOP_LOGGER)
         @locators = locators
       end
 

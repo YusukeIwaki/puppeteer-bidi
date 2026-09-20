@@ -25,6 +25,13 @@ module Puppeteer
           { realm: @id }
         end
 
+        # Logger factory from the owning connection, mirroring the
+        # realm-held logger upstream handles receive at construction.
+        # @rbs return: (^(String) -> (^(untyped) -> void)?)? -- Logger factory, if logging is enabled
+        def logger
+          session.connection.logger
+        end
+
         # Disown handles (remove references)
         # @rbs handles: Array[String] -- Handle IDs to disown
         # @rbs return: Async::Task[untyped]

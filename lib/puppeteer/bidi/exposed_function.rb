@@ -46,6 +46,9 @@ module Puppeteer
       # @rbs return: void
       def initialize(frame, name, apply, isolate: false)
         @frame = frame
+        @logger = frame.logger
+        @logger_explicit = frame.logger_explicit
+        @debug_error = @logger&.call(Debug::ERROR)
         @name = name
         @apply = apply
         @isolate = isolate
@@ -380,10 +383,16 @@ module Puppeteer
         @frame.browsing_context.user_context.browser.session
       end
 
+      # Report swallowed errors through the error logger when enabled.
+      # Without an explicit logger, preserve the legacy env-gated warning.
+      # @rbs error: StandardError -- Error to report
+      # @rbs return: void
       def debug_error(error)
-        return unless ENV["DEBUG_BIDI_COMMAND"]
-
-        warn(error.full_message)
+        if @debug_error
+          @debug_error.call(error)
+        elsif !@logger_explicit && ENV["DEBUG_BIDI_COMMAND"]
+          warn(error.full_message)
+        end
       end
     end
   end

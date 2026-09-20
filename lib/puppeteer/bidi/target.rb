@@ -5,9 +5,11 @@ module Puppeteer
   module Bidi
     class BrowserTarget
       # @rbs browser: Browser
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory
       # @rbs return: void
-      def initialize(browser)
+      def initialize(browser, logger)
         @browser = browser
+        @logger = logger
       end
 
       # @rbs return: nil
@@ -43,9 +45,11 @@ module Puppeteer
 
     class PageTarget
       # @rbs page: Page
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory
       # @rbs return: void
-      def initialize(page)
+      def initialize(page, logger)
         @page = page
+        @logger = logger
       end
 
       # @rbs return: Page
@@ -81,9 +85,11 @@ module Puppeteer
 
     class FrameTarget
       # @rbs frame: Frame
+      # @rbs logger: (^(String) -> (^(untyped) -> void)?)? -- Logger factory
       # @rbs return: void
-      def initialize(frame)
+      def initialize(frame, logger)
         @frame = frame
+        @logger = logger
       end
 
       # @rbs return: Page
