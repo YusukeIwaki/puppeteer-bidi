@@ -13,12 +13,12 @@ RSpec.describe 'Browser' do
         rescue Puppeteer::Bidi::Connection::ProtocolError => error
           raise unless error.message.include?('Maximum number of active sessions')
 
-          # Geckodriver allows a single active session, so a second
+          # Firefox's WebDriver BiDi server allows a single active session, so a second
           # connection to the shared test browser cannot start a session.
           # Upstream allows FAIL/PASS for this Firefox remote-lifecycle case
-          # (TestExpectations at puppeteer-v25.11.0); recheck if the driver
+          # (TestExpectations at puppeteer-v25.11.0); recheck if the browser
           # lifts the limit.
-          pending "geckodriver supports a single active session: #{error.message}"
+          pending "Firefox WebDriver BiDi supports a single active session: #{error.message}"
           raise error
         end
 

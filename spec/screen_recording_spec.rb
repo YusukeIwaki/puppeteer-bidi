@@ -267,6 +267,23 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       [recording_page(core_context).record, core_context]
     end
 
+    # Real evented core context with scripted screencast responses, for
+    # closed-dispatch ordering tests that need multiple listeners.
+    def evented_context(path:, gate: nil, stop_counts: nil)
+      context = Puppeteer::Bidi::Core::EventEmitter.new
+      context.define_singleton_method(:start_screencast) do |**_|
+        Async { { "screencast" => "cast-1", "path" => path } }
+      end
+      context.define_singleton_method(:stop_screencast) do |*_|
+        stop_counts << :stop if stop_counts
+        Async do
+          gate&.wait
+          { "path" => path }
+        end
+      end
+      context
+    end
+
     it "registers close handling before starting" do
       core_context = stub_core_context(start_result: {}, stop_result: {})
       described_class.new(stub_page(core_context), {}, ->(_prefix) { nil })
@@ -341,36 +358,164 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
       expect(recording.data).to eq("video-bytes")
     end
 
-    it "shares stop failures with in-flight callers while later stops succeed" do
-      recording, _core_context = started_recording(
+    it "rejects only the first caller when overlapping stops fail to end a destination" do
+      recording, core_context = started_recording(
         start_result: { "screencast" => "cast-1", "path" => video_path },
         stop_result: { "path" => video_path }
       )
+      gate = Async::Promise.new
+      entered = false
+      stop_count = 0
+      allow(core_context).to receive(:stop_screencast) do
+        entered = true
+        stop_count += 1
+        Async do
+          gate.wait
+          { "path" => video_path }
+        end
+      end
       broken = double("broken destination", write: true)
       allow(broken).to receive(:end).and_raise(StandardError, "end boom")
       recording.pipe(broken)
 
-      errors = []
+      outcomes = []
       first = Async do
         begin
           recording.stop
+          outcomes << [:first, :fulfilled]
         rescue StandardError => error
-          errors << error
+          outcomes << [:first, error.message]
         end
       end
+      wait_until { entered }
       second = Async do
         begin
           recording.stop
+          outcomes << [:second, :fulfilled]
         rescue StandardError => error
-          errors << error
+          outcomes << [:second, error.message]
         end
       end
+      Async::Task.current.sleep(0.05)
+
+      # The queued caller waits for the in-flight stop; it cannot complete
+      # while the gate is unresolved.
+      expect(outcomes).to be_empty
+
+      gate.resolve(nil)
       first.wait
       second.wait
 
-      expect(errors.map(&:message)).to eq(["end boom", "end boom"])
+      # Upstream `@guarded` serializes callers via a mutex: the queued caller
+      # re-runs the body, observes `stopped`, and succeeds instead of
+      # inheriting the first caller's failure.
+      expect(outcomes).to eq([[:first, "end boom"], [:second, :fulfilled]])
+      expect(stop_count).to eq(1)
       expect { recording.stop }.not_to raise_error
       expect { recording.close }.not_to raise_error
+    end
+
+    it "closes destinations and the readable side when the error logger raises" do
+      missing_path = File.join(tmpdir, "missing.webm")
+      logger = ->(_prefix) { ->(_error) { raise "logger boom" } }
+      core_context = stub_core_context(
+        start_result: { "screencast" => "cast-1", "path" => "" },
+        stop_result: { "path" => missing_path }
+      )
+      gate = Async::Promise.new
+      entered = false
+      allow(core_context).to receive(:stop_screencast) do
+        entered = true
+        Async do
+          gate.wait
+          { "path" => missing_path }
+        end
+      end
+      recording = described_class.new(stub_page(core_context), {}, logger)
+      recording.start
+      destination = StringIO.new
+      recording.pipe(destination)
+
+      outcomes = []
+      first = Async do
+        begin
+          recording.stop
+          outcomes << [:first, :fulfilled]
+        rescue StandardError => error
+          outcomes << [:first, error.message]
+        end
+      end
+      wait_until { entered }
+      second = Async do
+        begin
+          recording.stop
+          outcomes << [:second, :fulfilled]
+        rescue StandardError => error
+          outcomes << [:second, error.message]
+        end
+      end
+      gate.resolve(nil)
+      first.wait
+      second.wait
+
+      # Upstream `finally { await closeDestinations() }`: the first caller's
+      # logger failure still propagates, queued and later callers succeed,
+      # and cleanup always runs.
+      expect(outcomes).to eq([[:first, "logger boom"], [:second, :fulfilled]])
+      expect(destination.closed?).to be(true)
+      expect { recording.stop }.not_to raise_error
+      expect { recording.close }.not_to raise_error
+
+      received = []
+      reader_done = false
+      reader = Async do
+        recording.each { |chunk| received << chunk }
+        reader_done = true
+      end
+      Async::Task.current.sleep(0.02)
+      expect([reader_done, received]).to eq([true, []])
+    ensure
+      reader&.stop
+    end
+
+    it "releases stop coordination when the in-flight stop is cancelled" do
+      recording, core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      gate = Async::Promise.new
+      entered = false
+      allow(core_context).to receive(:stop_screencast) do
+        entered = true
+        Async do
+          gate.wait
+          { "path" => video_path }
+        end
+      end
+
+      owner_outcome = nil
+      owner = Async do
+        begin
+          recording.stop
+          owner_outcome = :fulfilled
+        rescue Async::Stop
+          owner_outcome = :stopped
+        end
+      end
+      wait_until { entered }
+      owner.stop
+      owner.wait
+      # Release the stubbed protocol task so the reactor can finish.
+      gate.resolve(nil)
+
+      later_done = false
+      later = Async do
+        recording.stop
+        later_done = true
+      end
+      later.wait
+
+      expect([owner_outcome, later_done, recording.stopped?]).to eq([:stopped, true, true])
     end
 
     it "lets the readable side complete while a piped destination is still finishing" do
@@ -547,6 +692,176 @@ RSpec.describe Puppeteer::Bidi::ScreenRecording do
 
       expect(logged.flatten.join).to include("timed out")
       expect(recording.data).to eq("video-bytes")
+    end
+
+    it "completes closed dispatch while the automatic protocol stop stays gated" do
+      File.binwrite(video_path, "video-bytes")
+      gate = Async::Promise.new
+      stop_counts = []
+      core_context = evented_context(path: video_path, gate: gate, stop_counts: stop_counts)
+      recording = recording_page(core_context).record
+      later_called = false
+      core_context.on(:closed) { later_called = true }
+
+      emitter = Async { core_context.emit(:closed) }
+      # Dispatch must finish while the gate stays closed: nested Async may
+      # need a scheduler tick before the emitter resumes, so wait with a
+      # bounded deadline instead of reading the flag immediately.
+      observed = begin
+        Async::Task.current.with_timeout(2) { emitter.wait }
+        later_called
+      rescue Async::TimeoutError
+        false
+      end
+      gate.resolve(nil)
+      emitter.wait
+      recording.stop
+
+      expect(observed).to be(true)
+      expect(stop_counts.size).to eq(1)
+      expect(recording.data).to eq("video-bytes")
+    ensure
+      gate&.resolve(nil) unless gate&.resolved?
+      emitter&.stop
+    end
+
+    it "completes closed dispatch while the automatic stop waits for a destination" do
+      File.binwrite(video_path, "video-bytes")
+      stop_counts = []
+      core_context = evented_context(path: video_path, stop_counts: stop_counts)
+      recording = recording_page(core_context).record
+      destination = EventedDestination.new(async_finish: true)
+      recording.pipe(destination)
+      later_called = false
+      core_context.on(:closed) { later_called = true }
+
+      emitter = Async { core_context.emit(:closed) }
+      observed = begin
+        Async::Task.current.with_timeout(2) { emitter.wait }
+        later_called
+      rescue Async::TimeoutError
+        false
+      end
+      # The destination can only finish after dispatch already completed.
+      wait_until { destination.close_called? }
+      destination.finish!
+      emitter.wait
+      recording.stop
+
+      expect(observed).to be(true)
+      expect(destination.written).to eq(["video-bytes"])
+      expect(stop_counts.size).to eq(1)
+    ensure
+      destination&.finish!
+      emitter&.stop
+    end
+
+    it "logs automatic stop failures without failing closed dispatch" do
+      File.binwrite(video_path, "video-bytes")
+      logged = []
+      logger = ->(_prefix) { ->(*args) { logged << args } }
+      stop_counts = []
+      core_context = evented_context(path: video_path, stop_counts: stop_counts)
+      recording = described_class.new(stub_page(core_context), {}, logger)
+      recording.start
+      broken = double("broken destination", write: true)
+      allow(broken).to receive(:end).and_raise(StandardError, "end boom")
+      recording.pipe(broken)
+      later_called = false
+      core_context.on(:closed) { later_called = true }
+
+      emitter = Async { core_context.emit(:closed) }
+      observed = begin
+        Async::Task.current.with_timeout(2) { emitter.wait }
+        later_called
+      rescue Async::TimeoutError
+        false
+      end
+      wait_until(timeout: 2) { logged.any? }
+
+      expect(observed).to be(true)
+      expect(logged.flatten.join).to include("end boom")
+      expect { recording.stop }.not_to raise_error
+      expect(stop_counts.size).to eq(1)
+    ensure
+      emitter&.stop
+    end
+
+    it "skips ending a destination unpiped by an earlier end callback" do
+      core_context = Puppeteer::Bidi::Core::EventEmitter.new
+      recording = described_class.new(stub_page(core_context), {}, ->(_prefix) { nil })
+      calls = []
+      first = Puppeteer::Bidi::Core::EventEmitter.new
+      second = Puppeteer::Bidi::Core::EventEmitter.new
+      first.define_singleton_method(:end) { calls << :first; second.emit(:unpipe); emit(:finish) }
+      second.define_singleton_method(:end) { calls << :second; emit(:finish) }
+      recording.pipe(first)
+      recording.pipe(second)
+      recording.stop
+
+      expect(calls).to eq([:first])
+    end
+
+    it "writes to a destination piped by an earlier write callback" do
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      calls = []
+      first = Puppeteer::Bidi::Core::EventEmitter.new
+      second = Puppeteer::Bidi::Core::EventEmitter.new
+      first.define_singleton_method(:write) do |bytes|
+        calls << [:first, bytes]
+        recording.pipe(second)
+        true
+      end
+      second.define_singleton_method(:write) { |bytes| calls << [:second, bytes]; true }
+      first.define_singleton_method(:end) { emit(:finish) }
+      second.define_singleton_method(:end) { emit(:finish) }
+      recording.pipe(first)
+      recording.stop
+
+      expect(calls).to eq([[:first, "video-bytes"], [:second, "video-bytes"]])
+    end
+
+    it "ends a destination piped by an earlier end callback" do
+      core_context = Puppeteer::Bidi::Core::EventEmitter.new
+      recording = described_class.new(stub_page(core_context), {}, ->(_prefix) { nil })
+      calls = []
+      first = Puppeteer::Bidi::Core::EventEmitter.new
+      second = Puppeteer::Bidi::Core::EventEmitter.new
+      first.define_singleton_method(:end) { calls << :first; recording.pipe(second); emit(:finish) }
+      second.define_singleton_method(:end) { calls << :second; emit(:finish) }
+      recording.pipe(first)
+      Async::Task.current.with_timeout(2) { recording.stop }
+
+      expect(calls).to eq([:first, :second])
+    end
+
+    it "revisits a destination deleted and re-piped during writing at the end of insertion order" do
+      recording, _core_context = started_recording(
+        start_result: { "screencast" => "cast-1", "path" => video_path },
+        stop_result: { "path" => video_path }
+      )
+      calls = []
+      first = Puppeteer::Bidi::Core::EventEmitter.new
+      second = Puppeteer::Bidi::Core::EventEmitter.new
+      first.define_singleton_method(:write) do |bytes|
+        calls << [:first, bytes]
+        if calls.count { |entry| entry.first == :first } == 1
+          emit(:unpipe)
+          recording.pipe(self)
+        end
+        true
+      end
+      second.define_singleton_method(:write) { |bytes| calls << [:second, bytes]; true }
+      first.define_singleton_method(:end) { emit(:finish) }
+      second.define_singleton_method(:end) { emit(:finish) }
+      recording.pipe(first)
+      recording.pipe(second)
+      recording.stop
+
+      expect(calls).to eq([[:first, "video-bytes"], [:second, "video-bytes"], [:first, "video-bytes"]])
     end
   end
 

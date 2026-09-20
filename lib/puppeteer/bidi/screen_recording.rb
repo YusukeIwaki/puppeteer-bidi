@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 # rbs_inline: enabled
 
-require "set"
-
 module Puppeteer
   module Bidi
     # A screen recording started with `Page#record`, backed by the WebDriver
@@ -22,6 +20,12 @@ module Puppeteer
       # `writableFinished || closed || destroyed` check plus Ruby's `closed?`.
       FINISHED_STATE_METHODS = %i[writableFinished closed closed? destroyed].freeze #: Array[Symbol]
 
+      # Tombstone marking a removed destination slot. Deletion leaves an
+      # empty slot instead of shifting later entries, matching JS Set live
+      # iteration where removed entries are skipped and re-added entries
+      # are visited at the end.
+      REMOVED_DESTINATION = Object.new.freeze #: Object
+
       attr_reader :page #: Page -- Recorded page
       attr_reader :options #: Hash[Symbol, untyped] -- Recording options
       attr_reader :data #: String? -- Recorded bytes, available after stop
@@ -35,7 +39,7 @@ module Puppeteer
         @options = options
         @logger = logger || Debug.default_logger
         @debug_error = @logger&.call(Debug::ERROR)
-        @destinations = Set.new #: Set[untyped]
+        @destinations = [] #: Array[untyped]
         @data = nil
         @stopped = false
         @in_flight = false
@@ -43,7 +47,10 @@ module Puppeteer
         # independently of destination shutdown (upstream closes its
         # readable controller before waiting for destinations).
         @readable = Async::Promise.new #: Async::Promise
-        # Stop completion, shared with in-flight waiters like `@guarded`.
+        # Stop gate: callers queued during an in-flight stop block on it, then
+        # return without inheriting the owner's outcome, mirroring upstream's
+        # `@guarded` mutex (each queued caller re-runs the body and observes
+        # `stopped`). It always resolves, never rejects.
         @completion = Async::Promise.new #: Async::Promise
         @screencast_id = nil
         @path = nil
@@ -51,10 +58,15 @@ module Puppeteer
         # Register close handling before starting so a closing page always
         # stops the recording.
         page.main_frame.browsing_context.once(:closed) do
-          begin
-            stop
-          rescue => error
-            @debug_error&.call(error)
+          # Upstream `void this.stop().catch(...)`: initiate stop without
+          # blocking event dispatch; failures are logged asynchronously.
+          # Explicit stops coordinate through the shared in-flight gate.
+          Async do
+            begin
+              stop
+            rescue => error
+              @debug_error&.call(error)
+            end
           end
         end
       end
@@ -93,10 +105,12 @@ module Puppeteer
       # @rbs destination: untyped -- Object responding to `write`
       # @rbs return: untyped -- The destination
       def pipe(destination)
-        @destinations << destination
+        unless @destinations.any? { |current| current.equal?(destination) }
+          @destinations << destination
+        end
         if destination.respond_to?(:once)
           [:unpipe, :error, :close, :finish].each do |event|
-            destination.once(event) { @destinations.delete(destination) }
+            destination.once(event) { remove_destination(destination) }
           end
         end
         destination
@@ -116,8 +130,11 @@ module Puppeteer
       end
 
       # Stop the recording. Callers arriving during an in-flight stop wait
-      # for it and share its outcome, mirroring upstream's `@guarded` stop;
-      # later calls are no-ops since the recording already stopped.
+      # for it, then return without inheriting its outcome, mirroring
+      # upstream's `@guarded` stop (a mutex: each queued caller re-runs the
+      # body after acquiring the lock, observes `stopped`, and succeeds even
+      # when the first caller failed); later calls are no-ops since the
+      # recording already stopped.
       # @rbs return: void
       def stop
         if @in_flight
@@ -128,21 +145,22 @@ module Puppeteer
 
         @stopped = true
         @in_flight = true
-        settled = false
         begin
-          perform_stop
-          close_destinations
-        rescue StandardError => error
-          settled = true
-          @completion.reject(error)
-          raise
-        else
-          settled = true
-          @completion.resolve(nil)
+          begin
+            perform_stop
+          ensure
+            # Upstream's `finally { await closeDestinations() }`: destinations
+            # and the readable side always settle, even when the stop sequence
+            # (including the error logger) raises.
+            close_destinations
+          end
         ensure
           @in_flight = false
-          # Cancellations bypass StandardError; still wake any waiters.
-          @completion.resolve(nil) unless settled
+          # Always resolve so queued callers observe `stopped` and succeed
+          # rather than inheriting the owner's failure. The ensure also
+          # releases coordination on cancellation/non-StandardError unwinding
+          # while the owner's exception still propagates.
+          @completion.resolve(nil)
         end
       end
 
@@ -175,7 +193,7 @@ module Puppeteer
         begin
           buffer = Bidi.read_binary_file(file_path)
           @data = buffer
-          @destinations.each { |destination| destination.write(buffer) }
+          each_destination_live { |destination| destination.write(buffer) }
         rescue => error
           @debug_error&.call(error)
         end
@@ -192,16 +210,15 @@ module Puppeteer
         # Complete the readable side first, like upstream closing its
         # readable controller before shutting down destinations.
         @readable.resolve(nil)
-        # Iterate over a copy: ending a destination fires its removal
-        # handlers, which mutate the set.
-        @destinations.dup.each do |destination|
+        each_destination_live do |destination|
           if destination.respond_to?(:end)
             destination.end
           elsif destination.respond_to?(:close)
             destination.close
           end
         end
-        completions = @destinations.dup.filter_map do |destination|
+        live = @destinations.reject { |destination| destination.equal?(REMOVED_DESTINATION) }
+        completions = live.filter_map do |destination|
           next unless destination.respond_to?(:once)
           next if destination_finished?(destination)
 
@@ -213,6 +230,32 @@ module Puppeteer
         end
         completions.each(&:wait)
         @destinations.clear
+      end
+
+      # Mark a destination removed without shifting later entries, so live
+      # iteration skips it exactly like a JS Set empty slot.
+      # @rbs destination: untyped -- Piped destination
+      # @rbs return: void
+      def remove_destination(destination)
+        index = @destinations.index { |current| current.equal?(destination) }
+        @destinations[index] = REMOVED_DESTINATION unless index.nil?
+      end
+
+      # Iterate destinations with JS Set live semantics: entries removed
+      # before they are visited are skipped, entries added during iteration
+      # are visited at the end, and re-added entries are visited at their
+      # new position (a re-added current entry is visited again).
+      # @rbs &block: (untyped) -> void -- Destination handler
+      # @rbs return: void
+      def each_destination_live(&block)
+        index = 0
+        while index < @destinations.length
+          destination = @destinations[index]
+          index += 1
+          next if destination.equal?(REMOVED_DESTINATION)
+
+          block.call(destination)
+        end
       end
 
       # @rbs destination: untyped -- Piped destination
